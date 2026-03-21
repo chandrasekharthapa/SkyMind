@@ -56,7 +56,7 @@ export default function PredictPage() {
       ])
       setPrediction(pred); setForecast(fc)
       if (pred.predicted_price) {
-        const hr = await getHiddenRoutes(org, dest, depDate, pred.predicted_price)
+        const hr = await getHiddenRoutes(org, dest, depDate, pred.predicted_price) as any
         setHiddenRoutes(hr.hidden_routes || [])
       }
     } catch(e:any) {
