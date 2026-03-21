@@ -39,10 +39,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://*.vercel.app",
-        # Add your production domain here
-    ],
+    "http://localhost:3000",
+    "https://*.vercel.app",
+    "https://skymind.onrender.com",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
