@@ -32,7 +32,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://sky-mind-pi.vercel.app",
+        "https://skymind-ten.vercel.app",
         "*",
     ],
     allow_credentials=True,
