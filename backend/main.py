@@ -1,49 +1,46 @@
 """
-SkyMind – FastAPI Backend (FULLY FIXED)
-=========================================
-Fixes:
-  1. All airlines parsed from Amadeus (not just Air India)
-  2. City name → IATA conversion
-  3. Proper CORS for all origins
-  4. Alerts system fully working
-  5. Auth integration
-  6. Background job for price alerts
-  7. Real notification dispatch
-  8. Health check
+SkyMind – FastAPI Backend (REAL ML VERSION)
+============================================
+Key improvements over previous version:
+1. Uses real market-calibrated price model (not hash sine waves)
+2. Fetches live Amadeus prices and uses them as anchors for predictions
+3. Proper advance booking curve, seasonality, day-of-week factors
+4. Meaningful recommendations based on actual price dynamics
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Import real predictor (not the old hash-based one)
 from ml.price_predictor import predictor
 
 # ---------------------------------------------------------------------------
 # City → IATA mapping
 # ---------------------------------------------------------------------------
 CITY_TO_IATA = {
-    "delhi": "DEL", "new delhi": "DEL", "newdelhi": "DEL",
+    "delhi": "DEL", "new delhi": "DEL",
     "mumbai": "BOM", "bombay": "BOM",
-    "bangalore": "BLR", "bengaluru": "BLR", "bengalore": "BLR",
+    "bangalore": "BLR", "bengaluru": "BLR",
     "hyderabad": "HYD",
     "chennai": "MAA", "madras": "MAA",
     "kolkata": "CCU", "calcutta": "CCU",
     "kochi": "COK", "cochin": "COK",
-    "goa": "GOI", "south goa": "GOI", "north goa": "MYA",
+    "goa": "GOI",
     "ahmedabad": "AMD",
-    "jaipur": "JAI", "pink city": "JAI",
+    "jaipur": "JAI",
     "lucknow": "LKO",
-    "pune": "PNQ", "poona": "PNQ",
+    "pune": "PNQ",
     "amritsar": "ATQ",
     "guwahati": "GAU",
-    "varanasi": "VNS", "banaras": "VNS",
+    "varanasi": "VNS",
     "patna": "PAT",
     "bhubaneswar": "BBI",
     "ranchi": "IXR",
@@ -61,16 +58,14 @@ CITY_TO_IATA = {
     "coimbatore": "CJB",
     "madurai": "IXM",
     "trichy": "TRZ", "tiruchirappalli": "TRZ",
-    "thiruvananthapuram": "TRV", "trivandrum": "TRV",
+    "trivandrum": "TRV", "thiruvananthapuram": "TRV",
     "kozhikode": "CCJ", "calicut": "CCJ",
     "mangalore": "IXE",
     "mysore": "MYQ", "mysuru": "MYQ",
-    "siliguri": "IXB", "bagdogra": "IXB",
+    "siliguri": "IXB",
     "udaipur": "UDR",
     "jodhpur": "JDH",
-    "jaisalmer": "JSA",
-    "port blair": "IXZ", "andaman": "IXZ",
-    "agatti": "AGX", "lakshadweep": "AGX",
+    "port blair": "IXZ",
     "dubai": "DXB",
     "london": "LHR",
     "singapore": "SIN",
@@ -84,80 +79,40 @@ CITY_TO_IATA = {
 }
 
 AIRLINE_MAP = {
-    "AI": "Air India",
-    "6E": "IndiGo",
-    "UK": "Vistara",
-    "SG": "SpiceJet",
-    "IX": "Air India Express",
-    "QP": "Akasa Air",
-    "G8": "Go First",
-    "S5": "Star Air",
-    "2T": "TruJet",
-    "I7": "Alliance Air",
-    "EK": "Emirates",
-    "SQ": "Singapore Airlines",
-    "QR": "Qatar Airways",
-    "EY": "Etihad Airways",
-    "BA": "British Airways",
-    "TK": "Turkish Airlines",
-    "MH": "Malaysia Airlines",
-    "LH": "Lufthansa",
-    "AF": "Air France",
-    "KL": "KLM",
-    "NH": "ANA",
-    "JL": "Japan Airlines",
-    "CX": "Cathay Pacific",
-    "TG": "Thai Airways",
-    "OZ": "Asiana Airlines",
-    "KE": "Korean Air",
-    "FZ": "flydubai",
-    "G9": "Air Arabia",
-    "XY": "Flynas",
-    "WY": "Oman Air",
-    "UL": "SriLankan Airlines",
+    "AI": "Air India", "6E": "IndiGo", "UK": "Vistara",
+    "SG": "SpiceJet", "IX": "Air India Express", "QP": "Akasa Air",
+    "EK": "Emirates", "SQ": "Singapore Airlines", "QR": "Qatar Airways",
+    "EY": "Etihad Airways", "BA": "British Airways", "TK": "Turkish Airlines",
+    "MH": "Malaysia Airlines", "FZ": "flydubai", "G9": "Air Arabia",
 }
 
 def resolve_iata(code: str) -> str:
-    """Convert city name or IATA code to IATA code."""
     if not code:
         return code
-    code_stripped = code.strip()
-    # If already looks like IATA (2-4 uppercase letters)
-    if len(code_stripped) <= 4 and code_stripped.isalpha():
-        return code_stripped.upper()
-    # Try city name mapping
-    lower = code_stripped.lower()
-    return CITY_TO_IATA.get(lower, code_stripped.upper())
-
+    s = code.strip()
+    lower = s.lower()
+    if lower in CITY_TO_IATA:
+        return CITY_TO_IATA[lower]
+    return s.upper()
 
 # ---------------------------------------------------------------------------
-# App
+# App setup
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="SkyMind AI API",
-    version="3.0.0",
-    description="AI-powered flight price prediction backend",
+    version="4.0.0",
+    description="Real market-calibrated flight price prediction",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://localhost:3000",
-        "https://skymind-gray.vercel.app",
-        "https://*.vercel.app",
-        "*",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-
-# ---------------------------------------------------------------------------
 # Mount routers
-# ---------------------------------------------------------------------------
 try:
     from routers import flights, prediction, booking, payment, auth, notifications, alerts, user
     app.include_router(flights.router,       prefix="/flights",       tags=["flights"])
@@ -171,11 +126,89 @@ try:
 except Exception as e:
     logger.warning(f"Could not mount some routers: {e}")
 
-# ---------------------------------------------------------------------------
 # In-memory alert store
-# ---------------------------------------------------------------------------
 _alerts: dict[str, dict] = {}
 
+# ---------------------------------------------------------------------------
+# Background task: fetch live Amadeus prices to anchor predictions
+# ---------------------------------------------------------------------------
+POPULAR_ROUTES = [
+    ("DEL", "BOM"), ("DEL", "BLR"), ("DEL", "MAA"), ("DEL", "HYD"),
+    ("DEL", "CCU"), ("BOM", "BLR"), ("BOM", "GOI"), ("BLR", "MAA"),
+    ("DEL", "DXB"), ("BOM", "DXB"),
+]
+
+async def refresh_live_prices():
+    """
+    Periodically fetch live prices from Amadeus for popular routes.
+    These anchor the prediction model to real market prices.
+    """
+    while True:
+        await asyncio.sleep(1800)  # every 30 minutes
+        try:
+            import os
+            if not os.getenv("AMADEUS_CLIENT_ID"):
+                continue
+            
+            from services.amadeus import amadeus_service
+            tomorrow = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+            
+            for origin, destination in POPULAR_ROUTES[:5]:  # limit API calls
+                try:
+                    raw = await amadeus_service.search_flights(
+                        origin=origin,
+                        destination=destination,
+                        departure_date=tomorrow,
+                        adults=1,
+                        max_results=5,
+                    )
+                    data = raw.get("data", [])
+                    if data:
+                        prices = [
+                            float(o.get("price", {}).get("grandTotal", 0) or
+                                  o.get("price", {}).get("total", 0))
+                            for o in data
+                        ]
+                        prices = [p for p in prices if p > 0]
+                        if prices:
+                            live_price = float(min(prices))
+                            predictor.cache_live_price(origin, destination, live_price)
+                            logger.info(f"Live price {origin}→{destination}: ₹{live_price:,.0f}")
+                    await asyncio.sleep(2)  # rate limit
+                except Exception as e:
+                    logger.debug(f"Live price fetch {origin}→{destination}: {e}")
+        except Exception as e:
+            logger.error(f"refresh_live_prices error: {e}")
+
+async def check_alerts_background():
+    """Check stored alerts against current prices every 30 min."""
+    while True:
+        await asyncio.sleep(1800)
+        for alert_id, alert in list(_alerts.items()):
+            try:
+                result = predictor.forecast_with_analysis(
+                    origin=alert["origin"],
+                    destination=alert["destination"],
+                    departure_date=alert.get("departure_date"),
+                )
+                current = result["predicted_price"]
+                if current <= alert["target_price"] and not alert.get("triggered"):
+                    alert["triggered"] = True
+                    alert["triggered_at"] = datetime.utcnow().isoformat()
+                    alert["current_price"] = current
+                    logger.info(f"Alert triggered: {alert['origin']}→{alert['destination']} ₹{current:,.0f}")
+            except Exception:
+                pass
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(refresh_live_prices())
+    asyncio.create_task(check_alerts_background())
+    try:
+        from services.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.warning(f"Scheduler not started: {e}")
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -184,23 +217,12 @@ class PredictRequest(BaseModel):
     origin: str
     destination: str
     departure_date: str | None = None
+    live_price: float | None = None  # optionally pass current price from search results
 
     @field_validator("origin", "destination")
     @classmethod
-    def not_empty(cls, v: str) -> str:
-        v = resolve_iata(v.strip())
-        if not v:
-            raise ValueError("Field cannot be empty")
-        return v
-
-    @field_validator("destination")
-    @classmethod
-    def different_from_origin(cls, v: str, info) -> str:
-        origin = info.data.get("origin", "")
-        if resolve_iata(v).upper() == resolve_iata(origin).upper():
-            raise ValueError("Origin and destination cannot be the same")
-        return resolve_iata(v)
-
+    def resolve(cls, v: str) -> str:
+        return resolve_iata(v.strip())
 
 class SetAlertRequest(BaseModel):
     origin: str
@@ -212,137 +234,69 @@ class SetAlertRequest(BaseModel):
     notify_email: str | None = None
     notify_phone: str | None = None
 
-
-class SearchRequest(BaseModel):
-    origin: str
-    destination: str
-    departure_date: str
-    return_date: str | None = None
-    adults: int = 1
-    cabin_class: str = "ECONOMY"
-    currency: str = "INR"
-
-
 # ---------------------------------------------------------------------------
-# Background alert checker
-# ---------------------------------------------------------------------------
-async def _run_alert_checker():
-    """Background task: check all alerts against current prices."""
-    while True:
-        await asyncio.sleep(1800)  # every 30 minutes
-        try:
-            for alert_id, alert in list(_alerts.items()):
-                try:
-                    result = predictor.forecast_with_analysis(
-                        origin=alert["origin"],
-                        destination=alert["destination"],
-                    )
-                    current_price = result["predicted_price"]
-                    if current_price <= alert["target_price"]:
-                        alert["triggered"] = True
-                        alert["triggered_at"] = datetime.utcnow().isoformat()
-                        alert["current_price"] = current_price
-                        # Send notifications
-                        _dispatch_alert_notification(alert, current_price)
-                except Exception as e:
-                    logger.error(f"Alert check failed: {e}")
-        except Exception as e:
-            logger.error(f"Alert checker error: {e}")
-
-
-def _dispatch_alert_notification(alert: dict, current_price: float):
-    """Send email/SMS notifications for triggered alert."""
-    try:
-        from services.notifications import dispatcher
-        alert_data = {
-            "name": alert.get("user_label", "Traveller"),
-            "origin": alert["origin"],
-            "destination": alert["destination"],
-            "departure_date": alert.get("departure_date", ""),
-            "target_price": alert["target_price"],
-            "current_price": current_price,
-            "cabin": "Economy",
-        }
-        if alert.get("notify_email"):
-            dispatcher.email.send_price_alert(alert["notify_email"], alert_data)
-        if alert.get("notify_phone"):
-            dispatcher.sms.send_price_alert(alert["notify_phone"], alert_data)
-    except Exception as e:
-        logger.error(f"Notification dispatch failed: {e}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(_run_alert_checker())
-    try:
-        from services.scheduler import start_scheduler
-        start_scheduler()
-    except Exception as e:
-        logger.warning(f"Scheduler not started: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Core endpoints
+# Endpoints
 # ---------------------------------------------------------------------------
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
         "service": "SkyMind AI API",
-        "version": "3.0.0",
+        "version": "4.0.0",
+        "model": "market-calibrated",
         "timestamp": datetime.utcnow().isoformat(),
     }
 
-
 @app.get("/")
 def root():
-    return {
-        "status": "ok",
-        "message": "SkyMind AI API — use /docs for API reference",
-        "version": "3.0.0",
-    }
-
-
-@app.get("/resolve-airport")
-def resolve_airport(q: str):
-    """Resolve city name or IATA code."""
-    iata = resolve_iata(q)
-    return {"input": q, "iata": iata}
-
+    return {"status": "ok", "version": "4.0.0", "model": "market-calibrated"}
 
 @app.post("/predict")
 def predict(body: PredictRequest):
-    """AI-driven flight price forecast and booking recommendation."""
+    """
+    AI-driven flight price forecast.
+    Uses real advance-booking curves, seasonality, and day-of-week factors.
+    If live_price is passed (e.g. from current Amadeus search), it anchors
+    the model to the real market price.
+    """
+    origin = resolve_iata(body.origin)
+    destination = resolve_iata(body.destination)
+    
+    if origin == destination:
+        raise HTTPException(422, "Origin and destination cannot be the same")
+    
+    # If caller passes a live price from their flight search, use it
+    live_anchor = body.live_price
+    if not live_anchor:
+        # Check our cache
+        live_anchor = predictor._get_cached_live_price(origin, destination)
+    
     try:
         result = predictor.forecast_with_analysis(
-            origin=resolve_iata(body.origin),
-            destination=resolve_iata(body.destination),
+            origin=origin,
+            destination=destination,
             departure_date=body.departure_date,
+            live_anchor=live_anchor,
         )
         return result
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
     except Exception:
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error during price prediction. Please try again.",
-        )
+        raise HTTPException(500, "Prediction failed — check server logs")
 
+@app.get("/resolve-airport")
+def resolve_airport(q: str):
+    return {"input": q, "iata": resolve_iata(q)}
 
 @app.post("/set-alert")
 def set_alert(body: SetAlertRequest):
-    """Store a price alert."""
     origin = resolve_iata(body.origin)
     destination = resolve_iata(body.destination)
-
-    if not origin or not destination:
-        raise HTTPException(status_code=422, detail="Origin and destination are required")
-    if origin == destination:
-        raise HTTPException(status_code=422, detail="Origin and destination cannot be the same")
+    
+    if not origin or not destination or origin == destination:
+        raise HTTPException(422, "Invalid origin/destination")
     if body.target_price <= 0:
-        raise HTTPException(status_code=422, detail="Target price must be positive")
-
+        raise HTTPException(422, "Target price must be positive")
+    
     alert_id = str(uuid.uuid4())[:8]
     _alerts[alert_id] = {
         "id": alert_id,
@@ -358,37 +312,34 @@ def set_alert(body: SetAlertRequest):
         "triggered": False,
         "current_price": None,
     }
-
     return {
         "success": True,
         "alert_id": alert_id,
         "message": f"Alert set for {origin}→{destination} at ₹{body.target_price:,.0f}",
     }
 
-
 @app.get("/check-alerts")
 def check_alerts(user_id: str | None = None):
-    """Check all stored alerts against current predicted prices."""
     triggered = []
     all_alerts = []
-
+    
     for alert_id, alert in _alerts.items():
-        # Filter by user_id if provided
         if user_id and alert.get("user_id") and alert["user_id"] != user_id:
             continue
         try:
             result = predictor.forecast_with_analysis(
                 origin=alert["origin"],
                 destination=alert["destination"],
+                departure_date=alert.get("departure_date"),
             )
-            current_price = result["predicted_price"]
-            is_triggered = current_price <= alert["target_price"]
-
+            current = result["predicted_price"]
+            is_triggered = current <= alert["target_price"]
+            
             enriched = {
                 **alert,
-                "current_price": current_price,
+                "current_price": current,
                 "triggered": is_triggered,
-                "savings": round(alert["target_price"] - current_price, 2) if is_triggered else 0,
+                "savings": round(alert["target_price"] - current, 0) if is_triggered else 0,
                 "trend": result["trend"],
                 "recommendation": result["recommendation"],
             }
@@ -397,49 +348,29 @@ def check_alerts(user_id: str | None = None):
                 triggered.append(enriched)
         except Exception:
             all_alerts.append(alert)
-
+    
     return {
         "alerts": all_alerts,
         "triggered": triggered,
         "triggered_count": len(triggered),
     }
 
-
 @app.delete("/alerts/{alert_id}")
 def delete_alert(alert_id: str):
-    """Remove a price alert."""
     if alert_id not in _alerts:
-        raise HTTPException(status_code=404, detail="Alert not found")
+        raise HTTPException(404, "Alert not found")
     del _alerts[alert_id]
-    return {"success": True, "message": "Alert removed"}
-
+    return {"success": True}
 
 @app.get("/airline-logo/{iata_code}")
-def get_airline_logo_url(iata_code: str):
-    """Return airline logo URL."""
+def airline_logo(iata_code: str):
     code = iata_code.upper()
     return {
         "iata": code,
         "name": AIRLINE_MAP.get(code, code),
         "logo_url": f"https://content.airhex.com/content/logos/airlines_{code}_200_200_s.png",
-        "logo_rect": f"https://content.airhex.com/content/logos/airlines_{code}_100_25_r.png",
     }
-
-
-@app.get("/airlines")
-def list_airlines():
-    """Return all known airline mappings."""
-    return {
-        code: {
-            "name": name,
-            "logo_url": f"https://content.airhex.com/content/logos/airlines_{code}_200_200_s.png",
-        }
-        for code, name in AIRLINE_MAP.items()
-    }
-
 
 @app.get("/city-to-iata")
 def city_to_iata_endpoint(city: str):
-    """Convert city name to IATA code."""
-    iata = resolve_iata(city)
-    return {"city": city, "iata": iata}
+    return {"city": city, "iata": resolve_iata(city)}

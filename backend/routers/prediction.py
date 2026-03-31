@@ -1,9 +1,10 @@
 """
-AI Price Prediction endpoints.
+AI Price Prediction endpoints — REAL VERSION
+Uses market-calibrated model with live Amadeus price anchoring.
 """
 
 from fastapi import APIRouter, Query, HTTPException
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 router = APIRouter()
 
@@ -13,25 +14,29 @@ async def predict_price(
     origin: str = Query(..., min_length=3, max_length=3),
     destination: str = Query(..., min_length=3, max_length=3),
     departure_date: str = Query(..., description="YYYY-MM-DD"),
-    airline_code: str = Query("AI"),
+    live_price: float = Query(None, description="Current real price from flight search"),
 ):
-    """Predict optimal booking time and expected price."""
+    """
+    Predict optimal booking time for a specific route + date.
+    If live_price is provided (from Amadeus search), anchors the model to it.
+    """
     try:
         from ml.price_predictor import predictor
-        dep_date = datetime.strptime(departure_date, "%Y-%m-%d")
-        days_until = (dep_date.date() - date.today()).days
-
+        dep_date_obj = datetime.strptime(departure_date, "%Y-%m-%d").date()
+        days_until = (dep_date_obj - date.today()).days
+        
         if days_until < 0:
-            raise HTTPException(status_code=400, detail="Departure date must be in the future")
-
+            raise HTTPException(400, "Departure date must be in the future")
+        
         result = predictor.forecast_with_analysis(
-            origin=origin,
-            destination=destination,
+            origin=origin.upper(),
+            destination=destination.upper(),
             departure_date=departure_date,
+            live_anchor=live_price,
         )
         return {
-            "origin": origin,
-            "destination": destination,
+            "origin": origin.upper(),
+            "destination": destination.upper(),
             "departure_date": departure_date,
             "days_until_departure": days_until,
             **result,
@@ -39,29 +44,42 @@ async def predict_price(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(500, str(e))
 
 
 @router.get("/forecast")
 async def price_forecast(
     origin: str = Query(..., min_length=3, max_length=3),
     destination: str = Query(..., min_length=3, max_length=3),
-    base_price: float = Query(8000.0, description="Current base price for context"),
+    departure_date: str = Query(None, description="YYYY-MM-DD, defaults to 45 days out"),
+    live_price: float = Query(None, description="Anchor to this real price"),
 ):
-    """Get 30-day price forecast for a route."""
+    """
+    30-day booking price forecast. Shows how price changes as you wait to book.
+    Each point = 'what would I pay if I booked on this date?'
+    """
     try:
         from ml.price_predictor import predictor
-        result = predictor.forecast_with_analysis(origin=origin, destination=destination)
+        result = predictor.forecast_with_analysis(
+            origin=origin.upper(),
+            destination=destination.upper(),
+            departure_date=departure_date,
+            live_anchor=live_price,
+        )
         forecast = result["forecast"]
         return {
-            "origin": origin,
-            "destination": destination,
+            "origin": origin.upper(),
+            "destination": destination.upper(),
+            "departure_date": departure_date,
             "forecast": forecast,
-            "best_day": min(forecast, key=lambda x: x["price"]),
-            "worst_day": max(forecast, key=lambda x: x["price"]),
+            "best_day": result.get("best_day"),
+            "worst_day": result.get("worst_day"),
+            "trend": result["trend"],
+            "recommendation": result["recommendation"],
+            "data_quality": result.get("data_quality", "MODEL"),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(500, str(e))
 
 
 @router.get("/hidden-routes")
@@ -72,45 +90,62 @@ async def find_hidden_routes(
     direct_price: float = Query(..., description="Current direct flight price"),
 ):
     """Find cheaper hidden multi-stop routes using Dijkstra algorithm."""
-    ROUTE_PRICES = {
-        ("DEL", "DXB"): 4500, ("DXB", "LHR"): 12000, ("DXB", "CDG"): 11000,
-        ("DEL", "IST"): 15000, ("IST", "CDG"): 8000, ("IST", "LHR"): 9000,
-        ("DEL", "SIN"): 8000, ("SIN", "SYD"): 12000, ("SIN", "NRT"): 14000,
-        ("BOM", "DXB"): 4000, ("BOM", "SIN"): 7500, ("DEL", "BKK"): 7000,
-        ("BKK", "NRT"): 11000, ("DEL", "CDG"): 38000, ("DEL", "LHR"): 35000,
+    from ml.price_predictor import (
+        get_baseline, advance_booking_multiplier,
+        SEASONAL_MULTIPLIERS, DOW_MULTIPLIERS, is_international_route
+    )
+    from datetime import datetime as dt
+    
+    try:
+        dep_date = dt.strptime(departure_date, "%Y-%m-%d").date()
+    except Exception:
+        dep_date = date.today() + timedelta(days=30)
+    
+    days_until = max((dep_date - date.today()).days, 1)
+    
+    # Hub airports to route through
+    HUBS = {
+        "DXB": "Dubai", "IST": "Istanbul", "DOH": "Doha",
+        "SIN": "Singapore", "BOM": "Mumbai", "DEL": "Delhi",
+        "BLR": "Bengaluru", "CCU": "Kolkata",
     }
-
+    
     via_options = []
-    hubs = ["DXB", "IST", "SIN", "DOH", "BOM"]
-    for hub in hubs:
-        if hub == origin or hub == destination:
+    
+    for hub, hub_city in HUBS.items():
+        if hub in (origin, destination):
             continue
-        leg1_key = (origin, hub)
-        leg2_key = (hub, destination)
-        leg1_rev = (hub, origin)
-        leg2_rev = (destination, hub)
-
-        leg1 = ROUTE_PRICES.get(leg1_key) or ROUTE_PRICES.get(leg1_rev)
-        leg2 = ROUTE_PRICES.get(leg2_key) or ROUTE_PRICES.get(leg2_rev)
-
-        if leg1 and leg2:
+        
+        try:
+            from ml.price_predictor import predict_price
+            # Price of leg 1: origin → hub
+            leg1 = predict_price(origin, hub, days_until, dep_date)
+            # Price of leg 2: hub → destination (bought same day, slightly later)
+            leg2 = predict_price(hub, destination, days_until, dep_date)
             total = leg1 + leg2
-            if total < direct_price:
+            
+            # Only show if genuinely cheaper (account for connection time value)
+            if total < direct_price * 0.88:  # at least 12% savings to be worth it
+                savings = direct_price - total
                 via_options.append({
                     "path": [origin, hub, destination],
-                    "total_price": total,
+                    "via_city": hub_city,
+                    "total_price": round(total),
+                    "leg1_price": round(leg1),
+                    "leg2_price": round(leg2),
                     "stops": 1,
-                    "via": hub,
-                    "savings_vs_direct": round(direct_price - total, 2),
-                    "savings_percent": round((direct_price - total) / direct_price * 100, 1),
+                    "savings_vs_direct": round(savings),
+                    "savings_percent": round(savings / direct_price * 100, 1),
                 })
-
+        except Exception:
+            pass
+    
     via_options.sort(key=lambda x: x["total_price"])
-
+    
     return {
         "origin": origin,
         "destination": destination,
         "direct_price": direct_price,
-        "hidden_routes": via_options[:5],
-        "message": f"Found {len(via_options)} cheaper alternatives to direct flight",
+        "hidden_routes": via_options[:4],
+        "message": f"Found {len(via_options)} cheaper alternatives" if via_options else "No cheaper routes found today",
     }
