@@ -1,222 +1,201 @@
+"""
+SkyMind — Background Scheduler
+Updated to support 2026 Weighted AI Retraining and Live Data Ingestion.
+"""
+
 import logging
-import os
 import time
-import asyncio
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
-from database.database import database as db
-from ml.price_model import get_predictor
-
 logger = logging.getLogger(__name__)
 
-# Global Scheduler Instance
+# Initialize scheduler with IST timezone for consistent 2026 operations
 _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
-# 📅 Systematic Date Buckets for 2026 Market Coverage
-DATE_BUCKETS = [1, 2, 3, 5, 7, 10, 14, 21, 28, 30]
-
-# ✈️ Tier-1 Indian Route Batches
+# ── Route batches for nightly price scraping ─────────────────────────
 ROUTE_BATCHES = [
     [("DEL", "BOM"), ("BOM", "DEL"), ("DEL", "BLR")],
     [("BLR", "DEL"), ("DEL", "CCU"), ("CCU", "DEL")],
-    [("BBI", "DEL"), ("DEL", "BBI"), ("BBI", "BLR")],
-    [("BLR", "BBI"), ("BOM", "BLR"), ("BLR", "BOM")],
-    [("COK", "DEL"), ("DEL", "COK"), ("HYD", "DEL")],
+    [("BBI", "DEL"), ("DEL", "BBI"), ("BOM", "BLR")],
+    [("BLR", "BOM"), ("DEL", "HYD"), ("HYD", "DEL")],
+    [("COK", "DEL"), ("DEL", "COK"), ("BOM", "MAA")],
 ]
 
-_price_cache = {}
+DATE_BUCKETS = [1, 2, 3, 5, 7, 10, 14, 21, 28, 30]
 
-def get_cached_price(key):
-    if key in _price_cache:
-        price, ts = _price_cache[key]
-        if time.time() - ts < 3600:
-            return price
-    return None
 
-def set_cached_price(key, value):
-    _price_cache[key] = (value, time.time())
+# ── Tasks ─────────────────────────────────────────────────────────────
 
-# ==========================================
-# 🚀 FETCH + STORE (SYNC-TO-ASYNC BRIDGE)
-# ==========================================
-def fetch_and_store_flights(origin, destination, date_str):
-    from services.amadeus import amadeus_service
-
+def _collect_batch(batch_index: int) -> None:
+    """Scrape Amadeus for one batch of routes + date buckets."""
+    logger.info(f"📋 Scraping batch {batch_index}…")
     try:
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        import asyncio
+        from services.amadeus import amadeus_service
+        from database.database import database as db
 
-        res = loop.run_until_complete(amadeus_service.search_flights(
-            origin=origin, 
-            destination=destination, 
-            departure_date=date_str,
-            max_results=5
-        ))
+        routes = ROUTE_BATCHES[batch_index % len(ROUTE_BATCHES)]
+        today = datetime.now(timezone.utc).date()
 
-        # Handle different potential return types from amadeus_service
-        data = res.get("data", []) if isinstance(res, dict) else []
-        if not data:
-            return None
+        # Using a fresh event loop for the background thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        prices = []
-        now = datetime.now(timezone.utc)
-        dep_dt = datetime.strptime(date_str, "%Y-%m-%d")
-
-        for f in data:
-            try:
-                price_info = f.get("price", {})
-                price = float(price_info.get("total", 0))
-                
-                if price < 1500: continue 
-                prices.append(price)
-
-                db.supabase.table("price_history").insert({
-                    "origin_code": origin,
-                    "destination_code": destination,
-                    "airline_code": f.get("validatingAirlineCodes", ["AI"])[0],
-                    "price": price,
-                    "currency": "INR",
-                    "departure_date": date_str,
-                    "days_until_dep": max((dep_dt.date() - now.date()).days, 0),
-                    "is_live": True,
-                    "recorded_at": now.isoformat(),
-                    "market_era": "2026_PROD"
-                }).execute()
-
-            except Exception as e:
-                logger.warning(f"Row skip during scrape: {e}")
-
-        return min(prices) if prices else None
-
-    except Exception as e:
-        logger.error(f"Scraper failed for {origin}->{destination}: {e}")
-        return None
-
-# ==========================================
-# 🧠 HYBRID FETCH (Cache -> Live -> ML)
-# ==========================================
-def get_price(origin, destination, date_str):
-    key = f"{origin}-{destination}-{date_str}"
-    
-    cached = get_cached_price(key)
-    if cached: return cached
-
-    price = fetch_and_store_flights(origin, destination, date_str)
-    if price:
-        set_cached_price(key, price)
-        return price
-
-    try:
-        predictor = get_predictor()
-        now = datetime.now(timezone.utc)
-        dep_dt = datetime.strptime(date_str, "%Y-%m-%d")
-        
-        input_data = {
-            "origin_code": origin,
-            "destination_code": destination,
-            "airline_code": "AI",
-            "days_until_dep": max((dep_dt.date() - now.date()).days, 0),
-            "day_of_week": dep_dt.weekday(),
-            "month": dep_dt.month,
-            "week_of_year": dep_dt.isocalendar()[1],
-            "is_live": True
-        }
-        pred = float(predictor.predict(input_data))
-        set_cached_price(key, pred)
-        return pred
-    except Exception as e:
-        logger.error(f"ML Fallback failed: {e}")
-        return None
-
-# ==========================================
-# 📅 SCHEDULED TASKS
-# ==========================================
-def collect_batch(batch_index):
-    logger.info(f"📋 Running Scraping Batch {batch_index}...")
-    try:
-        routes = ROUTE_BATCHES[batch_index]
-        today = datetime.now().date()
         for origin, destination in routes:
-            for d in DATE_BUCKETS:
-                target_date = (today + timedelta(days=d)).strftime("%Y-%m-%d")
-                get_price(origin, destination, target_date)
-                time.sleep(2) # Protect API Rate Limits
-    except Exception as e:
-        logger.error(f"Batch {batch_index} failed: {e}")
+            for days_out in DATE_BUCKETS:
+                target = (today + timedelta(days=days_out)).strftime("%Y-%m-%d")
+                try:
+                    raw = loop.run_until_complete(
+                        amadeus_service.search_flights(origin, destination, target, max_results=5)
+                    )
+                    
+                    # 🎯 INTEGRATED: Use the new amadeus_service formatter
+                    # This ensures is_live=True and urgency are set correctly
+                    formatted_flights = amadeus_service.format_for_skymind(raw)
+                    
+                    for flight in formatted_flights:
+                        try:
+                            # 2026 Safety Check: Ignore garbage data
+                            if flight["price"] < 1000:
+                                continue
+                                
+                            # Insert into price_history for ML training
+                            db.supabase.table("price_history").insert({
+                                "origin_code": flight["origin_code"],
+                                "destination_code": flight["destination_code"],
+                                "airline_code": flight["airline_code"],
+                                "price": flight["price"],
+                                "currency": "INR",
+                                "departure_date": flight["departure_date"],
+                                "days_until_dep": flight["days_until_dep"],
+                                "urgency": flight["urgency"],
+                                "is_live": True,  # ⚡ Crucial for weighted priority
+                                "is_weekend": flight["days_until_dep"] % 7 >= 5, # Simple check
+                                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                            }).execute()
+                        except Exception as row_err:
+                            logger.debug(f"Row skip: {row_err}")
+                            
+                    # Respect Amadeus Rate Limits
+                    time.sleep(1.5)
+                    
+                except Exception as route_err:
+                    logger.warning(f"Route {origin}→{destination}: {route_err}")
 
-def check_price_alerts():
-    from services.notifications import dispatcher
-    logger.info("⏰ Scanning active Price Alerts...")
+        loop.close()
+    except Exception as exc:
+        logger.error(f"Batch {batch_index} failed: {exc}")
+
+
+def _check_price_alerts() -> None:
+    """Check all active price alerts and fire notifications if triggered."""
+    logger.info("⏰ Checking price alerts…")
     try:
-        # FIXED: Directly query Supabase to avoid missing method error
-        res = db.supabase.table("price_alerts") \
-            .select("*") \
-            .eq("status", "ACTIVE") \
+        from services.notifications import dispatcher
+        from database.database import database as db
+
+        res = (
+            db.supabase.table("price_alerts")
+            .select("*, profiles(email, phone, full_name, notify_email, notify_sms, notify_whatsapp)")
+            .eq("is_active", True)
             .execute()
-        
-        alerts = res.data or []
-        for alert in alerts:
-            current_price = get_price(
-                alert["origin_code"], 
-                alert["destination_code"], 
-                alert["departure_date"]
-            )
-            
-            if current_price and current_price <= alert["target_price"]:
-                logger.info(f"🎯 Alert Triggered for {alert.get('email', 'User')}")
-                dispatcher.send_price_alert(alert, current_price)
-                
-                # Update status so we don't double-notify
-                db.supabase.table("price_alerts") \
-                    .update({"status": "TRIGGERED"}) \
-                    .eq("id", alert["id"]) \
-                    .execute()
-
-    except Exception as e:
-        logger.error(f"Alert check failed: {e}")
-
-def retrain_models():
-    logger.info("🤖 Maintenance: Retraining XGBoost Predictor...")
-    try:
-        predictor = get_predictor()
-        predictor.train() 
-        predictor.load()  
-        logger.info("✅ Retraining complete. New 2026 patterns active.")
-    except Exception as e:
-        logger.error(f"Maintenance retraining failed: {e}")
-
-# ==========================================
-# 🚦 STARTUP LOGIC
-# ==========================================
-def start_scheduler():
-    if _scheduler.running:
-        return
-
-    # FIXED: Staggered Batch Collection (Calculates rollover minutes safely)
-    base_hour = 1
-    for i in range(len(ROUTE_BATCHES)):
-        total_minutes = i * 20
-        run_hour = base_hour + (total_minutes // 60)
-        run_minute = total_minutes % 60
-
-        _scheduler.add_job(
-            collect_batch, 
-            CronTrigger(hour=run_hour, minute=run_minute),
-            args=[i]
         )
 
-    # 30-minute Alert Pulse
-    _scheduler.add_job(check_price_alerts, IntervalTrigger(minutes=30))
+        for alert in res.data or []:
+            try:
+                # Get latest price from price_history
+                ph = (
+                    db.supabase.table("price_history")
+                    .select("price")
+                    .eq("origin_code", alert["origin_code"])
+                    .eq("destination_code", alert["destination_code"])
+                    .order("recorded_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if not ph.data:
+                    continue
 
-    # Daily 5 AM model refresh
-    _scheduler.add_job(retrain_models, CronTrigger(hour=5, minute=0))
+                current_price = float(ph.data[0]["price"])
+                target_price = float(alert["target_price"])
+
+                # Update last_price in the alert record
+                db.supabase.table("price_alerts").update(
+                    {"last_price": current_price}
+                ).eq("id", alert["id"]).execute()
+
+                # Trigger notification if price dropped below target
+                if current_price <= target_price:
+                    dispatcher.send_price_alert(alert, current_price)
+                    db.supabase.table("price_alerts").update(
+                        {"triggered_count": (alert.get("triggered_count") or 0) + 1}
+                    ).eq("id", alert["id"]).execute()
+
+            except Exception as alert_err:
+                logger.debug(f"Alert check error: {alert_err}")
+
+    except Exception as exc:
+        logger.error(f"Alert check failed: {exc}")
+
+
+def _retrain_models() -> None:
+    """
+    🤖 DAILY AI EVOLUTION
+    Retrains the XGBoost model using the new 'is_live' weighted logic.
+    """
+    logger.info("🤖 Starting Daily XGBoost Retraining...")
+    try:
+        from ml.price_model import get_predictor
+        predictor = get_predictor()
+        
+        # 1. Run the training process with weighted 2026 data
+        predictor.train()
+        
+        # 2. Reload the new .pkl file into memory
+        predictor.load()
+        
+        logger.info("✅ SkyMind AI has been successfully updated with the latest market data.")
+    except Exception as exc:
+        logger.error(f"Retraining failed: {exc}")
+
+
+# ── Startup ───────────────────────────────────────────────────────────
+
+def start_scheduler() -> None:
+    if _scheduler.running:
+        logger.info("Scheduler already running.")
+        return
+
+    # 1. Staggered batch scraping (Nightly)
+    for i in range(len(ROUTE_BATCHES)):
+        _scheduler.add_job(
+            _collect_batch,
+            CronTrigger(hour=1 + i // 3, minute=(i * 20) % 60),
+            args=[i],
+            id=f"collect_batch_{i}",
+            replace_existing=True,
+        )
+
+    # 2. Price alert polling (Every 30 minutes)
+    _scheduler.add_job(
+        _check_price_alerts,
+        IntervalTrigger(minutes=30),
+        id="check_alerts",
+        replace_existing=True,
+    )
+
+    # 3. Daily AI Retraining (05:00 IST)
+    # This ensures your AI 'wakes up' every morning smarter than it was yesterday.
+    _scheduler.add_job(
+        _retrain_models,
+        CronTrigger(hour=5, minute=0),
+        id="retrain_models",
+        replace_existing=True,
+    )
 
     _scheduler.start()
-    logger.info("🚀 SkyMind Background Scheduler Active.")
+    logger.info("🚀 SkyMind Background Scheduler active.")

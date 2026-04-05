@@ -1,13 +1,18 @@
-import type { Metadata } from 'next'
-import './globals.css'
-import { Toaster } from 'sonner'
-import QueryProvider from '@/components/providers/QueryProvider'
+import type { Metadata } from "next";
+import "./globals.css";
+import { Toaster } from "sonner";
+import QueryProvider from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
-  metadataBase: new URL('http://localhost:3000'),
-  title: 'SkyMind — AI Flight Intelligence',
-  description: 'ML-powered flight price prediction, hidden route discovery, and seamless booking.',
-}
+  metadataBase: new URL("https://skymind.app"),
+  title: "SkyMind — AI Flight Intelligence",
+  description: "ML-powered flight price prediction, hidden route discovery, and seamless booking for Indian and international flights.",
+  openGraph: {
+    title: "SkyMind — AI Flight Intelligence",
+    description: "Book smarter with AI-powered price forecasts and hidden route discovery.",
+    type: "website",
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,8 +24,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <QueryProvider>{children}</QueryProvider>
-        <Toaster theme="light" position="top-right" toastOptions={{ style: { background:'#fff', border:'1px solid #d8d6d2', color:'#131210', fontFamily:"'Instrument Sans',sans-serif", fontSize:'.875rem' } }} />
+        <Toaster
+          theme="light"
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "#fff",
+              border: "1px solid #d8d6d2",
+              color: "#131210",
+              fontFamily: "'Instrument Sans',sans-serif",
+              fontSize: ".875rem",
+            },
+          }}
+        />
       </body>
     </html>
-  )
+  );
 }

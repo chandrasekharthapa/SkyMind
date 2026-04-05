@@ -1,7 +1,14 @@
 node_modules
 .env
+.env.local
 dist
 build
 .next
 frontend/node_modules
 backend/node_modules
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+backend/ml/models/*.pkl
+backend/.env

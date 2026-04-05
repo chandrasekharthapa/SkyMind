@@ -1,11 +1,20 @@
-// hooks/usePrediction.ts — FIXED
-// Uses GET /ai/price via the updated predictPrice() in api.ts
-// (No other changes needed — the fix is in api.ts)
+/**
+ * usePrediction — Price Prediction Hook
+ *
+ * Calls POST /predict and surfaces the full PredictionResult.
+ * Handles debounce (300 ms), in-memory cache, loading/error state,
+ * and stale-request guards so only the latest call wins.
+ */
 
 import { useState, useCallback, useRef } from "react";
-import { predictPrice, PredictionResult, PredictRequest, ApiError } from "@/lib/api";
+import {
+  predictPrice,
+  ApiError,
+} from "@/lib/api";
+import type { PredictionResult, PredictRequest } from "@/types";
 
-const cache = new Map<string, PredictionResult>();
+// ── In-memory cache keyed by "ORG-DST" ──────────────────────────────
+const _cache = new Map<string, PredictionResult>();
 
 interface UsePredictionReturn {
   result: PredictionResult | null;
@@ -20,6 +29,7 @@ export function usePrediction(): UsePredictionReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Refs for debounce & stale-response guard
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeReqRef = useRef<string | null>(null);
 
@@ -38,15 +48,18 @@ export function usePrediction(): UsePredictionReturn {
       return;
     }
 
-    const cacheKey = `${org}-${dst}-${req.departure_date || ""}`;
-    if (cache.has(cacheKey)) {
-      setResult(cache.get(cacheKey)!);
+    // ── Cache hit ────────────────────────────────────────────────────
+    const cacheKey = `${org}-${dst}`;
+    const cached = _cache.get(cacheKey);
+    if (cached) {
+      setResult(cached);
       setError(null);
       return;
     }
 
+    // ── Debounced fetch ──────────────────────────────────────────────
     debounceRef.current = setTimeout(async () => {
-      const reqId = cacheKey + Date.now();
+      const reqId = `${cacheKey}:${Date.now()}`;
       activeReqRef.current = reqId;
 
       setLoading(true);
@@ -54,24 +67,35 @@ export function usePrediction(): UsePredictionReturn {
       setResult(null);
 
       try {
-        const data = await predictPrice({ ...req, origin: org, destination: dst });
+        const data = await predictPrice({
+          ...req,
+          origin: org,
+          destination: dst,
+        });
+
+        // Stale-response guard
         if (activeReqRef.current !== reqId) return;
-        cache.set(cacheKey, data);
+
+        _cache.set(cacheKey, data);
         setResult(data);
       } catch (err) {
         if (activeReqRef.current !== reqId) return;
-        setError(
+
+        const msg =
           err instanceof ApiError
             ? err.message
-            : "Prediction failed. Make sure the backend is running and the route is supported."
-        );
+            : "Prediction failed. Please try again.";
+        setError(msg);
       } finally {
-        if (activeReqRef.current === reqId) setLoading(false);
+        if (activeReqRef.current === reqId) {
+          setLoading(false);
+        }
       }
     }, 300);
   }, []);
 
   const reset = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setResult(null);
     setError(null);
     setLoading(false);

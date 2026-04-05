@@ -3,33 +3,76 @@ services:
     name: skymind-backend
     runtime: python
     rootDir: backend
-    # Optimized build for ML libraries
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    # Added lifespan for APScheduler stability
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --lifespan on
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      # API Keys (Ensure these are set in your dashboard)
-      - key: AMADEUS_API_KEY
-        sync: false
-      - key: AMADEUS_API_SECRET
-        sync: false
+
+      # ── Supabase ───────────────────────────────────────
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Flight APIs ────────────────────────────────────
+      - key: AMADEUS_CLIENT_ID
+        sync: false
+      - key: AMADEUS_CLIENT_SECRET
+        sync: false
+      - key: AMADEUS_API_KEY
+        sync: false
+      - key: AMADEUS_API_SECRET
+        sync: false
+      - key: AVIATIONSTACK_API_KEY
+        sync: false
+
+      # ── Payment ────────────────────────────────────────
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
-      # 📧 Added for Notifications Service
+
+      # ── Notifications ──────────────────────────────────
       - key: GMAIL_USER
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
+      - key: EMAIL_FROM_NAME
+        value: SkyMind Flights
+      - key: EMAIL_REPLY_TO
+        sync: false
       - key: FAST2SMS_API_KEY
         sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        value: "whatsapp:+14155238886"
+
+      # ── CORS ───────────────────────────────────────────
+      # Comma-separated list of allowed frontend origins
+      - key: CORS_ORIGINS
+        sync: false
+        # Example value: https://skymind.vercel.app,https://www.skymind.app
+
+      # ── Security ───────────────────────────────────────
+      - key: SECRET_KEY
+        sync: false
+
+      # ── Redis ──────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false
+
+      # ── ML ─────────────────────────────────────────────
+      - key: MODEL_PATH
+        value: ./ml/models
+
     plan: free
-    # Critical for monitoring the Scheduler health
     healthCheckPath: /health
+    autoDeploy: true

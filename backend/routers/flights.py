@@ -1,13 +1,15 @@
 """
-SkyMind Flight Search Engine — April 2026 Edition
-Primary: Amadeus GDS | Fallback: AviationStack | Safety: Rich Synthetic Data
-Intelligence: XGBoost PricePredictor Integration
+SkyMind — Flights Router
+Endpoints:
+  GET /flights/search   → search flights (Amadeus → synthetic fallback)
+  GET /flights/airports → airport autocomplete
 """
+
 import logging
 import os
 import random
 import traceback
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
@@ -16,25 +18,28 @@ from ml.price_model import get_predictor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-model = get_predictor()
 
-# ==========================================
-# 📋 CONFIGURATION & MAPPINGS
-# ==========================================
+# ── Lazy-load model to avoid import-time crash ─────────────────────
+def _model():
+    try:
+        return get_predictor()
+    except Exception:
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Static data
+# ══════════════════════════════════════════════════════════════════════
+
 AIRLINE_MAP = {
     "AI": "Air India", "6E": "IndiGo", "UK": "Vistara", "SG": "SpiceJet",
-    "IX": "Air India Express", "QP": "Akasa Air", "G8": "Go First",
-    "S5": "Star Air", "2T": "TruJet", "I7": "Alliance Air",
+    "IX": "Air India Express", "QP": "Akasa Air", "S5": "Star Air",
     "EK": "Emirates", "SQ": "Singapore Airlines", "QR": "Qatar Airways",
-    "EY": "Etihad Airways", "BA": "British Airways", "TK": "Turkish Airlines",
-    "MH": "Malaysia Airlines", "LH": "Lufthansa", "AF": "Air France",
-    "KL": "KLM", "NH": "ANA", "JL": "Japan Airlines",
-    "CX": "Cathay Pacific", "TG": "Thai Airways", "KE": "Korean Air",
-    "FZ": "flydubai", "G9": "Air Arabia", "WY": "Oman Air",
-    "UL": "SriLankan Airlines", "5J": "Cebu Pacific",
+    "EY": "Etihad Airways", "BA": "British Airways", "FZ": "flydubai",
+    "G9": "Air Arabia", "TK": "Turkish Airlines", "MH": "Malaysia Airlines",
 }
 
-CITY_TO_IATA = {
+CITY_TO_IATA: dict[str, str] = {
     "delhi": "DEL", "new delhi": "DEL", "mumbai": "BOM", "bombay": "BOM",
     "bangalore": "BLR", "bengaluru": "BLR", "hyderabad": "HYD",
     "chennai": "MAA", "madras": "MAA", "kolkata": "CCU", "calcutta": "CCU",
@@ -42,27 +47,57 @@ CITY_TO_IATA = {
     "lucknow": "LKO", "pune": "PNQ", "amritsar": "ATQ", "guwahati": "GAU",
     "varanasi": "VNS", "patna": "PAT", "bhubaneswar": "BBI", "ranchi": "IXR",
     "chandigarh": "IXC", "srinagar": "SXR", "jammu": "IXJ", "leh": "IXL",
-    "dubai": "DXB", "london": "LHR", "singapore": "SIN", "doha": "DOH"
+    "dubai": "DXB", "london": "LHR", "singapore": "SIN", "doha": "DOH",
 }
 
-ROUTE_AIRLINES = {
+ROUTE_AIRLINES: dict[tuple, list] = {
     ("DEL", "BOM"): ["6E", "AI", "UK", "SG", "QP"],
     ("DEL", "BLR"): ["6E", "AI", "UK", "SG", "QP"],
+    ("DEL", "MAA"): ["6E", "AI", "UK", "SG"],
+    ("DEL", "HYD"): ["6E", "AI", "UK", "SG"],
+    ("DEL", "CCU"): ["6E", "AI", "UK"],
     ("BOM", "BLR"): ["6E", "AI", "UK", "SG"],
+    ("BOM", "HYD"): ["6E", "AI", "UK", "SG"],
     ("DEL", "DXB"): ["AI", "EK", "6E", "FZ"],
+    ("DEL", "LHR"): ["AI", "BA"],
+    ("BOM", "DXB"): ["AI", "EK", "6E"],
 }
 
-ROUTE_BASE_PRICES = {
+ROUTE_BASE_PRICES: dict[tuple, int] = {
     ("DEL", "BOM"): 3200, ("DEL", "BLR"): 3800, ("BOM", "BLR"): 2800,
-    ("DEL", "DXB"): 6800, ("DEL", "LHR"): 28000,
+    ("DEL", "MAA"): 4000, ("DEL", "HYD"): 3300, ("DEL", "CCU"): 3100,
+    ("BOM", "HYD"): 2500, ("DEL", "DXB"): 7800, ("DEL", "LHR"): 28000,
+    ("BOM", "DXB"): 6800,
 }
 
 DEP_TIMES = ["06:00", "07:30", "09:15", "12:15", "15:00", "18:00", "21:00", "22:30"]
 
-# ==========================================
-# 🧠 ML INTELLIGENCE LAYER
-# ==========================================
-def enrich_with_prediction_api(flights, origin, destination, departure_date):
+
+# ══════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════
+
+def _resolve_iata(code: str) -> str:
+    if not code:
+        return code
+    stripped = code.strip().lower()
+    return CITY_TO_IATA.get(stripped, stripped.upper())
+
+
+def _airline_logo(iata: str) -> str:
+    return f"https://content.airhex.com/content/logos/airlines_{iata}_200_200_s.png"
+
+
+def _airline_logo_rect(iata: str) -> str:
+    return f"https://content.airhex.com/content/logos/airlines_{iata}_100_25_r.png"
+
+
+# ── ML enrichment ─────────────────────────────────────────────────────
+def _enrich_with_ml(flights: list, origin: str, destination: str, departure_date: str) -> list:
+    model = _model()
+    if not model:
+        return flights
+
     try:
         dep_date_obj = datetime.strptime(departure_date, "%Y-%m-%d").date()
         days_until_dep = max((dep_date_obj - date.today()).days, 0)
@@ -72,7 +107,7 @@ def enrich_with_prediction_api(flights, origin, destination, departure_date):
                 base_price = f["price"]["total"]
                 airline = f.get("primary_airline", "AI")
 
-                features = {
+                predicted = model.predict({
                     "origin_code": origin,
                     "destination_code": destination,
                     "airline_code": airline,
@@ -88,192 +123,259 @@ def enrich_with_prediction_api(flights, origin, destination, departure_date):
                     "price_change_1d": 0,
                     "price_change_3d": 0,
                     "demand_score": 0.85 if days_until_dep < 7 else 0.5,
-                    "seasonality_factor": 1.25 if dep_date_obj.month in [4, 5, 10, 12] else 1.0
-                }
+                    "seasonality_factor": 1.25 if dep_date_obj.month in [4, 5, 10, 12] else 1.0,
+                })
 
-                predicted = model.predict(features)
-                predicted = max(2800, min(predicted, 55000))
+                predicted = max(2800.0, min(float(predicted), 55000.0))
                 f["ai_price"] = round(predicted)
-                
+
                 if predicted > base_price * 1.12:
                     f["recommendation"] = "BOOK NOW 🔥"
                     f["trend"] = "INCREASING"
+                    f["decision"] = "BUY NOW"
+                    f["advice"] = "Prices expected to rise — lock in this fare."
                 elif predicted < base_price * 0.88:
                     f["recommendation"] = "WAIT ⏳"
                     f["trend"] = "DECREASING"
+                    f["decision"] = "WAIT"
+                    f["advice"] = "Model predicts a price drop soon."
                 else:
                     f["recommendation"] = "FAIR PRICE ✅"
                     f["trend"] = "STABLE"
+                    f["decision"] = "FAIR"
+                    f["advice"] = "Current price is within normal range."
 
             except Exception:
-                f["ai_price"] = base_price
-                f["recommendation"] = "MONITOR"
-                f["trend"] = "STABLE"
-        return flights
+                f.setdefault("ai_price", f["price"]["total"])
+                f.setdefault("recommendation", "MONITOR")
+                f.setdefault("trend", "STABLE")
+
     except Exception:
-        return flights
+        pass
 
-# ==========================================
-# 🛠️ UTILITIES & PARSING
-# ==========================================
-def resolve_iata(code: str) -> str:
-    if not code: return code
-    stripped = code.strip().lower()
-    return CITY_TO_IATA.get(stripped, stripped.upper())
+    return flights
 
-def get_airline_logo_url(iata: str) -> str:
-    return f"https://content.airhex.com/content/logos/airlines_{iata}_200_200_s.png"
 
-def get_airline_logo_rect(iata: str) -> str:
-    return f"https://content.airhex.com/content/logos/airlines_{iata}_100_25_r.png"
-
-def parse_flight_offers_fixed(raw: dict) -> list[dict]:
-    offers = []
-    data = raw.get("data", [])
-    dictionaries = raw.get("dictionaries", {})
-    carriers = {**AIRLINE_MAP, **dictionaries.get("carriers", {})}
-
-    for offer in data:
-        itineraries = offer.get("itineraries", [])
-        price_info = offer.get("price", {})
-        parsed_itins = []
-
-        for itin in itineraries:
-            segments = []
-            for seg in itin.get("segments", []):
-                carrier_code = (seg.get("operating", {}).get("carrierCode") or seg.get("carrierCode", "")).upper()
-                segments.append({
-                    "flight_number": f"{carrier_code}{seg.get('number', '')}",
-                    "airline_code": carrier_code,
-                    "airline_name": carriers.get(carrier_code, carrier_code),
-                    "airline_logo": get_airline_logo_url(carrier_code),
-                    "airline_logo_rect": get_airline_logo_rect(carrier_code),
-                    "origin": seg["departure"]["iataCode"],
-                    "destination": seg["arrival"]["iataCode"],
-                    "departure_time": seg["departure"]["at"],
-                    "arrival_time": seg["arrival"]["at"],
-                    "duration": seg["duration"],
-                    "cabin": seg.get("cabin", "ECONOMY"),
-                    "stops": seg.get("numberOfStops", 0),
-                })
-            parsed_itins.append({"duration": itin.get("duration"), "segments": segments})
-
-        validating = offer.get("validatingAirlineCodes", [])
-        primary = validating[0] if validating else parsed_itins[0]["segments"][0]["airline_code"]
-        total = float(price_info.get("grandTotal", price_info.get("total", 0)))
-
-        offers.append({
-            "id": offer.get("id"),
-            "source": "AMADEUS",
-            "price": {"total": total, "currency": price_info.get("currency", "INR")},
-            "itineraries": parsed_itins,
-            "primary_airline": primary,
-            "primary_airline_name": carriers.get(primary, primary),
-            "primary_airline_logo": get_airline_logo_url(primary),
-            "seats_available": offer.get("numberOfBookableSeats", 9),
-        })
-    return offers
-
-def _generate_synthetic_flights(origin, destination, departure_date, adults=1, cabin_class="ECONOMY"):
+# ── Synthetic flight generator ────────────────────────────────────────
+def _generate_synthetic(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    adults: int = 1,
+    cabin_class: str = "ECONOMY",
+) -> list:
     key = (origin, destination)
-    airlines = ROUTE_AIRLINES.get(key, ["6E", "AI", "UK", "SG"])
-    base = ROUTE_BASE_PRICES.get(key, 4500)
-    seed_val = hash(f"{origin}{destination}{departure_date}") % (2**31)
+    airlines = ROUTE_AIRLINES.get(key, ROUTE_AIRLINES.get((destination, origin), ["6E", "AI", "SG"]))
+    base = ROUTE_BASE_PRICES.get(key, ROUTE_BASE_PRICES.get((destination, origin), 4500))
+
+    seed_val = hash(f"{origin}{destination}{departure_date}") % (2 ** 31)
     rng = random.Random(seed_val)
     flights = []
 
     for i, airline_code in enumerate(airlines):
-        for j in range(2 if airline_code in ["6E", "AI"] else 1):
+        repeats = 2 if airline_code in ("6E", "AI") else 1
+        for j in range(repeats):
             dep_str = rng.choice(DEP_TIMES)
-            dur_min = random.randint(90, 140)
-            total_price = round(base * rng.uniform(0.9, 1.3) * adults)
+            dur_min = rng.randint(75, 200)
+            total_price = round(base * rng.uniform(0.88, 1.35) * adults)
+
+            h, m = divmod(dur_min, 60)
 
             flights.append({
                 "id": f"SYN-{origin}-{destination}-{airline_code}-{i}-{j}",
                 "source": "SKYMIND_SYNTHETIC",
-                "price": {"total": total_price, "currency": "INR"},
-                "itineraries": [{"duration": f"PT{dur_min//60}H{dur_min%60}M", "segments": [{
-                    "flight_number": f"{airline_code}{rng.randint(100, 999)}",
-                    "airline_code": airline_code,
-                    "airline_name": AIRLINE_MAP.get(airline_code, airline_code),
-                    "airline_logo": get_airline_logo_url(airline_code),
-                    "airline_logo_rect": get_airline_logo_rect(airline_code),
-                    "origin": origin, "destination": destination,
-                    "departure_time": f"{departure_date}T{dep_str}:00",
-                    "arrival_time": f"{departure_date}T23:59:00",
-                    "duration": f"PT{dur_min//60}H{dur_min%60}M",
-                    "cabin": cabin_class, "stops": 0
-                }]}],
+                "price": {"total": total_price, "base": round(total_price * 0.82), "currency": "INR"},
+                "itineraries": [{
+                    "duration": f"PT{h}H{m}M",
+                    "segments": [{
+                        "flight_number": f"{airline_code}{rng.randint(100, 999)}",
+                        "airline_code": airline_code,
+                        "airline_name": AIRLINE_MAP.get(airline_code, airline_code),
+                        "airline_logo": _airline_logo(airline_code),
+                        "airline_logo_rect": _airline_logo_rect(airline_code),
+                        "origin": origin,
+                        "destination": destination,
+                        "departure_time": f"{departure_date}T{dep_str}:00",
+                        "arrival_time": f"{departure_date}T23:59:00",
+                        "duration": f"PT{h}H{m}M",
+                        "cabin": cabin_class,
+                        "stops": 0,
+                    }],
+                }],
                 "primary_airline": airline_code,
                 "primary_airline_name": AIRLINE_MAP.get(airline_code, airline_code),
-                "primary_airline_logo": get_airline_logo_url(airline_code),
+                "primary_airline_logo": _airline_logo(airline_code),
                 "seats_available": rng.randint(2, 12),
+                "instant_ticketing": rng.choice([True, False]),
             })
+
     return flights
 
-# ==========================================
-# 🔍 MAIN SEARCH ROUTER
-# ==========================================
+
+# ── Amadeus raw response parser ───────────────────────────────────────
+def _parse_amadeus(raw: dict) -> list:
+    offers = []
+    data = raw.get("data", [])
+    carriers = {**AIRLINE_MAP, **raw.get("dictionaries", {}).get("carriers", {})}
+
+    for offer in data:
+        itins = offer.get("itineraries", [])
+        price_info = offer.get("price", {})
+        parsed_itins = []
+
+        for itin in itins:
+            segments = []
+            for seg in itin.get("segments", []):
+                carrier = (
+                    seg.get("operating", {}).get("carrierCode")
+                    or seg.get("carrierCode", "")
+                ).upper()
+                dep = seg.get("departure", {})
+                arr = seg.get("arrival", {})
+                segments.append({
+                    "flight_number": f"{carrier}{seg.get('number', '')}",
+                    "airline_code": carrier,
+                    "airline_name": carriers.get(carrier, carrier),
+                    "airline_logo": _airline_logo(carrier),
+                    "airline_logo_rect": _airline_logo_rect(carrier),
+                    "origin": dep.get("iataCode", ""),
+                    "destination": arr.get("iataCode", ""),
+                    "departure_time": dep.get("at", ""),
+                    "arrival_time": arr.get("at", ""),
+                    "duration": seg.get("duration", ""),
+                    "cabin": seg.get("cabin", "ECONOMY"),
+                    "stops": seg.get("numberOfStops", 0),
+                    "terminal_departure": dep.get("terminal"),
+                    "terminal_arrival": arr.get("terminal"),
+                })
+            parsed_itins.append({"duration": itin.get("duration", ""), "segments": segments})
+
+        validating = offer.get("validatingAirlineCodes", [])
+        primary = validating[0] if validating else (segments[0]["airline_code"] if segments else "AI")
+        total = float(price_info.get("grandTotal") or price_info.get("total") or 0)
+        base = float(price_info.get("base") or round(total * 0.82, 2))
+
+        offers.append({
+            "id": offer.get("id", ""),
+            "source": "AMADEUS",
+            "price": {"total": total, "base": base, "currency": price_info.get("currency", "INR")},
+            "itineraries": parsed_itins,
+            "primary_airline": primary,
+            "primary_airline_name": carriers.get(primary, primary),
+            "primary_airline_logo": _airline_logo(primary),
+            "seats_available": offer.get("numberOfBookableSeats", 9),
+            "instant_ticketing": offer.get("instantTicketingRequired", False),
+        })
+
+    return offers
+
+
+# ══════════════════════════════════════════════════════════════════════
+# GET /flights/search
+# ══════════════════════════════════════════════════════════════════════
+
 @router.get("/search")
 async def search_flights(
-    origin: str = Query(...), destination: str = Query(...),
-    departure_date: str = Query(...), adults: int = Query(1),
-    cabin_class: str = Query("ECONOMY"), max_results: int = Query(20)
+    origin: str = Query(...),
+    destination: str = Query(...),
+    departure_date: str = Query(...),
+    adults: int = Query(1, ge=1, le=9),
+    cabin_class: str = Query("ECONOMY"),
+    max_results: int = Query(20, ge=1, le=50),
 ):
-    origin_iata = resolve_iata(origin)
-    destination_iata = resolve_iata(destination)
+    origin_iata = _resolve_iata(origin)
+    destination_iata = _resolve_iata(destination)
 
     if origin_iata == destination_iata:
-        raise HTTPException(400, "Origin and destination cannot be the same")
+        raise HTTPException(400, detail="Origin and destination cannot be the same")
 
-    flights = db.search_flights(origin_iata, destination_iata, departure_date)
-    source_used = "DATABASE"
+    flights = []
+    source_used = "SYNTHETIC"
 
-    if not flights:
-        try:
-            from services.amadeus import amadeus_service
-            raw = await amadeus_service.search_flights(
-                origin=origin_iata, destination=destination_iata,
-                departure_date=departure_date, adults=adults, 
-                cabin_class=cabin_class, max_results=max_results
-            )
-            flights = parse_flight_offers_fixed(raw)
+    # ── Try Amadeus ───────────────────────────────────────────────────
+    try:
+        from services.amadeus import amadeus_service
+        raw = await amadeus_service.search_flights(
+            origin=origin_iata,
+            destination=destination_iata,
+            departure_date=departure_date,
+            adults=adults,
+            cabin_class=cabin_class,
+            max_results=max_results,
+        )
+        parsed = _parse_amadeus(raw)
+        if parsed:
+            flights = parsed
             source_used = "AMADEUS"
-        except Exception:
-            flights = _generate_synthetic_flights(origin_iata, destination_iata, departure_date, adults, cabin_class)
-            source_used = "SYNTHETIC"
+    except Exception as exc:
+        logger.warning(f"Amadeus failed ({exc}), falling back to synthetic")
 
-    seen = set()
-    unique_flights = []
+    # ── Fallback to synthetic ─────────────────────────────────────────
+    if not flights:
+        flights = _generate_synthetic(
+            origin_iata, destination_iata, departure_date, adults, cabin_class
+        )
+        source_used = "SKYMIND_SYNTHETIC"
+
+    # ── De-duplicate ──────────────────────────────────────────────────
+    seen: set = set()
+    unique: list = []
     for f in flights:
         try:
             seg = f["itineraries"][0]["segments"][0]
             key = (seg["flight_number"], seg["departure_time"])
             if key not in seen:
                 seen.add(key)
-                unique_flights.append(f)
-        except: unique_flights.append(f)
-    
-    flights = sorted(unique_flights, key=lambda x: x["price"]["total"])[:max_results]
-    flights = enrich_with_prediction_api(flights, origin_iata, destination_iata, departure_date)
+                unique.append(f)
+        except Exception:
+            unique.append(f)
+
+    # ── Sort by price, cap results ────────────────────────────────────
+    unique = sorted(unique, key=lambda x: x["price"]["total"])[:max_results]
+
+    # ── ML enrichment ─────────────────────────────────────────────────
+    unique = _enrich_with_ml(unique, origin_iata, destination_iata, departure_date)
 
     return {
-        "flights": flights, "count": len(flights),
-        "origin_iata": origin_iata, "destination_iata": destination_iata,
-        "data_source": source_used
+        "flights": unique,
+        "count": len(unique),
+        "origin_iata": origin_iata,
+        "destination_iata": destination_iata,
+        "data_source": source_used,
     }
 
+
+# ══════════════════════════════════════════════════════════════════════
+# GET /flights/airports
+# ══════════════════════════════════════════════════════════════════════
+
+STATIC_AIRPORTS = [
+    {"iata": "DEL", "city": "New Delhi",    "name": "Indira Gandhi International",        "country": "India"},
+    {"iata": "BOM", "city": "Mumbai",       "name": "Chhatrapati Shivaji Maharaj Intl",   "country": "India"},
+    {"iata": "BLR", "city": "Bengaluru",    "name": "Kempegowda International",           "country": "India"},
+    {"iata": "MAA", "city": "Chennai",      "name": "Chennai International",              "country": "India"},
+    {"iata": "HYD", "city": "Hyderabad",    "name": "Rajiv Gandhi International",         "country": "India"},
+    {"iata": "CCU", "city": "Kolkata",      "name": "Netaji Subhas Chandra Bose Intl",    "country": "India"},
+    {"iata": "COK", "city": "Kochi",        "name": "Cochin International",               "country": "India"},
+    {"iata": "GOI", "city": "Goa",          "name": "Goa International",                  "country": "India"},
+    {"iata": "AMD", "city": "Ahmedabad",    "name": "Sardar Vallabhbhai Patel Intl",      "country": "India"},
+    {"iata": "JAI", "city": "Jaipur",       "name": "Jaipur International",               "country": "India"},
+    {"iata": "BBI", "city": "Bhubaneswar",  "name": "Biju Patnaik International",         "country": "India"},
+    {"iata": "DXB", "city": "Dubai",        "name": "Dubai International",                "country": "UAE"},
+    {"iata": "LHR", "city": "London",       "name": "Heathrow Airport",                   "country": "UK"},
+    {"iata": "SIN", "city": "Singapore",    "name": "Changi Airport",                     "country": "Singapore"},
+    {"iata": "DOH", "city": "Doha",         "name": "Hamad International",                "country": "Qatar"},
+]
+
+
 @router.get("/airports")
-async def search_airports(q: str = Query(...)):
-    AIRPORTS = [
-        {"iata": "DEL", "city": "New Delhi", "name": "Indira Gandhi International", "country": "India"},
-        {"iata": "BOM", "city": "Mumbai", "name": "Chhatrapati Shivaji Maharaj Intl", "country": "India"},
-        {"iata": "BLR", "city": "Bengaluru", "name": "Kempegowda International", "country": "India"},
-        {"iata": "MAA", "city": "Chennai", "name": "Chennai International", "country": "India"},
-        {"iata": "HYD", "city": "Hyderabad", "name": "Rajiv Gandhi International", "country": "India"},
-        {"iata": "CCU", "city": "Kolkata", "name": "Netaji Subhas Chandra Bose Intl", "country": "India"},
-    ]
+async def search_airports_flights(q: str = Query(..., min_length=1)):
     q_lower = q.lower().strip()
-    results = [a for a in AIRPORTS if q_lower in a["city"].lower() or q_lower in a["iata"].lower()]
+    results = [
+        a for a in STATIC_AIRPORTS
+        if q_lower in a["city"].lower()
+        or q_lower in a["iata"].lower()
+        or q_lower in a["name"].lower()
+    ]
     results.sort(key=lambda x: (x["country"] != "India", x["iata"].lower() != q_lower))
     return {"airports": results[:10]}
