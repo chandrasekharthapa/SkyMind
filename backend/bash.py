@@ -1,71 +1,120 @@
 import asyncio
-import time
-from datetime import datetime, timedelta
-from services.amadeus import search_flights
+import sys
+import logging
+from datetime import datetime, timedelta, timezone
+from services.amadeus import amadeus_service
 
 # ==========================================
 # 📋 STRATEGIC CONFIGURATION
 # ==========================================
 
-# 1. Important Indian Corridors (Hubs + Your Core BBI Routes)
 STRATEGIC_ROUTES = [
-    ("BBI", "DEL"), ("DEL", "BBI"),  # Your core project route
-    ("BBI", "BOM"), ("BOM", "BBI"),  # Regional to Metro
-    ("DEL", "BOM"), ("BOM", "DEL"),  # High-volume Business (Pattern Leader)
-    ("DEL", "BLR"), ("BLR", "DEL"),  # Tech Corridor
-    ("CCU", "DEL"), ("DEL", "CCU"),  # East-North Connection
-    ("MAA", "DEL"), ("DEL", "MAA"),  # South-North Connection
-    ("COK", "DEL"), ("DEL", "COK")   # Tourist/VFR Hub (Cochin)
+    ("BBI", "DEL"), ("DEL", "BBI"),
+    ("BBI", "BOM"), ("BOM", "BBI"),
+    ("DEL", "BOM"), ("BOM", "DEL"),
+    ("DEL", "BLR"), ("BLR", "DEL"),
+    ("CCU", "DEL"), ("DEL", "CCU"),
+    ("MAA", "DEL"), ("DEL", "MAA"),
+    ("BBI", "BLR"), ("BLR", "BBI")
 ]
 
-# 2. Date Buckets to teach the model "Urgency"
-# We check: 2 days, 7 days, 14 days, 21 days, and 45 days from today.
-# This builds the 'Lead-Time' curve the model needs to predict accurately.
-DATE_INTERVALS = [2, 7, 14, 21, 45]
+# Teaching SkyMind the 2026 Price-Velocity curve
+# 1, 2, 3 days out are critical for "High Urgency" learning
+DATE_INTERVALS = [1, 2, 3, 5, 7, 10, 14, 21, 28, 30]
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger("SkyMind-Manual")
 
 # ==========================================
 # 🚀 THE SCRAPER ENGINE
 # ==========================================
 
 async def run_meaningful_fetch():
-    today = datetime.now()
+    from database.database import database as db
+    
+    today = datetime.now(timezone.utc)
     total_segments = len(STRATEGIC_ROUTES) * len(DATE_INTERVALS)
     
-    print(f"🚀 [ECO-SCAN AI] Starting Strategic Fetch...")
-    print(f"📊 Planning to scrape {total_segments} flight segments.")
-    print("-" * 50)
+    logger.info(f"🚀 [SkyMind] Starting Manual Ingestion...")
+    logger.info(f"📊 Targets: {total_segments} segments | Training Weight: 2.0")
+    logger.info("-" * 60)
 
     count = 0
     for origin, destination in STRATEGIC_ROUTES:
         for days_out in DATE_INTERVALS:
-            target_date = (today + timedelta(days=days_out)).strftime("%Y-%m-%d")
+            count += 1
+            dep_date_obj = today + timedelta(days=days_out)
+            target_date = dep_date_obj.strftime("%Y-%m-%d")
             
             try:
-                print(f"🔍 [{count+1}/{total_segments}] Fetching: {origin} -> {destination} | Date: {target_date}")
+                logger.info(f"🔍 [{count}/{total_segments}] {origin} ➔ {destination} | {target_date}")
                 
-                # This calls your amadeus service which saves to Supabase automatically
-                # with is_live=True and all 17 feature columns.
-                flights = await search_flights(origin, destination, target_date)
+                # Call Amadeus
+                raw_data = await amadeus_service.search_flights(
+                    origin=origin, 
+                    destination=destination, 
+                    departure_date=target_date, 
+                    max_results=5
+                )
                 
-                if flights:
-                    print(f"   ✅ Success: Captured {len(flights)} flight options.")
-                else:
-                    print(f"   ⚠️ Warning: No flights found for this segment.")
+                flights = raw_data.get("data", [])
+                if not flights:
+                    continue
 
-                # 🕰️ SYSTEMATIC DELAY: Prevents Amadeus 429 (Too Many Requests) 
-                # especially important for the 'Test' environment.
-                await asyncio.sleep(2.5) 
+                insert_batch = []
+                for flight in flights:
+                    try:
+                        price = float(flight["price"]["total"])
+                        if price < 1000: continue
+
+                        itinerary = flight["itineraries"][0]["segments"][0]
+
+                        # 🎯 DYNAMIC URGENCY CALCULATION
+                        # This matches the logic in PricePredictor.train()
+                        # Formula: 1 / (days_until_dep + 1)
+                        calculated_urgency = round(1 / (days_out + 1), 4)
+
+                        record = {
+                            "origin_code": origin,
+                            "destination_code": destination,
+                            "airline_code": itinerary["carrierCode"],
+                            "flight_number": f"{itinerary['carrierCode']}{itinerary['number']}",
+                            "cabin_class": "Economy",
+                            "price": price,
+                            "currency": "INR",
+                            "departure_date": target_date,
+                            "days_until_dep": days_out,
+                            "day_of_week": dep_date_obj.weekday(),
+                            "month": dep_date_obj.month,
+                            "week_of_year": dep_date_obj.isocalendar()[1],
+                            "is_holiday": False, 
+                            "is_weekend": dep_date_obj.weekday() >= 5,
+                            "seats_available": int(flight.get("numberOfBookableSeats", 9)),
+                            "recorded_at": datetime.now(timezone.utc).isoformat(),
+                            "is_live": True,
+                            "training_weight": 2.0,
+                            "urgency": calculated_urgency  # ✅ Now properly engineered
+                        }
+                        insert_batch.append(record)
+                    except (KeyError, IndexError):
+                        continue
+                
+                if insert_batch:
+                    db.supabase.table("price_history").insert(insert_batch).execute()
+                    logger.info(f"   ✅ Success: {len(insert_batch)} flights synced (Urgency: {calculated_urgency})")
+                
+                await asyncio.sleep(2.2) 
                 
             except Exception as e:
-                print(f"   ❌ Error fetching {origin}-{destination}: {e}")
-                # If we hit a serious API block, wait longer
-                await asyncio.sleep(10)
-            
-            count += 1
+                logger.error(f"   ❌ Failed: {e}")
+                await asyncio.sleep(5)
 
-    print("-" * 50)
-    print(f"✨ BATCH COMPLETE: 2026 'is_live' baseline is now established.")
-    print(f"🤖 You can now run 'model.train()' to update the Trends.")
+    logger.info("-" * 60)
+    logger.info("✨ MANUAL BATCH COMPLETE: Proper urgency signals are now in Supabase.")
 
 if __name__ == "__main__":
-    asyncio.run(run_meaningful_fetch())
+    try:
+        asyncio.run(run_meaningful_fetch())
+    except KeyboardInterrupt:
+        logger.info("\n🛑 User stopped the process.")
+        sys.exit(0)

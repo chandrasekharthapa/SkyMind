@@ -103,16 +103,20 @@ class PricePredictor:
 
         X = df[self.feature_cols]
         y = df["price"]
+        
+        # ── UPDATED: Use DB training_weight ──────────────────────────
+        # Extract the weight column from DB and ensure split alignment
+        w = df["training_weight"] if "training_weight" in df.columns else pd.Series(1.0, index=df.index)
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+        X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+            X, y, w, test_size=0.2, random_state=42
         )
 
-        # ── INTEGRATED: 2026 Time-Aware Weighting ────────────────────
-        # Prioritizes live data (2.0x) over historical data (1.0x)
-        weights = X_train["is_live"].map({True: 2.0, False: 1.0})
+        # ── FIXED: Positive Value Guardrail ──────────────────────────
+        # Ensures all weights are > 0 to prevent XGBoost error
+        final_weights = np.maximum(w_train.values, 0.01)
 
-        self.model.fit(X_train, y_train, sample_weight=weights)
+        self.model.fit(X_train, y_train, sample_weight=final_weights)
         self._trained = True
 
         # ── Evaluation ───────────────────────────────────────────────

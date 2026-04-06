@@ -1,46 +1,21 @@
 /**
- * SkyMind — Shared TypeScript Types
- * Mirrors the Pydantic V2 models in the FastAPI backend exactly.
- * All dates use ISO-8601 strings to avoid timezone drift.
+ * SkyMind — Shared TypeScript Types (2026 Production)
+ * Mirrors Pydantic V2 models in FastAPI backend exactly.
+ * All dates use ISO-8601 strings.
  */
 
-// ─────────────────────────────────────────────────────────────────────
-// Enums / Literals
-// ─────────────────────────────────────────────────────────────────────
-
-export type CabinClass =
-  | "ECONOMY"
-  | "PREMIUM_ECONOMY"
-  | "BUSINESS"
-  | "FIRST";
-
-export type BookingStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "CANCELLED"
-  | "REFUND_PENDING";
-
-export type PaymentStatus =
-  | "UNPAID"
-  | "PAID"
-  | "REFUND_PENDING"
-  | "REFUNDED"
-  | "VOID";
-
+// ─── Enums / Literals ────────────────────────────────────────────────
+export type CabinClass = "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST";
+export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "REFUND_PENDING";
+export type PaymentStatus = "UNPAID" | "PAID" | "REFUND_PENDING" | "REFUNDED" | "VOID";
 export type PassengerType = "ADULT" | "CHILD" | "INFANT";
-
 export type Trend = "RISING" | "FALLING" | "STABLE";
-
 export type Recommendation = "BOOK_NOW" | "WAIT" | "MONITOR";
-
+export type MarketStatus = "VOLATILE" | "STABLE";
 export type NotificationChannel = "EMAIL" | "SMS" | "WHATSAPP";
-
 export type LoyaltyTier = "BLUE" | "SILVER" | "GOLD" | "PLATINUM";
 
-// ─────────────────────────────────────────────────────────────────────
-// Airport
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Airport ─────────────────────────────────────────────────────────
 export interface Airport {
   iata_code: string;
   icao_code?: string | null;
@@ -58,7 +33,6 @@ export interface Airport {
   is_active: boolean;
 }
 
-/** Lightweight shape returned by the autocomplete endpoint */
 export interface AirportSuggestion {
   iata: string;
   label: string;
@@ -68,25 +42,7 @@ export interface AirportSuggestion {
   state?: string | null;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Airline
-// ─────────────────────────────────────────────────────────────────────
-
-export interface Airline {
-  iata_code: string;
-  name: string;
-  short_name?: string;
-  country: string;
-  is_domestic: boolean;
-  is_lowcost: boolean;
-  hub_airport?: string | null;
-  is_active: boolean;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Flight Search
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Flight Search ────────────────────────────────────────────────────
 export interface FlightSegment {
   flight_number: string;
   airline_code: string;
@@ -96,9 +52,7 @@ export interface FlightSegment {
   aircraft?: string;
   origin: string;
   destination: string;
-  /** ISO-8601 datetime string */
   departure_time: string;
-  /** ISO-8601 datetime string */
   arrival_time: string;
   duration: string;
   cabin: CabinClass;
@@ -120,14 +74,6 @@ export interface FlightPrice {
   grand_total?: number;
 }
 
-export interface AiInsight {
-  recommendation: string;
-  reason: string;
-  probability_increase: number;
-  trend: string;
-  predicted_price?: number;
-}
-
 export interface FlightOffer {
   id: string;
   source: string;
@@ -141,8 +87,7 @@ export interface FlightOffer {
   last_ticketing_date?: string | null;
   seats_available?: number | null;
   instant_ticketing?: boolean;
-  ai_insight?: AiInsight | null;
-  // ML enrichment fields from amadeus.py enrich_flights_with_ml
+  // ML enrichment fields
   ai_price?: number;
   trend?: string;
   recommendation?: string;
@@ -173,10 +118,7 @@ export interface FlightSearchResponse {
   search_params?: Record<string, unknown>;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Price Prediction
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Price Prediction (2026 — matches POST /predict response) ─────────
 export interface ForecastPoint {
   day: number;
   date: string;
@@ -185,6 +127,10 @@ export interface ForecastPoint {
   upper: number;
 }
 
+/**
+ * The backend /predict endpoint returns this shape directly (flat, no wrapper).
+ * The /ai/price GET endpoint wraps inside { status, data: {...} }.
+ */
 export interface PredictionResult {
   predicted_price: number;
   forecast: ForecastPoint[];
@@ -202,10 +148,7 @@ export interface PredictRequest {
   departure_date?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Booking
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Booking ──────────────────────────────────────────────────────────
 export interface Passenger {
   type: PassengerType;
   title?: string;
@@ -243,6 +186,7 @@ export interface CreateBookingResponse {
   success: boolean;
   booking_id: string;
   booking_reference: string;
+  total_price: number;
   message: string;
 }
 
@@ -263,7 +207,6 @@ export interface Booking {
   contact_phone?: string;
   confirmation_sent?: boolean;
   checkin_notif_sent?: boolean;
-  /** ISO-8601 */
   created_at: string;
   cancelled_at?: string | null;
   refund_amount?: number | null;
@@ -273,10 +216,7 @@ export interface Booking {
   destination_code?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Payment
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Payment ──────────────────────────────────────────────────────────
 export interface CreateOrderRequest {
   amount: number;
   currency?: string;
@@ -304,10 +244,7 @@ export interface VerifyPaymentResponse {
   message: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Price Alerts
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Price Alerts ─────────────────────────────────────────────────────
 export interface AlertRecord {
   id: string;
   origin: string;
@@ -315,7 +252,6 @@ export interface AlertRecord {
   target_price: number;
   departure_date?: string;
   user_label?: string;
-  /** ISO-8601 */
   created_at: string;
   triggered: boolean;
   current_price?: number;
@@ -347,10 +283,7 @@ export interface CheckAlertsResponse {
   triggered_count: number;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// User / Profile
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── User / Profile ───────────────────────────────────────────────────
 export interface UserProfile {
   id: string;
   auth_user_id?: string | null;
@@ -377,31 +310,11 @@ export interface UserProfile {
   total_bookings?: number;
   total_spent?: number;
   last_login?: string | null;
-  /** ISO-8601 */
   created_at?: string;
-  /** ISO-8601 */
   updated_at?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Coupon
-// ─────────────────────────────────────────────────────────────────────
-
-export interface Coupon {
-  code: string;
-  description?: string;
-  discount_type: "PERCENT" | "FLAT";
-  discount_value: number;
-  max_discount?: number | null;
-  min_booking_amt?: number;
-  is_active: boolean;
-  valid_until?: string | null;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// API helpers
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── API helpers ──────────────────────────────────────────────────────
 export interface ApiErrorShape {
   detail: string;
   status?: number;

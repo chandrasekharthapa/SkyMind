@@ -1,19 +1,18 @@
 /**
- * usePrediction — Price Prediction Hook
+ * usePrediction — Price Prediction Hook (2026)
  *
  * Calls POST /predict and surfaces the full PredictionResult.
- * Handles debounce (300 ms), in-memory cache, loading/error state,
- * and stale-request guards so only the latest call wins.
+ * Features:
+ *  - 300ms debounce
+ *  - In-memory cache keyed by "ORG-DST"
+ *  - Stale-request guard
+ *  - Typed loading/error state
  */
 
 import { useState, useCallback, useRef } from "react";
-import {
-  predictPrice,
-  ApiError,
-} from "@/lib/api";
+import { predictPrice, ApiError } from "@/lib/api";
 import type { PredictionResult, PredictRequest } from "@/types";
 
-// ── In-memory cache keyed by "ORG-DST" ──────────────────────────────
 const _cache = new Map<string, PredictionResult>();
 
 interface UsePredictionReturn {
@@ -29,7 +28,6 @@ export function usePrediction(): UsePredictionReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Refs for debounce & stale-response guard
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeReqRef = useRef<string | null>(null);
 
@@ -48,7 +46,6 @@ export function usePrediction(): UsePredictionReturn {
       return;
     }
 
-    // ── Cache hit ────────────────────────────────────────────────────
     const cacheKey = `${org}-${dst}`;
     const cached = _cache.get(cacheKey);
     if (cached) {
@@ -57,7 +54,6 @@ export function usePrediction(): UsePredictionReturn {
       return;
     }
 
-    // ── Debounced fetch ──────────────────────────────────────────────
     debounceRef.current = setTimeout(async () => {
       const reqId = `${cacheKey}:${Date.now()}`;
       activeReqRef.current = reqId;
@@ -67,13 +63,8 @@ export function usePrediction(): UsePredictionReturn {
       setResult(null);
 
       try {
-        const data = await predictPrice({
-          ...req,
-          origin: org,
-          destination: dst,
-        });
+        const data = await predictPrice({ ...req, origin: org, destination: dst });
 
-        // Stale-response guard
         if (activeReqRef.current !== reqId) return;
 
         _cache.set(cacheKey, data);

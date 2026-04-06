@@ -6,6 +6,9 @@
   "devCommand": "npm run dev",
   "env": {
     "NEXT_PUBLIC_API_BASE_URL": "@api_base_url",
-    "NEXT_PUBLIC_API_URL":      "@api_base_url"
+    "NEXT_PUBLIC_API_URL": "@api_base_url",
+    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "NEXT_PUBLIC_RAZORPAY_KEY": "@razorpay_key"
   }
 }

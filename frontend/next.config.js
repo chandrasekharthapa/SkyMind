@@ -10,7 +10,7 @@ const nextConfig = {
     ],
   },
   env: {
-    // Expose both names so older code and new code both work
+    // Both keys resolve to the same value — legacy + new code both work
     NEXT_PUBLIC_API_BASE_URL:
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
@@ -20,12 +20,25 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       "http://localhost:8000",
   },
-  // Ignore TS / ESLint errors during build (CI handles them separately)
+  // Allow TS/ESLint errors to pass build (CI handles them separately)
   typescript: {
     ignoreBuildErrors: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  // Security headers for production
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
   },
 };
 

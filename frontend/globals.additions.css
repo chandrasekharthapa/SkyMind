@@ -1,0 +1,191 @@
+/* ============================================================
+   SkyMind — CSS ADDITIONS / PATCHES (2026)
+   Append these styles to your existing globals.css
+   ============================================================ */
+
+/* ── Spin animation for loading states ─────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Mobile flight card fix ─────────────────────────────────── */
+@media (max-width: 560px) {
+  .flight-top {
+    grid-template-columns: 1fr !important;
+    border-bottom: none !important;
+  }
+  .flight-airline {
+    border-right: none !important;
+    border-bottom: 1px solid var(--grey1) !important;
+    padding: 14px 16px !important;
+  }
+  .flight-price-col {
+    border-left: none !important;
+    border-top: 1px solid var(--grey1) !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  .search-strip .wrap > div {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .search-strip .wrap > div:last-child {
+    grid-template-columns: 1fr 1fr auto !important;
+  }
+  .booking-layout {
+    grid-template-columns: 1fr !important;
+  }
+  .form-2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Predict page grid mobile ────────────────────────────────── */
+@media (max-width: 640px) {
+  .predict-grid {
+    grid-template-columns: 1fr !important;
+    padding: 16px 0 !important;
+  }
+  .stat-trio {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .stat-trio .stat-trio-item:last-child {
+    grid-column: 1 / -1;
+  }
+  .rec-panel {
+    position: static !important;
+  }
+  .predict-title {
+    font-size: clamp(2rem, 10vw, 4rem) !important;
+  }
+}
+
+/* ── Dashboard mobile ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .dash-title {
+    font-size: clamp(1.8rem, 8vw, 3rem) !important;
+  }
+  .dash-stats {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .dash-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .dash-title-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+}
+
+/* ── Booking mobile ────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .booking-layout {
+    grid-template-columns: 1fr !important;
+  }
+  .price-panel {
+    position: static !important;
+  }
+  .steps {
+    gap: 4px !important;
+  }
+  .step {
+    font-size: .65rem !important;
+    padding: 0 8px 0 0 !important;
+  }
+}
+
+/* ── Touch / tap improvement ─────────────────────────────────── */
+@media (max-width: 768px) {
+  .btn, .sort-btn, .trip-tab, button {
+    min-height: 44px;
+  }
+  .inp {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+  select.inp {
+    font-size: 16px;
+  }
+}
+
+/* ── Confidence gauge animation ──────────────────────────────── */
+@keyframes gaugeIn {
+  from { stroke-dasharray: 0 999; }
+}
+
+/* ── Chart responsive ────────────────────────────────────────── */
+.chart-area svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Alert item hover on mobile ──────────────────────────────── */
+@media (hover: none) {
+  .alert-item:active { background: var(--off); }
+  .flight-card:active { border-color: var(--black); }
+  .dest-card:active { background: var(--off); }
+  .qa-item:active { background: var(--off); }
+}
+
+/* ── Smooth transitions for interactive elements ─────────────── */
+.flight-card,
+.booking-card,
+.dest-card,
+.sidebar-card,
+.feat-card {
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+/* ── Better focus states for accessibility ────────────────────── */
+.inp:focus,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+/* ── Sticky predict-grid scroll on mobile ─────────────────────── */
+@media (max-width: 900px) {
+  .rec-panel {
+    position: static;
+    top: auto;
+  }
+}
+
+/* ── Nav mobile gap fix ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .wrap {
+    padding: 0 16px;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .hero-left {
+    padding: 40px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--grey1);
+  }
+  .hero-right {
+    padding: 32px 16px;
+  }
+  .form-grid-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cta-inner {
+    padding: 0 16px;
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Ticker responsive ────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .ticker-item {
+    font-size: .55rem;
+  }
+  .feat-grid {
+    grid-template-columns: 1fr;
+  }
+  .dest-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,11 +1,13 @@
 /**
- * SkyMind — Unified API Client
+ * SkyMind — Unified API Client (2026 Production)
  *
- * All network calls go through `apiRequest` which:
- * • Reads base URL from NEXT_PUBLIC_API_BASE_URL
- * • Attaches Content-Type header
+ * POST /predict  → returns PredictionResult directly (flat, no wrapper)
+ * GET  /ai/price → returns { status, data: PredictionResult }
+ *
+ * All calls go through apiRequest() which:
+ * • Reads base URL from NEXT_PUBLIC_API_BASE_URL → NEXT_PUBLIC_API_URL → localhost:8000
  * • Throws typed ApiError on non-2xx responses
- * • Uses async/await with proper try/catch patterns
+ * • Handles JSON parsing safely
  */
 
 import type {
@@ -29,7 +31,7 @@ import type {
   Recommendation,
 } from "@/types";
 
-// Re-export commonly used types for convenience
+// Re-export for convenience
 export type {
   AirportSuggestion as AirportResult,
   FlightSearchParams,
@@ -51,10 +53,7 @@ export type {
   VerifyPaymentResponse,
 };
 
-// ─────────────────────────────────────────────────────────────────────
-// Config
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Config ───────────────────────────────────────────────────────────
 function getApiBase(): string {
   const url =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -63,10 +62,7 @@ function getApiBase(): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Error class
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Error class ──────────────────────────────────────────────────────
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -78,10 +74,7 @@ export class ApiError extends Error {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Core fetch helper
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Core fetch helper ────────────────────────────────────────────────
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {}
@@ -94,7 +87,15 @@ async function apiRequest<T>(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const res = await fetch(url, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    throw new ApiError(
+      `Network error — cannot reach API at ${base}. Make sure the backend is running.`,
+      0
+    );
+  }
 
   if (!res.ok) {
     let message = `Request failed — HTTP ${res.status}`;
@@ -112,10 +113,7 @@ async function apiRequest<T>(
   return res.json() as Promise<T>;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// City → IATA (client-side map; backend also resolves these)
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── City → IATA resolver ─────────────────────────────────────────────
 const CITY_TO_IATA: Record<string, string> = {
   delhi: "DEL",
   "new delhi": "DEL",
@@ -144,6 +142,19 @@ const CITY_TO_IATA: Record<string, string> = {
   srinagar: "SXR",
   jammu: "IXJ",
   leh: "IXL",
+  "port blair": "IXZ",
+  mangalore: "IXE",
+  coimbatore: "CJB",
+  madurai: "IXM",
+  tiruchirappalli: "TRZ",
+  trichy: "TRZ",
+  thiruvananthapuram: "TRV",
+  trivandrum: "TRV",
+  kozhikode: "CCJ",
+  calicut: "CCJ",
+  indore: "IDR",
+  bhopal: "BHO",
+  chandigarh: "IXC",
   dubai: "DXB",
   london: "LHR",
   singapore: "SIN",
@@ -153,6 +164,7 @@ const CITY_TO_IATA: Record<string, string> = {
   tokyo: "NRT",
   "abu dhabi": "AUH",
   "kuala lumpur": "KUL",
+  "new york": "JFK",
 };
 
 export function resolveCityToIATA(input: string): string {
@@ -160,10 +172,7 @@ export function resolveCityToIATA(input: string): string {
   return CITY_TO_IATA[lower] ?? input.trim().toUpperCase();
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Airport Search
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Airport Search ───────────────────────────────────────────────────
 export async function searchAirports(q: string): Promise<AirportSuggestion[]> {
   if (!q || q.length < 2) return [];
   try {
@@ -178,10 +187,7 @@ export async function searchAirports(q: string): Promise<AirportSuggestion[]> {
 
 export const searchAirportsAPI = searchAirports;
 
-// ─────────────────────────────────────────────────────────────────────
-// Flight Search
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Flight Search ────────────────────────────────────────────────────
 export async function searchFlights(
   params: FlightSearchParams
 ): Promise<FlightSearchResponse> {
@@ -199,15 +205,15 @@ export async function searchFlights(
   return apiRequest<FlightSearchResponse>(`/flights/search?${qs}`);
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Price Prediction  (POST /predict)
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Price Prediction (POST /predict) ────────────────────────────────
+/**
+ * Backend POST /predict returns PredictionResult DIRECTLY (flat JSON).
+ * No wrapper — confirmed from main.py.
+ */
 export async function predictPrice(
   req: PredictRequest
 ): Promise<PredictionResult> {
-  // PATCH: Handle the "data" wrapper from the backend response
-  const res = await apiRequest<{ status: string; data: PredictionResult }>("/predict", {
+  const result = await apiRequest<PredictionResult>("/predict", {
     method: "POST",
     body: JSON.stringify({
       ...req,
@@ -216,16 +222,16 @@ export async function predictPrice(
     }),
   });
 
-  return res.data;
+  // Safety: if backend wrapped it in { data: ... }, unwrap
+  if (result && typeof result === "object" && "data" in result && "status" in result) {
+    return (result as unknown as { data: PredictionResult }).data;
+  }
+
+  return result;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Price Alerts
-// ─────────────────────────────────────────────────────────────────────
-
-export async function setAlert(
-  req: SetAlertRequest
-): Promise<SetAlertResponse> {
+// ─── Price Alerts ─────────────────────────────────────────────────────
+export async function setAlert(req: SetAlertRequest): Promise<SetAlertResponse> {
   return apiRequest<SetAlertResponse>("/alerts/subscribe", {
     method: "POST",
     body: JSON.stringify({
@@ -237,14 +243,22 @@ export async function setAlert(
 }
 
 export async function checkAlerts(userId?: string): Promise<CheckAlertsResponse> {
-  const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  if (!userId) return { alerts: [], triggered: [], triggered_count: 0 };
   try {
-    const data = await apiRequest<{ alerts: unknown[]; count: number }>(
-      `/alerts/user/${userId ?? "anonymous"}${qs}`
-    );
-    const alerts = (data.alerts ?? []) as CheckAlertsResponse["alerts"];
-    const triggered = alerts.filter((a) => (a as { triggered?: boolean }).triggered);
-    return { alerts, triggered, triggered_count: triggered.length };
+    const data = await apiRequest<{
+      alerts: CheckAlertsResponse["alerts"];
+      triggered?: CheckAlertsResponse["alerts"];
+      triggered_count?: number;
+      count?: number;
+    }>(`/alerts/user/${encodeURIComponent(userId)}`);
+
+    const alerts = data.alerts ?? [];
+    const triggered = data.triggered ?? alerts.filter((a) => (a as any).triggered);
+    return {
+      alerts,
+      triggered,
+      triggered_count: data.triggered_count ?? triggered.length,
+    };
   } catch {
     return { alerts: [], triggered: [], triggered_count: 0 };
   }
@@ -256,10 +270,7 @@ export async function deleteAlert(
   return apiRequest(`/alerts/${alertId}`, { method: "DELETE" });
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Booking
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Booking ──────────────────────────────────────────────────────────
 export async function createBooking(
   req: CreateBookingRequest
 ): Promise<CreateBookingResponse> {
@@ -269,10 +280,7 @@ export async function createBooking(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Payment (Razorpay)
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Payment ──────────────────────────────────────────────────────────
 export async function createRazorpayOrder(
   params: CreateOrderRequest
 ): Promise<CreateOrderResponse> {
@@ -291,22 +299,17 @@ export async function verifyPayment(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Health
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Health Check ─────────────────────────────────────────────────────
 export async function healthCheck(): Promise<{
   status: string;
   model: string;
   time: string;
+  version: string;
 }> {
   return apiRequest("/health");
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Utilities
-// ─────────────────────────────────────────────────────────────────────
-
+// ─── Utilities ────────────────────────────────────────────────────────
 export function formatDuration(iso: string): string {
   if (!iso) return "--";
   const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
@@ -314,6 +317,10 @@ export function formatDuration(iso: string): string {
   const h = match[1] ? `${match[1]}h` : "";
   const m = match[2] ? `${match[2]}m` : "";
   return [h, m].filter(Boolean).join(" ") || iso;
+}
+
+export function formatINR(amount: number): string {
+  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
 }
 
 export function getAirlineLogo(iataCode: string): string {

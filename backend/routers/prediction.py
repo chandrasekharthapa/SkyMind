@@ -1,6 +1,6 @@
 """
 SkyMind — AI Price Prediction Router  (/ai/price)
-Updated to match 2026 Weighted ML Logic.
+Refined for 2026 Production UI: Removed all emojis.
 """
 
 import traceback
@@ -49,22 +49,29 @@ def _get_market_median(prices: list[float]) -> float | None:
     return float(np.median(prices))
 
 
-def _calculate_confidence(recent_count: int, volatility: float) -> float:
-    # 2026 Confidence Algorithm
+def _calculate_confidence(recent_count: int, volatility: float, is_live_boost: bool = False) -> float:
+    # 2026 Confidence Algorithm with Live Weighting
     base = min(recent_count / 15, 1) * 65
     stability = max(0.0, 30 - (volatility / 1500))
-    return round(max(25.0, min(98.0, base + stability)), 2)
+    
+    # Add a bonus to confidence if we are using weighted live data
+    live_bonus = 5.0 if is_live_boost else 0.0
+    
+    return round(max(25.0, min(98.0, base + stability + live_bonus)), 2)
 
 
 def _get_smart_recommendation(current: float, predicted: float, confidence: float) -> str:
+    """Professional recommendation strings without emojis for clean UI."""
     if confidence < 40:
-        return "NEUTRAL (Collecting Data)"
+        return "NEUTRAL"
+    
     diff = predicted - current
     if diff > 1200:
-        return "BUY NOW 🔥 (Price Rising)"
+        return "BUY NOW"
     if diff < -1200:
-        return "WAIT ⏳ (Likely to Drop)"
-    return "FAIR PRICE ✅"
+        return "WAIT"
+    
+    return "OPTIMIZED PRICE"
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -79,7 +86,7 @@ async def predict_price_get(
 ):
     """
     GET-based price prediction for widgets and dashboards.
-    Matches the locked 2026 XGBoost feature set.
+    Matches the locked 2026 XGBoost feature set with Live-Weighting.
     """
     try:
         predictor = get_predictor()
@@ -123,20 +130,20 @@ async def predict_price_get(
         airlines = route_data.get("airlines") or ["AI"]
         primary_airline = airlines[0] if isinstance(airlines, list) and airlines else "AI"
 
-        # 🎯 MATCHING FEATURE SET (MUST MATCH PRICEPREDICTOR.FEATURE_COLS)
+        # 🎯 MATCHING FEATURE SET (is_live updated to 2 for priority logic)
         features = {
             "origin_code": origin,
             "destination_code": destination,
             "airline_code": primary_airline,
             "days_until_dep": float(days_until_dep),
-            "urgency": 1 / (days_until_dep + 1), # Pre-calculated for model
+            "urgency": 1 / (days_until_dep + 1), 
             "day_of_week": dep_date_obj.weekday(),
             "month": dep_date_obj.month,
             "week_of_year": dep_date_obj.isocalendar()[1],
             "hour_of_day": hour,
             "is_peak_hour": 1 if hour in [7, 8, 9, 18, 19, 20, 21] else 0,
-            "is_live": True, # Crucial for 2026 priority logic
-            "seats_available": 30, # Base assumption for widget queries
+            "is_live": 2, # 2026 priority requirement
+            "seats_available": 30, 
             "price_change_1d": float(p0 - p1),
             "price_change_3d": float(p0 - p3),
             "demand_score": 0.85 if days_until_dep < 7 else 0.5,
@@ -147,10 +154,9 @@ async def predict_price_get(
         model_price = predictor.predict(features)
         market_median = _get_market_median(recent_prices)
 
-        # Market-Aware Smoothing
+        # Market-Aware Smoothing (Aggressive for Live-Weighting)
         if market_median:
-            # We trust the live market median more if we have many recent data points
-            live_weight = min(len(recent_prices) / 10, 0.60) 
+            live_weight = min(len(recent_prices) / 10, 0.75) 
             final_price = (model_price * (1 - live_weight)) + (market_median * live_weight)
         else:
             final_price = model_price
@@ -159,7 +165,7 @@ async def predict_price_get(
 
         # ── Intelligence Output ───────────────────────────────────────
         volatility = float(np.std(recent_prices)) if len(recent_prices) > 1 else 800.0
-        confidence = _calculate_confidence(len(recent_prices), volatility)
+        confidence = _calculate_confidence(len(recent_prices), volatility, is_live_boost=True)
         
         # Reference point for recommendation
         current_ref = p0 if p0 > 0 else (market_median if market_median else final_price * 0.95)

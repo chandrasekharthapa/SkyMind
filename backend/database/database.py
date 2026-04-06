@@ -111,12 +111,12 @@ class Database:
             # 2. Urgency Feature (1 / (days + 1)) - Matches PricePredictor exactly
             df["urgency"] = 1 / (df["days_until_dep"] + 1)
 
-            # 3. Handle 'is_live' for Weighted Training
-            # Ensure it's boolean so the mapper {True: 2.0, False: 1.0} works in the model
+            # 3. Handle 'is_live' for Weighted Training (REQUIRED 2026 UPDATE)
+            # Maps boolean True to 2.0 and False to 1.0 to match router priority logic
             if "is_live" in df.columns:
-                df["is_live"] = df["is_live"].fillna(False).astype(bool)
+                df["is_live"] = df["is_live"].fillna(False).map({True: 2.0, False: 1.0}).astype(float)
             else:
-                df["is_live"] = False
+                df["is_live"] = 1.0
 
             # 4. Categorical Cleaning
             for col in ("origin_code", "destination_code", "airline_code"):
@@ -126,7 +126,7 @@ class Database:
             # 5. Numeric defaults & safety
             numeric_defaults = {
                 "day_of_week": 0, "month": 1, "week_of_year": 1,
-                "hour_of_day": 12, "is_peak_hour": 0, "seats_available": 50,
+                "hour_of_day": 12, "is_peak_hour": 0, "seats_available": 30,
                 "price_change_1d": 0, "price_change_3d": 0,
                 "demand_score": 0.5, "seasonality_factor": 1.0,
             }
