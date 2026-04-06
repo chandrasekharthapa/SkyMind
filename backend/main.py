@@ -66,6 +66,8 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://localhost:3000",
+    "https://your-app.vercel.app"
+    
 ]
 
 _extra = os.getenv("CORS_ORIGINS", "")
@@ -75,8 +77,9 @@ if _extra:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex="https://skymind-gray.vercel.app",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 

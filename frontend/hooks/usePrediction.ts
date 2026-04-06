@@ -1,31 +1,27 @@
 /**
- * SkyMind — Price Prediction Hook (Refined for 2026 Production)
- * 
- * This hook maps the nested Python API response into a flattened structure
- * that matches the Page's UI components exactly.
+ * SkyMind — Price Prediction Hook (2026 Production)
+ *
+ * ARCHITECTURE:
+ * This hook is a PURE orchestration layer. It has ZERO data transformation.
+ * All mapping (confidence normalization, trend derivation, forecast generation)
+ * lives exclusively in lib/api.ts → predictPrice().
+ *
+ * Responsibilities:
+ * - Debounce API calls (300ms)
+ * - Cache results keyed by "ORG-DST-DATE"
+ * - Guard against stale responses via activeReqRef
+ * - Expose typed { result, loading, error, predict, reset }
  */
 
 import { useState, useCallback, useRef } from "react";
 import { predictPrice, ApiError } from "@/lib/api";
 import type { PredictionResult, PredictRequest } from "@/types";
 
-// Cache keyed by "ORG-DST-DATE"
-const _cache = new Map<string, any>();
+// ─── Module-level response cache (survives re-renders, cleared on reload) ─
+const _cache = new Map<string, PredictionResult>();
 
-// Helper to prevent PriceChart from crashing if API doesn't send 30 days yet
-function generateMockForecast(basePrice: number) {
-  return Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    return {
-      date: d.toISOString().split("T")[0],
-      price: basePrice + (Math.sin(i * 0.5) * 400) + (Math.random() * 150),
-    };
-  });
-}
-
-interface UsePredictionReturn {
-  result: any | null; // Set to any to allow our flattened mapping
+export interface UsePredictionReturn {
+  result: PredictionResult | null;
   loading: boolean;
   error: string | null;
   predict: (req: PredictRequest) => void;
@@ -33,11 +29,12 @@ interface UsePredictionReturn {
 }
 
 export function usePrediction(): UsePredictionReturn {
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<PredictionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Each call gets a unique ID; stale responses from superseded calls are dropped
   const activeReqRef = useRef<string | null>(null);
 
   const predict = useCallback((req: PredictRequest) => {
@@ -45,8 +42,9 @@ export function usePrediction(): UsePredictionReturn {
 
     const org = req.origin.trim().toUpperCase();
     const dst = req.destination.trim().toUpperCase();
-    const date = req.departure_date || "";
+    const date = req.departure_date?.trim() ?? "";
 
+    // Client-side validation (before hitting network)
     if (!org || !dst) {
       setError("Please enter both origin and destination.");
       return;
@@ -57,10 +55,12 @@ export function usePrediction(): UsePredictionReturn {
     }
 
     const cacheKey = `${org}-${dst}-${date}`;
-    const cached = _cache.get(cacheKey);
 
+    // Instant cache hit — show immediately while re-fetching in background
+    const cached = _cache.get(cacheKey);
     if (cached) {
       setResult(cached);
+      setError(null);
     }
 
     debounceRef.current = setTimeout(async () => {
@@ -68,48 +68,31 @@ export function usePrediction(): UsePredictionReturn {
       activeReqRef.current = reqId;
 
       setLoading(true);
-      setError(null);
-      // Optional: Clear if you want a fresh loading state every time
-      if (!cached) setResult(null);
+      if (!cached) {
+        setResult(null);
+        setError(null);
+      }
 
       try {
-        // 1. Call the API
-        const response = await predictPrice({ ...req, origin: org, destination: dst });
+        // predictPrice() in lib/api.ts handles ALL transformation
+        const data = await predictPrice({ ...req, origin: org, destination: dst });
 
+        // Drop stale responses if a newer request was fired
         if (activeReqRef.current !== reqId) return;
 
-        // 2. Map Python response (data.intelligence) to Frontend structure
-        // This stops the "undefined" crashes in page.tsx
-        const apiData = (response as any).data;
-        const intel = apiData?.intelligence;
-
-        const mappedResult = {
-          predicted_price: apiData?.predicted_price ?? 0,
-          // Python sends 78.24, Gauge wants 0.78
-          confidence: (intel?.confidence ?? 0) / 100, 
-          probability_increase: intel?.prob_increase ?? 0,
-          // Map Python RECOMMENDATION to Frontend REC_COLORS keys
-          recommendation: intel?.recommendation ?? "MONITOR",
-          // Map MARKET_STATUS to TREND_CFG keys (RISING, FALLING, STABLE)
-          trend: intel?.market_status === "VOLATILE" ? "RISING" : "STABLE",
-          // Calculate expected change for the UI stat card
-          expected_change_percent: (intel?.prob_increase ?? 0) * 10, 
-          // Friendly text for the recommendation panel
-          reason: `Market conditions are currently ${intel?.market_status?.toLowerCase() || 'neutral'}.`,
-          // Ensure forecast is an array so PriceChart.map() doesn't fail
-          forecast: apiData?.forecast || generateMockForecast(apiData?.predicted_price || 5000),
-        };
-
-        _cache.set(cacheKey, mappedResult);
-        setResult(mappedResult);
+        _cache.set(cacheKey, data);
+        setResult(data);
+        setError(null);
       } catch (err) {
         if (activeReqRef.current !== reqId) return;
 
         const msg =
           err instanceof ApiError
             ? err.message
-            : "Intelligence Engine is offline. Try again later.";
+            : "Intelligence Engine is offline. Please try again.";
         setError(msg);
+        // Keep cached result visible if we have one
+        if (!cached) setResult(null);
       } finally {
         if (activeReqRef.current === reqId) {
           setLoading(false);
