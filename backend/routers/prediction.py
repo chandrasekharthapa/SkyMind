@@ -1,15 +1,17 @@
 """
 SkyMind — AI Price Prediction Router  (/ai/price)
 Refined for 2026 Production UI: Removed all emojis.
+Includes Dedicated GitHub Actions Retrain Route.
 """
 
+import os
 import traceback
 from datetime import datetime, date, timedelta
 
 import numpy as np
 import pytz
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from ml.price_model import get_predictor
 from database.database import database as db
 
@@ -195,3 +197,29 @@ async def predict_price_get(
     except Exception:
         traceback.print_exc()
         raise HTTPException(500, detail="Intelligence Engine error.")
+
+# ══════════════════════════════════════════════════════════════════════
+# POST /ai/train-dedicated-2026 (Automation Route)
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/train-dedicated-2026", tags=["AI Automation"])
+async def trigger_training(request: Request):
+    """
+    Dedicated endpoint for GitHub Actions to trigger daily ML retraining.
+    Protected by CRON_SECRET environment variable.
+    """
+    auth_header = request.headers.get("Authorization")
+    secret_key = os.getenv("CRON_SECRET")
+    
+    if not auth_header or auth_header != f"Bearer {secret_key}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        # Import inside function to avoid circular dependencies
+        from ml.price_model import get_predictor
+        predictor = get_predictor()
+        predictor.train() 
+        return {"status": "success", "message": "Model retrained with 2026 weighted logic"}
+    except Exception:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Retrain cycle failed.")
