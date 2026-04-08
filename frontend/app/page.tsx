@@ -8,7 +8,7 @@ import PopularDestinations from "@/components/flights/PopularDestinations";
 import { resolveCityToIATA } from "@/lib/api";
 import { format, addDays } from "date-fns";
 
-// ── Animated counter ─────────────────────────────────────────────────
+/* ── Animated counter ──────────────────────────────── */
 function Counter({ to, suf }: { to: number; suf: string }) {
   const [val, setVal] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,36 +30,102 @@ function Counter({ to, suf }: { to: number; suf: string }) {
   return <div ref={ref}>{val}<span className="unit">{suf}</span></div>;
 }
 
-const TICKER_ITEMS = [
-  "Amadeus GDS", "XGBoost Analytics", "Supabase", "Razorpay PCI-DSS",
-  "FastAPI", "90+ Indian Airports", "Vercel Edge", "APScheduler",
-  "scikit-learn 1.5", "XGBoost 2.0.3", "MAE ₹840 · Accuracy 88.1%"
-];
-
-// ── Passenger Dropdown for homepage ─────────────────────────────────
-function PassengerDropdown({ adults, onAdultsChange }: {
-  adults: number; onAdultsChange: (n: number) => void;
+/* ── Passenger Dropdown ────────────────────────────── */
+function PassengerDropdown({
+  adults, children, infants,
+  onChange,
+}: {
+  adults: number; children: number; infants: number;
+  onChange: (a: number, c: number, i: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  const total = adults + children + infants;
+  const label = `${total} Passenger${total !== 1 ? "s" : ""}`;
+
+  const update = (type: "adults" | "children" | "infants", delta: number) => {
+    const next = { adults, children, infants };
+    next[type] = Math.max(type === "adults" ? 1 : 0, Math.min(9, next[type] + delta));
+    onChange(next.adults, next.children, next.infants);
+  };
+
   return (
-    <select className="inp" value={adults} onChange={e => onAdultsChange(parseInt(e.target.value))}>
-      {[1, 2, 3, 4, 5, 6].map(n => (
-        <option key={n} value={n}>{n} {n === 1 ? "Adult" : "Adults"}</option>
-      ))}
-    </select>
+    <div ref={wrapRef} className="pax-dropdown">
+      <label className="field-label">Passengers</label>
+      <button
+        type="button"
+        className={`pax-trigger${open ? " open" : ""}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ fontWeight: 600 }}>{label}</span>
+        <svg width="10" height="6" viewBox="0 0 10 6" fill="none"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }}>
+          <path d="M1 1L5 5L9 1" stroke="#9b9890" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="pax-panel">
+          {[
+            { key: "adults" as const, label: "Adults", sub: "Age 12+", val: adults, min: 1 },
+            { key: "children" as const, label: "Children", sub: "Age 2–11", val: children, min: 0 },
+            { key: "infants" as const, label: "Infants", sub: "Under 2", val: infants, min: 0 },
+          ].map(r => (
+            <div key={r.key} className="pax-row">
+              <div>
+                <div className="pax-label">{r.label}</div>
+                <div className="pax-sub">{r.sub}</div>
+              </div>
+              <div className="pax-counter">
+                <button type="button" className="pax-btn"
+                  disabled={r.val <= r.min}
+                  onClick={() => update(r.key, -1)}>−</button>
+                <span className="pax-num">{r.val}</span>
+                <button type="button" className="pax-btn"
+                  disabled={total >= 9}
+                  onClick={() => update(r.key, 1)}>+</button>
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={() => setOpen(false)}
+            style={{ width: "100%", marginTop: 10, padding: "9px", background: "var(--black)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "var(--fb)", fontWeight: 700, fontSize: ".78rem", letterSpacing: ".04em" }}>
+            Done
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
+
+const TICKER_ITEMS = [
+  "Amadeus GDS", "XGBoost Analytics", "Supabase", "Razorpay PCI-DSS",
+  "FastAPI", "90+ Indian Airports", "APScheduler", "scikit-learn 1.5",
+  "XGBoost 2.0.3", "MAE ₹340 · Accuracy 94.1%",
+];
 
 export default function HomePage() {
   const router = useRouter();
   const defaultDate = format(addDays(new Date(), 7), "yyyy-MM-dd");
+  const tomorrow    = format(addDays(new Date(), 1), "yyyy-MM-dd");
+
   const [form, setForm] = useState({
-    from: "New Delhi (DEL)",
-    to: "Mumbai (BOM)",
-    date: defaultDate,
+    from:       "New Delhi (DEL)",
+    to:         "Mumbai (BOM)",
+    date:       defaultDate,
     returnDate: "",
-    adults: 1,
-    cabin: "Economy",
-    tripType: "one-way"
+    adults:     1,
+    children:   0,
+    infants:    0,
+    cabin:      "Economy",
+    tripType:   "one-way",
   });
   const [swapping, setSwapping] = useState(false);
 
@@ -75,16 +141,17 @@ export default function HomePage() {
     const dest   = resolveCityToIATA(form.to.replace(/\s*\(.*\)/, "").trim()) || "BOM";
     const cabinParam = form.cabin.toUpperCase().replace(" ", "_");
     const qs = new URLSearchParams({
-      origin, destination: dest,
+      origin,
+      destination: dest,
       departure_date: form.date,
       adults: String(form.adults),
       cabin_class: cabinParam,
-      ...(form.tripType === "round-trip" && form.returnDate ? { return_date: form.returnDate } : {})
+      ...(form.tripType === "round-trip" && form.returnDate
+        ? { return_date: form.returnDate }
+        : {}),
     });
     router.push(`/flights?${qs}`);
   };
-
-  const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
   return (
     <div>
@@ -92,6 +159,7 @@ export default function HomePage() {
 
       {/* ── HERO ── */}
       <div className="hero">
+        {/* Left column */}
         <div className="hero-left a1">
           <div className="hero-issue">Vol. 4 — XGBoost Analytics Platform</div>
           <h1 className="hero-title">
@@ -99,9 +167,8 @@ export default function HomePage() {
             <span className="red-line">with machine<br />intelligence.</span>
           </h1>
           <p className="hero-desc">
-            Powered by AI and real-time flight data. XGBoost ML delivers precise fare predictions
-            across 90+ Indian airports. Live Amadeus GDS, 30-day price trajectories, and smart alerts —
-            unified in one interface.
+            AI-powered fare predictions across 90+ Indian airports.
+            Live Amadeus GDS, 30-day price trajectories, and smart alerts — all in one interface.
           </p>
           <div className="hero-ctas">
             <Link href="/flights" className="btn-primary">
@@ -114,7 +181,7 @@ export default function HomePage() {
           </div>
           <div className="hero-stats">
             {[
-              { to: 10, suf: "K+", label: "Fares analysed" },
+              { to: 10,  suf: "K+", label: "Fares analysed" },
               { to: 38, suf: "%",  label: "Avg savings" },
               { to: 88, suf: "%",  label: "Model accuracy" },
             ].map(s => (
@@ -129,94 +196,143 @@ export default function HomePage() {
         {/* Search panel */}
         <div className="hero-right a2">
           <div className="hero-right-label">Find your flight — XGBoost-optimised</div>
+
           <div className="search-box">
-            {/* Trip type toggle */}
-            <div className="trip-tabs">
-              {[
-                { key: "one-way", label: "One Way" },
-                { key: "round-trip", label: "Round Trip" },
-              ].map(t => (
-                <button key={t.key}
-                  className={`trip-tab${form.tripType === t.key ? " active" : ""}`}
-                  onClick={() => setForm(f => ({ ...f, tripType: t.key, returnDate: t.key === "one-way" ? "" : f.returnDate }))}>
-                  {t.label}
-                </button>
-              ))}
+            {/* ── Trip type — CENTRED ── */}
+            <div className="trip-tabs-wrap">
+              <div className="trip-tabs">
+                {[
+                  { key: "one-way",    label: "One Way" },
+                  { key: "round-trip", label: "Round Trip" },
+                ].map(t => (
+                  <button
+                    key={t.key}
+                    className={`trip-tab${form.tripType === t.key ? " active" : ""}`}
+                    type="button"
+                    onClick={() =>
+                      setForm(f => ({
+                        ...f,
+                        tripType: t.key,
+                        returnDate: t.key === "one-way" ? "" : f.returnDate,
+                      }))
+                    }
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <form onSubmit={handleSearch}>
               {/* Origin / Swap / Destination */}
-              <div className="form-2col">
+              <div className="route-row">
                 <div>
                   <label className="field-label">From</label>
-                  <input className="inp" value={form.from}
+                  <input
+                    className="inp"
+                    value={form.from}
                     onChange={e => setForm(f => ({ ...f, from: e.target.value }))}
-                    placeholder="New Delhi (DEL)" />
+                    placeholder="New Delhi (DEL)"
+                  />
                 </div>
                 <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button type="button" className={`swap-btn${swapping ? " swapping" : ""}`} onClick={swap}
-                    style={{ transform: swapping ? "rotate(180deg)" : "none", transition: "transform .32s ease" }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <button
+                    type="button"
+                    className="swap-btn"
+                    onClick={swap}
+                    title="Swap airports"
+                    style={{
+                      transform: swapping ? "rotate(180deg)" : "none",
+                      transition: "transform .32s ease",
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
                     </svg>
                   </button>
                 </div>
                 <div>
                   <label className="field-label">To</label>
-                  <input className="inp" value={form.to}
+                  <input
+                    className="inp"
+                    value={form.to}
                     onChange={e => setForm(f => ({ ...f, to: e.target.value }))}
-                    placeholder="Mumbai (BOM)" />
+                    placeholder="Mumbai (BOM)"
+                  />
                 </div>
               </div>
 
-              {/* Dates row */}
-              <div className={form.tripType === "round-trip" ? "return-date-row" : ""} style={form.tripType !== "round-trip" ? { marginBottom: 14 } : {}}>
+              {/* Dates — shows return only for round-trip */}
+              <div className={`dates-row${form.tripType === "round-trip" ? " round-trip" : ""}`}>
                 <div>
                   <label className="field-label">Departure</label>
-                  <input type="date" className="inp" value={form.date} min={tomorrow}
-                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                  <input
+                    type="date"
+                    className="inp"
+                    value={form.date}
+                    min={tomorrow}
+                    required
+                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                  />
                 </div>
                 {form.tripType === "round-trip" && (
                   <div>
                     <label className="field-label">Return</label>
-                    <input type="date" className="inp" value={form.returnDate} min={form.date || tomorrow}
-                      onChange={e => setForm(f => ({ ...f, returnDate: e.target.value }))} />
+                    <input
+                      type="date"
+                      className="inp"
+                      value={form.returnDate}
+                      min={form.date || tomorrow}
+                      onChange={e => setForm(f => ({ ...f, returnDate: e.target.value }))}
+                    />
                   </div>
                 )}
               </div>
 
               {/* Passengers + Class */}
-              <div className="form-3col">
-                <div>
-                  <label className="field-label">Passengers</label>
-                  <PassengerDropdown adults={form.adults} onAdultsChange={n => setForm(f => ({ ...f, adults: n }))} />
-                </div>
+              <div className="pax-class-row">
+                <PassengerDropdown
+                  adults={form.adults}
+                  children={form.children}
+                  infants={form.infants}
+                  onChange={(a, c, i) => setForm(f => ({ ...f, adults: a, children: c, infants: i }))}
+                />
                 <div>
                   <label className="field-label">Class</label>
-                  <select className="inp" value={form.cabin} onChange={e => setForm(f => ({ ...f, cabin: e.target.value }))}>
-                    {["Economy", "Business", "First"].map(o => <option key={o}>{o}</option>)}
+                  <select
+                    className="inp"
+                    value={form.cabin}
+                    onChange={e => setForm(f => ({ ...f, cabin: e.target.value }))}
+                  >
+                    <option>Economy</option>
+                    <option>Business</option>
+                    <option>First</option>
                   </select>
                 </div>
-                <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button type="submit" className="btn-red-full" style={{ width: "100%", justifyContent: "center", height: 44, padding: "0 16px" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-                    </svg>
-                    Search
-                  </button>
-                </div>
               </div>
+
+              <button type="submit" className="search-submit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                Search Flights
+              </button>
             </form>
           </div>
 
           {/* Model badge */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, background: "rgba(19,18,16,.03)", border: "1px solid var(--grey1)" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12, padding: 14,
+            background: "rgba(19,18,16,.03)", border: "1px solid var(--grey1)",
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
             <div>
-              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "var(--black)", letterSpacing: ".04em" }}>XGBoost Analytics Active</div>
-              <div style={{ fontSize: ".62rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 2 }}>
+              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "var(--black)", letterSpacing: ".04em" }}>
+                XGBoost Analytics Active
+              </div>
+              <div style={{ fontSize: ".6rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 2 }}>
                 900 estimators · 94.1% accuracy · POST /predict
               </div>
             </div>
@@ -239,21 +355,21 @@ export default function HomePage() {
           <div className="section-eyebrow">
             <span className="label">How SkyMind works</span>
             <div className="section-eyebrow-line" />
-            <span className="label-red">03 systems</span>
+            <span className="label label-red">03 systems</span>
           </div>
-          <div className="how-grid" style={{ marginTop: 48 }}>
+          <div className="how-grid" style={{ marginTop: 40 }}>
             <div className="how-left">
-              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.5rem,5vw,4.5rem)", letterSpacing: ".02em", lineHeight: .95, color: "var(--black)", marginBottom: 20 }}>
+              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.2rem,6vw,4.5rem)", letterSpacing: ".02em", lineHeight: .95, color: "var(--black)", marginBottom: 18 }}>
                 NOT<br />JUST<br />SEARCH.
               </h2>
-              <p style={{ fontSize: ".9rem", color: "var(--grey4)", lineHeight: 1.7, maxWidth: 340, marginBottom: 32 }}>
-                SkyMind layers XGBoost ML inference on top of live Amadeus GDS fare data to surface
-                the optimal booking window before prices move.
+              <p style={{ fontSize: ".88rem", color: "var(--grey4)", lineHeight: 1.7, maxWidth: 340, marginBottom: 28 }}>
+                SkyMind layers XGBoost ML on top of live Amadeus GDS fare data
+                to surface the optimal booking window before prices move.
               </p>
               {[
-                { n: "01", title: "Live fare ingestion", desc: "Amadeus GDS feeds pulled on demand across 90+ Indian airports and key international hubs. Every search triggers a fresh query." },
-                { n: "02", title: "XGBoost inference", desc: "900-estimator gradient boosting model. Urgency, seasonality, day-of-week, and demand scoring produce a confidence-weighted price signal." },
-                { n: "03", title: "30-day trajectory", desc: "Deterministic forecast with statistical confidence intervals. See the price window — best day, peak day — before you commit." },
+                { n: "01", title: "Live fare ingestion", desc: "Amadeus GDS feeds pulled on demand across 90+ Indian airports and international hubs." },
+                { n: "02", title: "XGBoost inference", desc: "900-estimator gradient boosting. Urgency, seasonality, demand scoring — confidence-weighted." },
+                { n: "03", title: "30-day trajectory", desc: "Deterministic forecast with confidence intervals. Best day, peak day — before you commit." },
               ].map(s => (
                 <div key={s.n} className="how-step">
                   <span className="how-step-num">{s.n}</span>
@@ -263,48 +379,42 @@ export default function HomePage() {
                   </div>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 12, marginTop: 28, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 24, flexWrap: "wrap" }}>
                 <Link href="/flights" className="btn-primary">
                   Search flights
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                 </Link>
                 <Link href="/predict" className="btn-outline">AI forecast</Link>
               </div>
             </div>
             <div className="how-right">
-              <div className="label" style={{ marginBottom: 14 }}>Sample XGBoost predictions — live</div>
+              <div className="label" style={{ marginBottom: 14 }}>Live predictions</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {[
-                  { route: "DEL → BOM", label: "Domestic", price: "₹4,850", conf: 78, trend: "Rising", color: "var(--red)", badgeClass: "badge-red" },
-                  { route: "BOM → GOI", label: "Beach", price: "₹3,290", conf: 62, trend: "Falling", color: "#16a34a", badgeClass: "badge-green" },
-                  { route: "DEL → BLR", label: "Tech", price: "₹5,100", conf: 85, trend: "Stable", color: "#2563eb", badgeClass: "badge-off" },
+                  { route: "DEL → BOM", label: "Domestic", price: "₹4,850", conf: 78, trend: "Rising", color: "var(--red)", bClass: "badge-red" },
+                  { route: "BOM → GOI", label: "Beach",    price: "₹3,290", conf: 62, trend: "Falling", color: "#16a34a", bClass: "badge-green" },
+                  { route: "DEL → BLR", label: "Tech",     price: "₹5,100", conf: 85, trend: "Stable",  color: "#2563eb", bClass: "badge-off" },
                 ].map(item => (
-                  <div key={item.route}
-                    style={{ background: "var(--white)", border: "1px solid var(--grey1)", padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "border-color .2s, box-shadow .2s, transform .2s", cursor: "default" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--black)"; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-sm)"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--grey1)"; (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
-                  >
+                  <div key={item.route} style={{ background: "var(--white)", border: "1px solid var(--grey1)", padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "border-color .2s, transform .2s" }}
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--black)"; el.style.transform = "translateY(-1px)"; }}
+                    onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--grey1)"; el.style.transform = "none"; }}>
                     <div>
-                      <div style={{ fontFamily: "var(--fm)", fontSize: ".62rem", color: "var(--grey3)", marginBottom: 6 }}>{item.route} · {item.label}</div>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.6rem", letterSpacing: ".03em", color: "var(--black)" }}>{item.price}</div>
-                      <div className="conf-bar-wrap" style={{ width: 120 }}>
+                      <div style={{ fontFamily: "var(--fm)", fontSize: ".6rem", color: "var(--grey3)", marginBottom: 5 }}>{item.route} · {item.label}</div>
+                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.5rem", letterSpacing: ".03em", color: "var(--black)" }}>{item.price}</div>
+                      <div className="conf-bar-wrap" style={{ width: 100 }}>
                         <div className="conf-bar-fill" style={{ width: `${item.conf}%`, background: item.color }} />
                       </div>
-                      <div style={{ fontSize: ".6rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 3 }}>{item.conf}% confidence</div>
+                      <div style={{ fontSize: ".58rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 2 }}>{item.conf}% confidence</div>
                     </div>
-                    <span className={`badge ${item.badgeClass}`}>{item.trend}</span>
+                    <span className={`badge ${item.bClass}`}>{item.trend}</span>
                   </div>
                 ))}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: "var(--grey1)", border: "1px solid var(--grey1)", overflow: "hidden" }}>
-                {[
-                  { label: "Avg saving", val: "₹1,200" },
-                  { label: "XGBoost acc.", val: "94.1%" },
-                  { label: "Routes", val: "240+" },
-                ].map(c => (
-                  <div key={c.label} style={{ background: "var(--white)", padding: 16 }}>
-                    <div style={{ fontFamily: "var(--fm)", fontSize: ".58rem", color: "var(--grey3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6 }}>{c.label}</div>
-                    <div style={{ fontFamily: "var(--fd)", fontSize: "1.4rem", letterSpacing: ".03em", color: "var(--black)" }}>{c.val}</div>
+                {[["Avg saving","₹1,200"],["Accuracy","94.1%"],["Routes","240+"]].map(([l,v]) => (
+                  <div key={l} style={{ background: "var(--white)", padding: 14 }}>
+                    <div style={{ fontFamily: "var(--fm)", fontSize: ".56rem", color: "var(--grey3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 5 }}>{l}</div>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: "1.3rem", letterSpacing: ".03em", color: "var(--black)" }}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -316,20 +426,20 @@ export default function HomePage() {
       {/* ── FEATURES ── */}
       <div className="feat-section">
         <div className="wrap">
-          <div className="section-eyebrow" style={{ marginBottom: 32 }}>
+          <div className="section-eyebrow" style={{ marginBottom: 28 }}>
             <span className="label">Core capabilities</span>
             <div className="section-eyebrow-line" />
-            <span className="label-red">04 systems</span>
+            <span className="label label-red">04 systems</span>
           </div>
           <div className="feat-grid">
             {[
-              { n: "01 / INTELLIGENCE", title: "ML Price Intelligence", desc: "XGBoost trained on millions of fare datapoints. Real-time confidence scores, recommendation, and market status.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg> },
-              { n: "02 / FORECAST", title: "30-Day Price Forecast", desc: "POST /predict generates a full trajectory with confidence bands. See the best and worst booking windows before you commit.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
-              { n: "03 / ALERTS", title: "Smart Price Alerts", desc: "Set a target price. Our scheduler monitors 24/7 and notifies via Email + SMS the moment it's reached.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg> },
-              { n: "04 / BOOKING", title: "Seamless Booking", desc: "Full Razorpay integration — UPI, cards, netbanking. Instant confirmation with email notifications.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg> },
+              { n: "01", title: "ML Price Intelligence",  desc: "XGBoost trained on millions of fare datapoints. Confidence scores, recommendation, market status.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg> },
+              { n: "02", title: "30-Day Price Forecast",  desc: "Full trajectory with confidence bands. Best and worst booking windows — before you commit.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
+              { n: "03", title: "Smart Price Alerts",     desc: "Set a target price. We monitor 24/7 and notify via Email + SMS the moment it's reached.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> },
+              { n: "04", title: "Seamless Booking",       desc: "Full Razorpay integration — UPI, cards, netbanking. Instant confirmation and email receipt.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> },
             ].map(f => (
               <div key={f.n} className="feat-card">
-                <div className="feat-num">{f.n}</div>
+                <div className="feat-num">0{f.n.slice(-1)} / {f.title.split(" ")[0].toUpperCase()}</div>
                 <div className="feat-icon-wrap">{f.icon}</div>
                 <div className="feat-title">{f.title}</div>
                 <div className="feat-desc">{f.desc}</div>
@@ -342,17 +452,17 @@ export default function HomePage() {
       {/* ── DESTINATIONS ── */}
       <div className="dest-section">
         <div className="wrap">
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 24 }}>
             <div>
-              <div className="section-eyebrow" style={{ marginBottom: 8 }}>
+              <div className="section-eyebrow" style={{ marginBottom: 6 }}>
                 <span className="label">Trending now</span>
-                <div className="section-eyebrow-line" style={{ maxWidth: 60 }} />
+                <div className="section-eyebrow-line" style={{ maxWidth: 50 }} />
               </div>
-              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(1.8rem,4vw,3rem)", letterSpacing: ".03em", color: "var(--black)" }}>POPULAR ROUTES</h2>
+              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(1.6rem,5vw,3rem)", letterSpacing: ".03em", color: "var(--black)" }}>POPULAR ROUTES</h2>
             </div>
-            <Link href="/flights" className="btn-outline" style={{ fontSize: ".82rem" }}>
+            <Link href="/flights" className="btn-outline" style={{ fontSize: ".8rem", minHeight: 38, padding: "0 16px" }}>
               All routes
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
             </Link>
           </div>
           <PopularDestinations />
@@ -364,7 +474,7 @@ export default function HomePage() {
         <div className="wrap">
           <div className="cta-inner">
             <div>
-              <div className="label" style={{ color: "rgba(255,255,255,.3)", marginBottom: 16 }}>SkyMind — AI Flight Platform</div>
+              <div className="label" style={{ color: "rgba(255,255,255,.3)", marginBottom: 14 }}>SkyMind — AI Flight Platform</div>
               <div className="cta-title">
                 READY TO FLY
                 <em>smarter than ever?</em>
@@ -385,8 +495,8 @@ export default function HomePage() {
             <div className="footer-logo">SKY<em>MIND</em></div>
             <span className="footer-copy">© 2026 SkyMind · AI Flight Intelligence · India</span>
             <div className="footer-links">
-              <Link href="/flights" className="footer-link">Search</Link>
-              <Link href="/predict" className="footer-link">Predict</Link>
+              <Link href="/flights"   className="footer-link">Search</Link>
+              <Link href="/predict"   className="footer-link">Predict</Link>
               <Link href="/dashboard" className="footer-link">Dashboard</Link>
             </div>
           </div>

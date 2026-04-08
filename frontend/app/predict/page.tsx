@@ -123,7 +123,7 @@ function PredictContent() {
   const worstDay = result?.forecast?.reduce<typeof result.forecast[0]|null>((worst,p) => (!worst||p.price>worst.price?p:worst), null);
 
   return (
-    <div style={{ paddingTop:0 }}>
+    <div style={{ paddingTop:0}}>
 
       {/* Hero */}
       <div className="predict-hero">
