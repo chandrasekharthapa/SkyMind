@@ -57,7 +57,20 @@ app = FastAPI(
     description="AI-powered Flight Intelligence Platform — 2026",
     lifespan=lifespan,
 )
+from fastapi.responses import HTMLResponse
 
+@app.get("/", response_class=HTMLResponse, tags=["Root"])
+def root():
+    return """
+    <html>
+        <head><title>SkyMind API</title></head>
+        <body style="font-family: sans-serif; text-align:center; margin-top:50px;">
+            <h1>🚀 SkyMind API is Running</h1>
+            <p><a href="/docs">Open API Docs</a></p>
+            <p><a href="/health">Health Check</a></p>
+        </body>
+    </html>
+    """
 # ══════════════════════════════════════════════════════
 # CORS
 # ══════════════════════════════════════════════════════
