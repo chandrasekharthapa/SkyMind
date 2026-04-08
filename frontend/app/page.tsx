@@ -33,7 +33,7 @@ function Counter({ to, suf }: { to: number; suf: string }) {
 const TICKER_ITEMS = [
   "Amadeus GDS", "XGBoost Analytics", "Supabase", "Razorpay PCI-DSS",
   "FastAPI", "90+ Indian Airports", "Vercel Edge", "APScheduler",
-  "scikit-learn 1.5", "XGBoost 2.0.3", "MAE ₹340 · Accuracy 94.1%"
+  "scikit-learn 1.5", "XGBoost 2.0.3", "MAE ₹840 · Accuracy 88.1%"
 ];
 
 // ── Passenger Dropdown for homepage ─────────────────────────────────
