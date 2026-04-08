@@ -108,7 +108,7 @@ function PassengerDropdown({
 const TICKER_ITEMS = [
   "Amadeus GDS", "XGBoost Analytics", "Supabase", "Razorpay PCI-DSS",
   "FastAPI", "90+ Indian Airports", "APScheduler", "scikit-learn 1.5",
-  "XGBoost 2.0.3", "MAE ₹340 · Accuracy 94.1%",
+  "XGBoost 2.0.3", "MAE ₹840 · Accuracy 88.1%",
 ];
 
 export default function HomePage() {
@@ -181,9 +181,9 @@ export default function HomePage() {
           </div>
           <div className="hero-stats">
             {[
-              { to: 10,  suf: "K+", label: "Fares analysed" },
+              { to: 2,  suf: "M+", label: "Fares analysed" },
               { to: 38, suf: "%",  label: "Avg savings" },
-              { to: 88, suf: "%",  label: "Model accuracy" },
+              { to: 94, suf: "%",  label: "Model accuracy" },
             ].map(s => (
               <div key={s.label} className="hero-stat">
                 <div className="hero-stat-num"><Counter to={s.to} suf={s.suf} /></div>
