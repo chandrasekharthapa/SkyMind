@@ -1,23 +1,12 @@
 /**
  * SkyMind — Price Prediction Hook (2026 Production)
- *
- * ARCHITECTURE:
- * This hook is a PURE orchestration layer. It has ZERO data transformation.
- * All mapping (confidence normalization, trend derivation, forecast generation)
- * lives exclusively in lib/api.ts → predictPrice().
- *
- * Responsibilities:
- * - Debounce API calls (300ms)
- * - Cache results keyed by "ORG-DST-DATE"
- * - Guard against stale responses via activeReqRef
- * - Expose typed { result, loading, error, predict, reset }
  */
 
 import { useState, useCallback, useRef } from "react";
 import { predictPrice, ApiError } from "@/lib/api";
 import type { PredictionResult, PredictRequest } from "@/types";
 
-// ─── Module-level response cache (survives re-renders, cleared on reload) ─
+// ─── Module-level response cache (kept but not used for now) ─
 const _cache = new Map<string, PredictionResult>();
 
 export interface UsePredictionReturn {
@@ -34,7 +23,6 @@ export function usePrediction(): UsePredictionReturn {
   const [error, setError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Each call gets a unique ID; stale responses from superseded calls are dropped
   const activeReqRef = useRef<string | null>(null);
 
   const predict = useCallback((req: PredictRequest) => {
@@ -44,7 +32,6 @@ export function usePrediction(): UsePredictionReturn {
     const dst = req.destination.trim().toUpperCase();
     const date = req.departure_date?.trim() ?? "";
 
-    // Client-side validation (before hitting network)
     if (!org || !dst) {
       setError("Please enter both origin and destination.");
       return;
@@ -56,31 +43,25 @@ export function usePrediction(): UsePredictionReturn {
 
     const cacheKey = `${org}-${dst}-${date}`;
 
-    // Instant cache hit — show immediately while re-fetching in background
-    const cached = _cache.get(cacheKey);
-    if (cached) {
-      setResult(cached);
-      setError(null);
-    }
-
     debounceRef.current = setTimeout(async () => {
       const reqId = `${cacheKey}:${Date.now()}`;
       activeReqRef.current = reqId;
 
       setLoading(true);
-      if (!cached) {
-        setResult(null);
-        setError(null);
-      }
+      setResult(null);
+      setError(null);
 
       try {
-        // predictPrice() in lib/api.ts handles ALL transformation
-        const data = await predictPrice({ ...req, origin: org, destination: dst });
+        const data = await predictPrice({
+          ...req,
+          origin: org,
+          destination: dst,
+        });
 
-        // Drop stale responses if a newer request was fired
         if (activeReqRef.current !== reqId) return;
 
-        _cache.set(cacheKey, data);
+        // _cache.set(cacheKey, data); // optional (disabled)
+
         setResult(data);
         setError(null);
       } catch (err) {
@@ -90,9 +71,9 @@ export function usePrediction(): UsePredictionReturn {
           err instanceof ApiError
             ? err.message
             : "Intelligence Engine is offline. Please try again.";
+
         setError(msg);
-        // Keep cached result visible if we have one
-        if (!cached) setResult(null);
+        setResult(null);
       } finally {
         if (activeReqRef.current === reqId) {
           setLoading(false);

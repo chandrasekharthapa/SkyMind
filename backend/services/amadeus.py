@@ -49,10 +49,11 @@ async def _get_token() -> str:
         return _token_cache["token"]
 
 # ══════════════════════════════════════════════════════════════════════
-# Amadeus service (singleton-style object)
+# Amadeus service
 # ══════════════════════════════════════════════════════════════════════
 
 class AmadeusService:
+
     async def search_flights(
         self,
         origin: str,
@@ -87,29 +88,54 @@ class AmadeusService:
 
             return resp.json()
 
+    # ✅ NEW FUNCTION (correctly placed)
+    async def search_airports(self, keyword: str) -> list:
+        token = await _get_token()
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                f"{_BASE_URL}/v1/reference-data/locations",
+                headers={"Authorization": f"Bearer {token}"},
+                params={
+                    "subType": "AIRPORT,CITY",
+                    "keyword": keyword,
+                    "page[limit]": 10,
+                },
+            )
+
+            if resp.status_code != 200:
+                logger.warning(f"Airport search failed: {resp.text[:200]}")
+                return []
+
+            data = resp.json().get("data", [])
+
+            results = []
+            for item in data:
+                results.append({
+                    "iata": item.get("iataCode"),
+                    "city": item.get("address", {}).get("cityName", ""),
+                    "name": item.get("name", ""),
+                    "country": item.get("address", {}).get("countryName", ""),
+                })
+
+            return results
+
     def format_for_skymind(self, raw_data: dict) -> list:
-        """
-        🎯 Standardizes raw Amadeus JSON into the 20-column SkyMind schema.
-        Ensures is_live=True and training_weight=2.0 for all automated scrapes.
-        """
         flights = raw_data.get("data", [])
         formatted_list = []
         today = datetime.now(timezone.utc)
 
         for flight in flights:
             try:
-                # Basic Parsing
                 itinerary = flight["itineraries"][0]["segments"][0]
                 price = float(flight["price"]["total"])
                 dep_date_str = itinerary["departure"]["at"].split("T")[0]
                 dep_date_obj = datetime.strptime(dep_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 
-                # Calculating lead time (days_until_dep)
                 days_out = (dep_date_obj.date() - today.date()).days
-                if days_out < 0: days_out = 0
+                if days_out < 0:
+                    days_out = 0
 
-                # 🚀 DYNAMIC URGENCY FEATURE
-                # 1 / (days_until_dep + 1)
                 calc_urgency = round(1 / (days_out + 1), 4)
 
                 formatted_list.append({
@@ -127,16 +153,18 @@ class AmadeusService:
                     "week_of_year": dep_date_obj.isocalendar()[1],
                     "is_holiday": False,
                     "is_weekend": dep_date_obj.weekday() >= 5,
-                    "seats_available": int(flight.get("numberOfBookableSeats", 9)),
+                    "seats_available": int(flight.get("numberOfBookableSeats") or 0),
                     "recorded_at": today.isoformat(),
                     "is_live": True,
-                    "training_weight": 2.0, # 🔥 High priority for 2026 AI
-                    "urgency": calc_urgency  # ✅ Engineered feature
+                    "training_weight": 2.0,
+                    "urgency": calc_urgency
                 })
+
             except Exception as e:
                 logger.debug(f"Skipping malformed flight record: {e}")
                 continue
                 
         return formatted_list
+
 
 amadeus_service = AmadeusService()

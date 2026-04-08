@@ -61,6 +61,45 @@ class PricePredictor:
 
         logger.info("🚀 Loading training dataset…")
         df = database.get_training_dataset()
+                # =========================================================
+        # 🔥 DATA FIXES (SAFE + IMPORTANT)
+        # =========================================================
+
+        # Ensure recorded_at is datetime
+        if "recorded_at" in df.columns:
+            df["recorded_at"] = pd.to_datetime(df["recorded_at"], errors="coerce")
+
+        # Sort correctly for time learning
+        df = df.sort_values("recorded_at")
+
+        # ── FIX FAKE SEATS ─────────────────────────
+        df["seats_available"] = np.where(
+            df["is_live"] == 1.0,
+            df["seats_available"],
+            50
+        )
+        df["seats_available"] = df["seats_available"].clip(1, 100)
+
+        # ── FIX DEMAND ─────────────────────────────
+        df["demand_score"] = np.where(
+            df["is_live"] == 1.0,
+            df["demand_score"],
+            0.5
+        )
+
+        # ── ADD TIME INTELLIGENCE ─────────────────
+        df["price_lag_1"] = df.groupby(
+            ["origin_code", "destination_code"]
+        )["price"].shift(1)
+
+        df["price_lag_3"] = df.groupby(
+            ["origin_code", "destination_code"]
+        )["price"].shift(3)
+
+        df["price_change_1d"] = df["price"] - df["price_lag_1"]
+        df["price_change_3d"] = df["price"] - df["price_lag_3"]
+
+        df = df.fillna(0)
 
         if df is None or len(df) < 200:
             logger.warning("⚠️  Insufficient data — using existing model if available.")

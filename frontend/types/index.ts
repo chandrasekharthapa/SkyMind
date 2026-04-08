@@ -37,6 +37,7 @@ export interface AirportSuggestion {
   iata: string;
   label: string;
   city: string;
+  name: string;
   airport: string;
   country: string;
   state?: string | null;

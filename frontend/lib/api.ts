@@ -50,7 +50,6 @@ import type {
 
 // Re-export for convenience
 export type {
-  AirportSuggestion as AirportResult,
   FlightSearchParams,
   FlightSearchResponse,
   FlightOffer,
@@ -68,6 +67,12 @@ export type {
   CreateOrderResponse,
   VerifyPaymentRequest,
   VerifyPaymentResponse,
+};
+export type AirportResult = {
+  iata: string;
+  city: string;
+  name: string;
+  country: string;
 };
 
 // ─── Config ───────────────────────────────────────────────────────────
@@ -332,7 +337,7 @@ export async function searchFlights(
  * No mapping logic exists anywhere else.
  */
 export async function predictPrice(req: PredictRequest): Promise<PredictionResult> {
-  const rawResponse = await apiRequest<unknown>("/predict", {
+  const rawResponse = await apiRequest<any>("/predict", {
     method: "POST",
     body: JSON.stringify({
       origin: resolveCityToIATA(req.origin),
@@ -341,62 +346,58 @@ export async function predictPrice(req: PredictRequest): Promise<PredictionResul
     }),
   });
 
-  // The backend wraps in { status, data: { ... } }
-  const raw = rawResponse as Record<string, unknown>;
-  const d = (raw?.data ?? raw) as Record<string, unknown>;
-  const intel = (d?.intelligence ?? {}) as Record<string, unknown>;
-  const meta = (d?.meta ?? {}) as Record<string, unknown>;
+  // ✅ ALWAYS extract properly
+  const d = rawResponse?.data ? rawResponse.data : rawResponse;
 
-  // --- predicted_price ---
+  const intel = d?.intelligence || {};
+  const meta = d?.meta || {};
+
+  // ✅ PRICE
   const predictedPrice = safePrice(d?.predicted_price);
 
-  // --- confidence: backend sends 0–100, UI needs 0–1 ---
-  const confidenceRaw = safePrice(intel?.confidence);
-  const confidence = confidenceRaw > 1 ? confidenceRaw / 100 : confidenceRaw;
-  // Clamp to [0, 1]
-  const confidenceClamped = Math.min(1, Math.max(0, confidence));
+  // ✅ CONFIDENCE (fix)
+  const confidence = Math.min(1, Math.max(0, safePrice(intel?.confidence) / 100));
 
-  // --- probability_increase: backend sends 0–1 directly ---
-  const probRaw = safePrice(intel?.prob_increase);
-  const probabilityIncrease = Math.min(1, Math.max(0, probRaw));
+  // ✅ PROBABILITY (fix)
+  const probabilityIncrease = Math.min(1, Math.max(0, safePrice(intel?.prob_increase)));
 
-  // --- trend: derive from market_status + prob_increase ---
-  const marketStatus = String(intel?.market_status ?? "STABLE");
-  const trend = deriveтrend(marketStatus, probabilityIncrease);
+  // ✅ TREND (STRICT FIX)
+  let trend: Trend = "STABLE";
+  if (d?.trend === "FALLING") trend = "FALLING";
+  else if (d?.trend === "RISING") trend = "RISING";
 
-  // --- recommendation: map to canonical type ---
-  const recommendation = mapRecommendation(String(intel?.recommendation ?? "MONITOR"));
+  // ✅ RECOMMENDATION
+  let recommendation: Recommendation = "MONITOR";
+  if (intel?.recommendation === "BUY_NOW") recommendation = "BOOK_NOW";
+  else if (intel?.recommendation === "WAIT") recommendation = "WAIT";
 
-  // --- forecast: use real data if present, else generate synthetic ---
+  // ✅ CHANGE %
+  const expectedChangePercent = safePrice(d?.change_percent);
+
+  // ✅ FORECAST
   const rawForecast = normalizeForecast(d?.forecast);
   const forecast =
     rawForecast.length >= 7
       ? rawForecast
       : generateSyntheticForecast(predictedPrice || 5000, trend);
 
-  // --- expected_change_percent: derive from forecast endpoints ---
-  let expectedChangePercent = 0;
-  if (forecast.length >= 2) {
-    const first = forecast[0].price;
-    const last = forecast[forecast.length - 1].price;
-    if (first > 0) {
-      expectedChangePercent = ((last - first) / first) * 100;
-    }
-  }
-
-  // --- reason: derive from intelligence ---
-  const peakSeason = Boolean(meta?.peak_season);
-  const reason = deriveReason(recommendation, probabilityIncrease, confidenceClamped, peakSeason);
+  // ✅ REASON
+  const reason = deriveReason(
+    recommendation,
+    probabilityIncrease,
+    confidence,
+    Boolean(meta?.peak_season)
+  );
 
   return {
     predicted_price: predictedPrice,
     forecast,
     trend,
     probability_increase: probabilityIncrease,
-    confidence: confidenceClamped,
+    confidence,
     recommendation,
     reason,
-    expected_change_percent: Math.round(expectedChangePercent * 100) / 100,
+    expected_change_percent: expectedChangePercent,
   };
 }
 

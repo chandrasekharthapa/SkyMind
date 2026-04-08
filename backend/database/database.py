@@ -81,7 +81,7 @@ class Database:
                     WHERE price IS NOT NULL
                       AND price >= 800
                       AND price <= 60000
-                    ORDER BY recorded_at DESC
+                    ORDER BY recorded_at ASC
                     LIMIT 100000
                 """)
             )
@@ -126,7 +126,7 @@ class Database:
             # 5. Numeric defaults & safety
             numeric_defaults = {
                 "day_of_week": 0, "month": 1, "week_of_year": 1,
-                "hour_of_day": 12, "is_peak_hour": 0, "seats_available": 30,
+                "hour_of_day": 12, "is_peak_hour": 0, "seats_available": 50,
                 "price_change_1d": 0, "price_change_3d": 0,
                 "demand_score": 0.5, "seasonality_factor": 1.0,
             }
