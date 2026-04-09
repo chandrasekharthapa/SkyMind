@@ -216,7 +216,10 @@ function normalizeForecast(raw: unknown): ForecastPoint[] {
   return raw.map((p: unknown) => {
     const point = p as Record<string, unknown>;
     return {
-      day: typeof point.day === "number" ? point.day : parseInt(String(point.day ?? "0"), 10) || 0,
+      day:
+        typeof point.day === "number"
+          ? point.day
+          : parseInt(String(point.day ?? "0"), 10) || 0,
       date: String(point.date ?? ""),
       price: safePrice(point.price),
       lower: safePrice(point.lower),
@@ -230,15 +233,20 @@ function normalizeForecast(raw: unknown): ForecastPoint[] {
  * return one (e.g. when route has no DB entry). Uses sine-wave seasonality
  * seeded from the base price so it's stable across re-renders.
  */
-function generateSyntheticForecast(basePrice: number, trend: Trend): ForecastPoint[] {
-  const slope = trend === "RISING" ? 0.006 : trend === "FALLING" ? -0.004 : 0.001;
+function generateSyntheticForecast(
+  basePrice: number,
+  trend: Trend
+): ForecastPoint[] {
+  const slope =
+    trend === "RISING" ? 0.006 : trend === "FALLING" ? -0.004 : 0.001;
   const std = basePrice * 0.04;
 
   return Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i + 1);
     const trendComponent = basePrice * slope * i;
-    const seasonality = basePrice * 0.025 * Math.sin((2 * Math.PI * (i + 3)) / 7);
+    const seasonality =
+      basePrice * 0.025 * Math.sin((2 * Math.PI * (i + 3)) / 7);
     const price = Math.max(800, basePrice + trendComponent + seasonality);
     return {
       day: i + 1,
@@ -253,8 +261,10 @@ function generateSyntheticForecast(basePrice: number, trend: Trend): ForecastPoi
 /**
  * Maps Python `market_status` ("VOLATILE" | "STABLE") plus `prob_increase`
  * to our UI Trend type ("RISING" | "FALLING" | "STABLE").
+ *
+ * FIX: renamed from "deriveтrend" (contained Cyrillic т) to "deriveTrend".
  */
-function deriveтrend(marketStatus: string, probIncrease: number): Trend {
+function deriveTrend(marketStatus: string, probIncrease: number): Trend {
   const status = (marketStatus ?? "").toUpperCase();
   if (status === "VOLATILE") {
     return probIncrease > 0.5 ? "RISING" : "FALLING";
@@ -320,20 +330,14 @@ export async function searchFlights(
     origin: resolveCityToIATA(params.origin),
     destination: resolveCityToIATA(params.destination),
     departure_date: params.departure_date,
-
-    // ✅ FIXED
     adults: String(params.adults ?? 1),
     children: String(params.children ?? 0),
     infants: String(params.infants ?? 0),
-
     cabin_class: params.cabin_class ?? "ECONOMY",
     currency: params.currency ?? "INR",
     max_results: String(params.max_results ?? 20),
-
     ...(params.return_date ? { return_date: params.return_date } : {}),
   });
-
-  console.log("✈️ SEARCH:", qs.toString()); // keep for debug
 
   return apiRequest<FlightSearchResponse>(`/flights/search?${qs}`);
 }
@@ -354,42 +358,53 @@ export async function predictPrice(req: PredictRequest): Promise<PredictionResul
     }),
   });
 
-  // ✅ ALWAYS extract properly
+  // Handle both flat response and nested { status, data: {...} } response
   const d = rawResponse?.data ? rawResponse.data : rawResponse;
 
   const intel = d?.intelligence || {};
   const meta = d?.meta || {};
 
-  // ✅ PRICE
+  // PRICE
   const predictedPrice = safePrice(d?.predicted_price);
 
-  // ✅ CONFIDENCE (fix)
-  const confidence = Math.min(1, Math.max(0, safePrice(intel?.confidence) / 100));
+  // CONFIDENCE: backend returns 0–100, normalize to 0–1
+  const confidence = Math.min(
+    1,
+    Math.max(0, safePrice(intel?.confidence) / 100)
+  );
 
-  // ✅ PROBABILITY (fix)
-  const probabilityIncrease = Math.min(1, Math.max(0, safePrice(intel?.prob_increase)));
+  // PROBABILITY: already 0–1
+  const probabilityIncrease = Math.min(
+    1,
+    Math.max(0, safePrice(intel?.prob_increase))
+  );
 
-  // ✅ TREND (STRICT FIX)
+  // TREND: read from d.trend directly (it's at data root, not inside intelligence)
   let trend: Trend = "STABLE";
   if (d?.trend === "FALLING") trend = "FALLING";
   else if (d?.trend === "RISING") trend = "RISING";
+  // If trend is absent, derive from market_status + prob_increase
+  else if (intel?.market_status) {
+    trend = deriveTrend(intel.market_status, probabilityIncrease);
+  }
 
-  // ✅ RECOMMENDATION
+  // RECOMMENDATION
   let recommendation: Recommendation = "MONITOR";
-  if (intel?.recommendation === "BUY_NOW") recommendation = "BOOK_NOW";
-  else if (intel?.recommendation === "WAIT") recommendation = "WAIT";
+  if (intel?.recommendation) {
+    recommendation = mapRecommendation(intel.recommendation);
+  }
 
-  // ✅ CHANGE %
+  // CHANGE %
   const expectedChangePercent = safePrice(d?.change_percent);
 
-  // ✅ FORECAST
+  // FORECAST: use backend data if ≥7 points, otherwise synthesize
   const rawForecast = normalizeForecast(d?.forecast);
   const forecast =
     rawForecast.length >= 7
       ? rawForecast
       : generateSyntheticForecast(predictedPrice || 5000, trend);
 
-  // ✅ REASON
+  // REASON
   const reason = deriveReason(
     recommendation,
     probabilityIncrease,
@@ -421,7 +436,9 @@ export async function setAlert(req: SetAlertRequest): Promise<SetAlertResponse> 
   });
 }
 
-export async function checkAlerts(userId?: string): Promise<CheckAlertsResponse> {
+export async function checkAlerts(
+  userId?: string
+): Promise<CheckAlertsResponse> {
   if (!userId) return { alerts: [], triggered: [], triggered_count: 0 };
   try {
     const data = await apiRequest<{
@@ -431,7 +448,11 @@ export async function checkAlerts(userId?: string): Promise<CheckAlertsResponse>
     }>(`/alerts/user/${encodeURIComponent(userId)}`);
 
     const alerts = data.alerts ?? [];
-    const triggered = data.triggered ?? alerts.filter((a) => (a as unknown as Record<string, unknown>).triggered);
+    const triggered =
+      data.triggered ??
+      alerts.filter(
+        (a) => (a as unknown as Record<string, unknown>).triggered
+      );
     return {
       alerts,
       triggered,

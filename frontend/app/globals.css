@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Martian+Mono:wght@300;400;500;700&display=swap');
+/* Fonts are loaded via <link> in layout.tsx — do NOT @import here to avoid double-loading */
 
 @tailwind base;
 @tailwind components;
@@ -444,7 +444,7 @@ select.inp {
    HERO — fluid two-column layout
 ═══════════════════════════════════════════════════════════════ */
 .hero {
-  padding-top: var(--nav-h);
+  padding-top: 0px;
   display: flex;
   flex-direction: column;
 }
@@ -944,9 +944,6 @@ footer { border-top:1px solid var(--grey1); background:var(--white); padding:cla
 /* ── Nav responsive ── */
 @media (max-width:768px) { .nav-links-desktop { display:none !important; } .nav-mobile-btn { display:flex !important; } }
 @media (min-width:769px) { .nav-mobile-btn { display:none !important; } }
-
-/* ── Auth page ── */
-.booking-subnav { background:var(--white); border-bottom:1px solid var(--grey1); padding:clamp(10px,2vw,14px) 0; }
 
 /* ── Focus accessibility ── */
 button:focus-visible, a:focus-visible { outline:2px solid var(--red); outline-offset:2px; }

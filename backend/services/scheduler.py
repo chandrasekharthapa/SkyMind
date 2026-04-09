@@ -1,6 +1,10 @@
 """
 SkyMind — Background Scheduler
 Updated to support 2026 Weighted AI Retraining and Live Data Ingestion.
+
+FIX: _collect_batch now guards against the missing mmt_scraper module.
+     If the scraper isn't implemented yet the job logs a warning and exits
+     cleanly instead of crashing the APScheduler thread silently.
 """
 
 import logging
@@ -65,24 +69,39 @@ ROUTE_BATCHES = [
     ],
 ]
 
-# ✅ unchanged (as requested)
 DATE_BUCKETS = [1, 2, 3, 4, 5, 6, 7, 9, 10, 14, 17, 20, 21, 25, 28, 30]
 
 
-# ── 🔥 MMT SCRAPER TASK ───────────────────────────────────
+# ── MMT SCRAPER TASK ─────────────────────────────────────
 
 def _collect_batch(batch_index: int) -> None:
-    """🔥 Scrape MakeMyTrip for one batch (REAL DATA PIPELINE)"""
+    """
+    Scrape MakeMyTrip for one batch.
+
+    FIX: Guards the import of services.mmt_scraper which may not yet be
+    implemented. Previously this would raise ImportError inside the
+    APScheduler thread and fail silently, making it very hard to debug.
+    Now it logs a clear warning and returns early.
+    """
+    try:
+        from services.mmt_scraper import scrape_mmt  # type: ignore[import]
+    except ImportError:
+        logger.warning(
+            "[Scheduler] services.mmt_scraper not found — "
+            "skipping batch %d. Implement the scraper or remove this job.",
+            batch_index,
+        )
+        return
+
     logger.info(f"🛫 [MMT] Scraping batch {batch_index}...")
 
     try:
-        from services.mmt_scraper import scrape_mmt
         from database.database import database as db
 
         routes = ROUTE_BATCHES[batch_index % len(ROUTE_BATCHES)]
         today = datetime.now(timezone.utc)
 
-        # 🔥 Shuffle routes (anti-detection)
+        # Shuffle routes (anti-detection)
         random.shuffle(routes)
 
         loop = asyncio.new_event_loop()
@@ -132,7 +151,7 @@ def _collect_batch(batch_index: int) -> None:
                                 "recorded_at": datetime.now(timezone.utc).isoformat(),
                                 "is_live": True,
                                 "training_weight": 2.0,
-                                "urgency": calc_urgency
+                                "urgency": calc_urgency,
                             })
 
                         except Exception:
@@ -140,9 +159,11 @@ def _collect_batch(batch_index: int) -> None:
 
                     if insert_batch:
                         db.supabase.table("price_history").insert(insert_batch).execute()
-                        logger.info(f"   ✅ [MMT] Saved {len(insert_batch)} rows for {origin}-{destination}")
+                        logger.info(
+                            f"   ✅ [MMT] Saved {len(insert_batch)} rows for {origin}-{destination}"
+                        )
 
-                    # 🔥 Random delay (anti-block)
+                    # Random delay (anti-block)
                     time.sleep(random.uniform(4, 7))
 
                 except Exception as route_err:

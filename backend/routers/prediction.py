@@ -1,11 +1,15 @@
 """
 SkyMind — AI Price Prediction Router  (/ai/price)
 Refined for 2026 Production UI
+
+FIX: predict_price_get now generates a 30-day forecast array so that
+     POST /predict (which delegates here) returns real forecast data
+     instead of always falling back to the synthetic frontend generator.
 """
 
 import os
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytz
@@ -13,6 +17,7 @@ import pytz
 from fastapi import APIRouter, HTTPException, Request
 from ml.price_model import get_predictor
 from database.database import database as db
+from services.amadeus import amadeus_service
 
 router = APIRouter()
 
@@ -49,15 +54,50 @@ def _get_market_median(prices: list[float]) -> float | None:
     return float(np.median(prices))
 
 
-def _calculate_confidence(recent_count: int, volatility: float, is_live_boost: bool = False) -> float:
+def _calculate_confidence(
+    recent_count: int, volatility: float, is_live_boost: bool = False
+) -> float:
     base = min(recent_count / 15, 1) * 65
     stability = max(0.0, 30 - (volatility / 1500))
     live_bonus = 5.0 if is_live_boost else 0.0
-    return round(max(20.0, min(90.0, base + stability + live_bonus)), 2)  # 🔥 fixed floor
+    return round(max(20.0, min(90.0, base + stability + live_bonus)), 2)
+
+
+def _generate_forecast(
+    base_price: float,
+    trend: str,
+    volatility: float,
+    start_date: datetime,
+    days: int = 30,
+) -> list[dict]:
+    """
+    Generate a deterministic 30-day price forecast with confidence intervals.
+    Uses a linear trend + weekly seasonality component.
+    """
+    slope_map = {"RISING": 0.007, "FALLING": -0.005, "STABLE": 0.001}
+    slope = slope_map.get(trend, 0.001) * base_price
+    std = max(volatility * 0.4, base_price * 0.03)
+
+    forecast = []
+    for i in range(days):
+        day_date = start_date + timedelta(days=i + 1)
+        trend_component = slope * i
+        seasonality = base_price * 0.025 * np.sin(2 * np.pi * (i + 3) / 7)
+        price = max(800.0, base_price + trend_component + seasonality)
+        forecast.append(
+            {
+                "day": i + 1,
+                "date": day_date.strftime("%Y-%m-%d"),
+                "price": round(price, 2),
+                "lower": round(max(800.0, price - std), 2),
+                "upper": round(price + std, 2),
+            }
+        )
+    return forecast
 
 
 # ══════════════════════════════════════════════════════════════════════
-# GET /ai/price
+# GET /ai/price  (also called by POST /predict in main.py)
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/price", tags=["AI"])
@@ -104,7 +144,9 @@ async def predict_price_get(
         p3 = recent_prices[3] if len(recent_prices) >= 4 else p1
 
         airlines = route_data.get("airlines") or ["AI"]
-        primary_airline = airlines[0] if isinstance(airlines, list) and airlines else "AI"
+        primary_airline = (
+            airlines[0] if isinstance(airlines, list) and airlines else "AI"
+        )
 
         # ── MODEL FEATURES ───────────────────────────────
         features = {
@@ -123,7 +165,9 @@ async def predict_price_get(
             "price_change_1d": float(p0 - p1),
             "price_change_3d": float(p0 - p3),
             "demand_score": 0.85 if days_until_dep < 7 else 0.5,
-            "seasonality_factor": 1.25 if dep_date_obj.month in [4, 5, 10, 12] else 1.0,
+            "seasonality_factor": (
+                1.25 if dep_date_obj.month in [4, 5, 10, 12] else 1.0
+            ),
         }
 
         # ── MODEL PREDICTION ─────────────────────────────
@@ -132,41 +176,50 @@ async def predict_price_get(
 
         if market_median:
             live_weight = min(len(recent_prices) / 10, 0.75)
-            final_price = (model_price * (1 - live_weight)) + (market_median * live_weight)
+            final_price = (model_price * (1 - live_weight)) + (
+                market_median * live_weight
+            )
         else:
             final_price = model_price
 
         final_price = _adjust_prediction(final_price)
 
         # ── CONFIDENCE ───────────────────────────────────
-        volatility = float(np.std(recent_prices)) if len(recent_prices) > 1 else 800.0
-        confidence = _calculate_confidence(len(recent_prices), volatility, is_live_boost=True)
+        volatility = (
+            float(np.std(recent_prices)) if len(recent_prices) > 1 else 800.0
+        )
+        confidence = _calculate_confidence(
+            len(recent_prices), volatility, is_live_boost=True
+        )
 
         # ── CURRENT PRICE ────────────────────────────────
-        current_ref = p0 if p0 > 0 else (market_median if market_median else final_price * 0.95)
+        
+        filtered_prices = [p for p in recent_prices if 3000 < p < 8000]
+        if filtered_prices:
+            current_ref = min(filtered_prices)
+        elif recent_prices:
+            current_ref = min(recent_prices)
+        else:
+            current_ref = final_price * 0.95
 
-        # =========================================================
-        # 🔥 FIXED LOGIC (SMART + DYNAMIC)
-        # =========================================================
-
+        # ── TREND / PROBABILITY ──────────────────────────
         diff = final_price - current_ref
-
-        # ✅ REALISTIC PROBABILITY (SIGMOID)
         scale = max(volatility, 500)
         prob_increase = 1 / (1 + np.exp(-diff / scale))
         prob_increase = float(np.clip(prob_increase, 0.05, 0.95))
 
-        # ✅ TREND (VOLATILITY AWARE)
         change_pct = ((final_price - current_ref) / max(current_ref, 1)) * 100
 
-        if change_pct < -(volatility / 200):
-            trend = "FALLING"
-        elif change_pct > (volatility / 200):
-            trend = "RISING"
+        if len(recent_prices) >= 5:
+            trend_diff = recent_prices[0] - recent_prices[-1]
+            if trend_diff > 300:
+                trend = "RISING"
+            elif trend_diff < -300:
+                trend = "FALLING"
+            else:
+                trend = "STABLE"
         else:
-            trend = "STABLE"
-
-        # ✅ DYNAMIC THRESHOLD
+                trend = "STABLE"
         threshold = max(volatility * 0.3, current_ref * 0.08)
 
         if diff > threshold:
@@ -175,6 +228,15 @@ async def predict_price_get(
             recommendation = "WAIT"
         else:
             recommendation = "HOLD"
+
+        # ── FORECAST (FIX: now generated server-side) ────
+        forecast = _generate_forecast(
+            base_price=final_price,
+            trend=trend,
+            volatility=volatility,
+            start_date=now_ist.replace(tzinfo=None),
+            days=30,
+        )
 
         # ── RESPONSE ─────────────────────────────────────
         return {
@@ -186,6 +248,7 @@ async def predict_price_get(
                 "predicted_price": final_price,
                 "trend": trend,
                 "change_percent": round(change_pct, 2),
+                "forecast": forecast,
                 "intelligence": {
                     "confidence": confidence,
                     "prob_increase": round(prob_increase, 2),

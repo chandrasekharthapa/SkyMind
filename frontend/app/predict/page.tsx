@@ -164,7 +164,7 @@ function PredictContent() {
   const dst       = resolveCityToIATA(destination);
 
   return (
-    <div style={{ paddingTop: "var(--nav-h)" }}>
+    <div style={{ paddingTop: 0 }}>
 
       {/* Hero */}
       <div className="predict-hero">

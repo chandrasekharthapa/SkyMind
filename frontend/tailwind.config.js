@@ -1,4 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+// NOTE: Tailwind v4 uses @tailwindcss/postcss and largely config-free.
+// This file is kept for the fontFamily extension and content paths.
+// The `require("tailwindcss-animate")` plugin is NOT compatible with v4 —
+// animations are handled via globals.css @keyframes instead.
 module.exports = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",
@@ -7,7 +11,16 @@ module.exports = {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        // These map to the CSS variables set in globals.css
+        sans:    ["'Instrument Sans'", "system-ui", "sans-serif"],
+        mono:    ["'Martian Mono'", "ui-monospace", "monospace"],
+        display: ["'Bebas Neue'", "'Arial Black'", "sans-serif"],
+        serif:   ["'DM Serif Display'", "Georgia", "serif"],
+      },
+    },
   },
-  plugins: [require("tailwindcss-animate")],
+  // tailwindcss-animate is NOT compatible with Tailwind v4 — removed
+  plugins: [],
 };

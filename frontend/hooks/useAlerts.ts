@@ -8,11 +8,24 @@
  *
  * Uses localStorage for offline persistence.
  * Polls backend every 30s.
+ *
+ * FIX: useState initializer no longer calls loadFromStorage() directly,
+ * which caused SSR crashes. Storage is hydrated in a useEffect instead.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { setAlert as apiSetAlert, checkAlerts as apiCheckAlerts, deleteAlert as apiDeleteAlert, ApiError } from "@/lib/api";
-import type { AlertRecord, SetAlertRequest, SetAlertResponse, CheckAlertsResponse } from "@/types";
+import {
+  setAlert as apiSetAlert,
+  checkAlerts as apiCheckAlerts,
+  deleteAlert as apiDeleteAlert,
+  ApiError,
+} from "@/lib/api";
+import type {
+  AlertRecord,
+  SetAlertRequest,
+  SetAlertResponse,
+  CheckAlertsResponse,
+} from "@/types";
 
 const POLL_INTERVAL_MS = 30_000;
 const STORAGE_KEY = "skymind_price_alerts_v3";
@@ -34,7 +47,7 @@ function saveToStorage(alerts: AlertRecord[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
   } catch {
-    /* quota exceeded */
+    /* quota exceeded — fail silently */
   }
 }
 
@@ -63,12 +76,23 @@ export interface UseAlertsReturn {
 }
 
 export function useAlerts(userId?: string): UseAlertsReturn {
-  const [alerts, setAlerts] = useState<AlertRecord[]>(() => loadFromStorage());
+  // FIX: start with empty array — hydrate from localStorage in useEffect
+  // to avoid SSR crash (window is not defined on the server).
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [triggered, setTriggered] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Hydrate from localStorage after mount (client-only)
+  useEffect(() => {
+    const stored = loadFromStorage();
+    if (stored.length > 0) {
+      setAlerts(stored);
+      setTriggered(stored.filter((a) => a.triggered));
+    }
+  }, []);
 
   const poll = useCallback(async () => {
     try {
@@ -85,6 +109,7 @@ export function useAlerts(userId?: string): UseAlertsReturn {
         }
       }
     } catch {
+      // Fall back to whatever is in localStorage
       const stored = loadFromStorage();
       if (stored.length > 0) {
         setAlerts(stored);
@@ -94,8 +119,6 @@ export function useAlerts(userId?: string): UseAlertsReturn {
   }, [userId]);
 
   useEffect(() => {
-    const stored = loadFromStorage();
-    if (stored.length > 0) setAlerts(stored);
     poll();
     timerRef.current = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
@@ -128,7 +151,8 @@ export function useAlerts(userId?: string): UseAlertsReturn {
         await poll();
         return { ok: true, message: res.message };
       } catch (err) {
-        const msg = err instanceof ApiError ? err.message : "Failed to set alert.";
+        const msg =
+          err instanceof ApiError ? err.message : "Failed to set alert.";
         setError(msg);
         return { ok: false, message: msg };
       } finally {
@@ -145,7 +169,7 @@ export function useAlerts(userId?: string): UseAlertsReturn {
     try {
       await apiDeleteAlert(id);
     } catch {
-      // local removal already applied
+      // local removal already applied — ignore network error
     }
   }, []);
 
@@ -154,7 +178,9 @@ export function useAlerts(userId?: string): UseAlertsReturn {
 
 function _fireBrowserNotification(alert: AlertRecord): void {
   const title = `🎯 Price Alert: ${alert.origin} → ${alert.destination}`;
-  const body = `Price ₹${alert.current_price?.toLocaleString("en-IN") ?? "--"} hit your target of ₹${alert.target_price.toLocaleString("en-IN")}!`;
+  const body = `Price ₹${
+    alert.current_price?.toLocaleString("en-IN") ?? "--"
+  } hit your target of ₹${alert.target_price.toLocaleString("en-IN")}!`;
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission === "granted") {
     new Notification(title, { body, icon: "/favicon.ico" });
