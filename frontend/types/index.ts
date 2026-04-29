@@ -105,6 +105,8 @@ export interface FlightSearchParams {
   departure_date: string;
   return_date?: string;
   adults?: number;
+  children?: number;
+  infants?: number;
   cabin_class?: CabinClass;
   currency?: string;
   max_results?: number;
@@ -130,7 +132,6 @@ export interface ForecastPoint {
 
 /**
  * The backend /predict endpoint returns this shape directly (flat, no wrapper).
- * The /ai/price GET endpoint wraps inside { status, data: {...} }.
  */
 export interface PredictionResult {
   predicted_price: number;
@@ -327,3 +328,4 @@ export interface PaginatedResponse<T> {
   page: number;
   size: number;
 }
+

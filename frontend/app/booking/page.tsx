@@ -27,9 +27,10 @@ function BookingContent() {
     }
   }, []);
 
-  const itin = flight?.itineraries[0];
-  const seg = itin?.segments[0];
-  const lastSeg = itin?.segments[itin.segments.length - 1];
+  const itin = flight?.itineraries?.[0];
+  const segments = itin?.segments ?? [];
+  const seg = segments[0];
+  const lastSeg = segments[segments.length - 1];
   const dur = formatDuration(itin?.duration || "");
 
   const dep = seg?.departure_time
@@ -38,9 +39,9 @@ function BookingContent() {
   const arr = lastSeg?.arrival_time
     ? new Date(lastSeg.arrival_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false })
     : "--:--";
-  const price = flight ? Math.round(flight.price.total) : 4299;
-  const base = flight?.price.base ? Math.round(flight.price.base) : Math.round(price * 0.82);
-  const taxes = price - base;
+  const price = flight ? Math.round(flight.price?.total || 0) : 0;
+  const base = flight?.price?.base ? Math.round(flight.price.base) : Math.round(price * 0.85);
+  const taxes = Math.max(0, price - base);
 
   const handleProceed = async () => {
     if (!form.email || !form.phone || !form.first_name || !form.last_name) {
@@ -72,145 +73,152 @@ function BookingContent() {
       });
 
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("booking_data", JSON.stringify(booking));
+        const fullBooking = {
+          ...booking,
+          id: booking.booking_id,
+          flight_offer_data: flight,
+          passengers: [passenger],
+          contact_email: form.email,
+          contact_phone: form.phone,
+          currency: "INR"
+        };
+        sessionStorage.setItem("booking_data", JSON.stringify(fullBooking));
       }
       router.push("/checkout");
     } catch (e: any) {
-      // Non-fatal: still navigate if booking was created
-      if (e.message?.includes("404") || e.message?.includes("500")) {
-        setError(`Booking error: ${e.message}`);
-      } else {
-        router.push("/checkout");
-      }
+      setError(e.message || "Booking service unavailable. Please try again.");
     }
-
     setLoading(false);
   };
 
+  if (!flight) return <div className="ui-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}><div className="ui-label">DATA_LOAD_ERROR...</div></div>;
+
   return (
-    <div>
+    <div className="ui-page" style={{ background: "var(--off)" }}>
       <NavBar />
-      <div style={{ paddingTop: "60px" }}>
-        <div className="booking-subnav">
-          <div className="wrap">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-              <button onClick={() => router.push("/flights")}
-                style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: ".78rem", color: "var(--grey4)", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--fb)", fontWeight: 500 }}>
-                <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" /></svg>
-                Back to results
-              </button>
-              <div className="steps">
-                <div className="step active"><div className="step-num">1</div>Passenger details</div>
-                <div className="step-sep" />
-                <div className="step"><div className="step-num">2</div>Payment</div>
-              </div>
-            </div>
+      
+      <div className="booking-subnav">
+        <div className="ui-wrap ui-flex-between">
+          <button onClick={() => router.back()} className="ui-btn ui-btn-white" style={{ height: "40px", padding: "0 16px", borderRadius: "8px" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M15 18l-6-6 6-6"/></svg>
+            BACK
+          </button>
+          <div className="steps">
+            <div className="step active"><span className="step-num">1</span> DETAILS</div>
+            <div className="step-sep" />
+            <div className="step"><span className="step-num">2</span> PAYMENT</div>
           </div>
         </div>
+      </div>
 
-        <div className="wrap">
-          <div className="booking-body">
-            <div className="booking-layout">
-              <div>
-                {/* Flight summary */}
-                <div className="fsummary" style={{ marginBottom: "14px" }}>
-                  <div className="fsummary-head">
-                    <span style={{ fontFamily: "var(--fm)", fontSize: ".68rem", fontWeight: 600, letterSpacing: ".10em", textTransform: "uppercase", color: "var(--grey3)" }}>Your flight</span>
-                    <span className="badge badge-green">Selected</span>
-                  </div>
-                  <div style={{ padding: "18px", display: "flex", alignItems: "center", gap: "14px" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.9rem", letterSpacing: ".02em" }}>{dep}</div>
-                      <div style={{ fontFamily: "var(--fm)", fontSize: ".75rem", fontWeight: 700, color: "var(--grey4)", marginTop: "3px" }}>{seg?.origin || "DEL"}</div>
-                    </div>
-                    <div className="fline" style={{ flex: 1 }}>
-                      <div className="fline-dot" />
-                      <div className="fline-track" style={{ flex: 1 }}>
-                        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "white", padding: "0 4px", fontSize: ".7rem", color: "var(--grey3)", fontFamily: "var(--fm)", whiteSpace: "nowrap" }}>
-                          {dur} · {seg?.flight_number || "--"}
-                        </div>
-                      </div>
-                      <div className="fline-dot" />
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.9rem", letterSpacing: ".02em" }}>{arr}</div>
-                      <div style={{ fontFamily: "var(--fm)", fontSize: ".75rem", fontWeight: 700, color: "var(--grey4)", marginTop: "3px" }}>{lastSeg?.destination || "BOM"}</div>
+      <div className="ui-wrap" style={{ padding: "40px 0 100px" }}>
+        <div className="booking-layout">
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px", flex: 1 }}>
+            
+            <div className="ui-card" style={{ padding: "clamp(20px, 5vw, 32px)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                <div className="ui-label" style={{ color: "var(--grey3)" }}>SELECTED ITINERARY</div>
+                <div className="badge badge-off" style={{ background: "var(--off)", color: "var(--black)" }}>{seg?.flight_number}</div>
+              </div>
+              <div className="ui-itinerary-grid">
+                <div>
+                  <div className="ui-title-lg" style={{ fontSize: "2.8rem", lineHeight: 1 }}>{dep}</div>
+                  <div className="ui-label" style={{ color: "var(--grey4)", marginTop: 6 }}>{seg?.origin}</div>
+                </div>
+                
+                <div className="min-w-plane" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, minWidth: "160px" }}>
+                  <div className="ui-label" style={{ fontSize: "10px", opacity: 0.6, textAlign: "center" }}>{dur}</div>
+                  <div style={{ position: "relative", width: "100%", height: "1px", background: "var(--grey2)", margin: "4px 0" }}>
+                    <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", background: "var(--white)", padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--red)"><path d="M21,16V14L13,9V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z"/></svg>
                     </div>
                   </div>
+                  <div className="ui-label-red" style={{ fontSize: "9px", textAlign: "center", fontWeight: 700, letterSpacing: "0.05em" }}>NON-STOP</div>
                 </div>
 
-                {/* Error */}
-                {error && (
-                  <div style={{ padding: "12px 16px", background: "rgba(232,25,26,.08)", border: "1px solid var(--red)", color: "var(--red)", fontSize: ".82rem", marginBottom: "14px" }}>
-                    ⚠️ {error}
-                  </div>
-                )}
-
-                {/* Contact */}
-                <div className="form-block">
-                  <div className="form-block-head"><div className="form-block-num">A</div><div className="form-block-title">Contact details</div></div>
-                  <div className="form-block-body">
-                    <div className="form-2">
-                      <div><label className="field-label">Email *</label><input className="inp" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="you@example.com" required /></div>
-                      <div><label className="field-label">Phone *</label><input className="inp" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91 98765 43210" required /></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Passenger */}
-                <div className="form-block">
-                  <div className="form-block-head"><div className="form-block-num">B</div><div className="form-block-title">Passenger 1 — Adult</div></div>
-                  <div className="form-block-body">
-                    <div className="form-2">
-                      <div><label className="field-label">First name *</label><input className="inp" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} required /></div>
-                      <div><label className="field-label">Last name *</label><input className="inp" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} required /></div>
-                      <div><label className="field-label">Date of birth</label><input type="date" className="inp" value={form.dob} onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} /></div>
-                      <div><label className="field-label">Passport / Aadhaar</label><input className="inp" value={form.passport} onChange={e => setForm(f => ({ ...f, passport: e.target.value }))} placeholder="Optional" /></div>
-                      <div>
-                        <label className="field-label">Meal preference</label>
-                        <select className="inp" value={form.meal} onChange={e => setForm(f => ({ ...f, meal: e.target.value }))}>
-                          <option value="VEG">Vegetarian</option>
-                          <option value="NON_VEG">Non-Vegetarian</option>
-                          <option value="VEGAN">Vegan</option>
-                          <option value="HALAL">Halal</option>
-                          <option value="JAIN">Jain</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="field-label">Baggage</label>
-                        <select className="inp" value={form.baggage} onChange={e => setForm(f => ({ ...f, baggage: e.target.value }))}>
-                          <option value="15">15 kg (included)</option>
-                          <option value="20">20 kg (+₹800)</option>
-                          <option value="25">25 kg (+₹1,500)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="ui-title-lg" style={{ fontSize: "2.8rem", lineHeight: 1 }}>{arr}</div>
+                  <div className="ui-label" style={{ color: "var(--grey4)", marginTop: 6 }}>{lastSeg?.destination}</div>
                 </div>
               </div>
+            </div>
 
-              {/* Price panel */}
-              <div>
-                <div className="price-panel">
-                  <div className="price-panel-head"><div className="price-panel-head-label">Price summary</div></div>
-                  <div className="price-panel-body">
-                    <div className="price-row"><span className="price-row-label">Base fare ×1</span><span className="price-row-val">₹{base.toLocaleString("en-IN")}</span></div>
-                    <div className="price-row"><span className="price-row-label">Taxes &amp; fees</span><span className="price-row-val">₹{taxes.toLocaleString("en-IN")}</span></div>
-                    <div className="price-row" style={{ borderBottom: "none" }}><span className="price-row-label">Convenience</span><span className="price-row-val">₹0</span></div>
-                    <div className="price-total-row"><span className="price-total-label">Total</span><span className="price-total-val">₹{price.toLocaleString("en-IN")}</span></div>
-                    <div className="refund-note">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: "1px" }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                      Free cancellation within 24 hours of booking.
-                    </div>
-                    <button className="pay-btn" onClick={handleProceed} disabled={loading}>
-                      {loading ? "SAVING…" : "PROCEED TO PAYMENT"}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6" /></svg>
-                    </button>
-                  </div>
+            {error && <div className="ui-card" style={{ background: "var(--red-mist)", borderColor: "var(--red)", padding: "16px", color: "var(--red)", fontSize: "0.85rem" }}>{error}</div>}
+
+            <div className="ui-card" style={{ padding: "clamp(24px, 5vw, 32px)" }}>
+              <h2 className="ui-title-md" style={{ marginBottom: "32px", fontSize: "2rem" }}>PASSENGER DETAILS</h2>
+              <div className="ui-form-grid">
+                <div className="input-group">
+                  <label className="ui-field-label">First Name</label>
+                  <input className="ui-input" placeholder="e.g. John" value={form.first_name} onChange={e=>setForm(f=>({...f,first_name:e.target.value}))}/>
+                </div>
+                <div className="input-group">
+                  <label className="ui-field-label">Last Name</label>
+                  <input className="ui-input" placeholder="e.g. Doe" value={form.last_name} onChange={e=>setForm(f=>({...f,last_name:e.target.value}))}/>
+                </div>
+                <div className="input-group">
+                  <label className="ui-field-label">Email Address</label>
+                  <input className="ui-input" type="email" placeholder="john@example.com" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/>
+                </div>
+                <div className="input-group">
+                  <label className="ui-field-label">Phone Number</label>
+                  <input className="ui-input" placeholder="+91 XXXXX XXXXX" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/>
+                </div>
+              </div>
+            </div>
+
+            <div className="ui-card" style={{ padding: "clamp(24px, 5vw, 32px)" }}>
+              <h2 className="ui-title-md" style={{ marginBottom: "32px", fontSize: "2rem" }}>TRAVEL PREFERENCES</h2>
+              <div className="ui-form-grid">
+                <div className="input-group">
+                  <label className="ui-field-label">Meal Preference</label>
+                  <select className="ui-input" value={form.meal} onChange={e=>setForm(f=>({...f,meal:e.target.value}))}>
+                    <option value="VEG">Vegetarian</option>
+                    <option value="NON_VEG">Non-Vegetarian</option>
+                    <option value="VEGAN">Vegan</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label className="ui-field-label">Baggage Allowance</label>
+                  <select className="ui-input" value={form.baggage} onChange={e=>setForm(f=>({...f,baggage:e.target.value}))}>
+                    <option value="15">15 KG (INCLUDED)</option>
+                    <option value="25">25 KG (+ ₹1,200)</option>
+                  </select>
                 </div>
               </div>
             </div>
           </div>
+
+          <div className="price-panel">
+            <div className="price-panel-head">
+              <div className="price-panel-head-label">FARE SUMMARY</div>
+            </div>
+            <div className="price-panel-body" style={{ padding: "32px" }}>
+              <div className="price-row" style={{ marginBottom: "20px" }}>
+                <span className="price-row-label">Base Fare</span>
+                <span className="price-row-val" style={{ fontSize: "0.9rem" }}>₹{base.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="price-row" style={{ marginBottom: "32px" }}>
+                <span className="price-row-label">Taxes & Fees</span>
+                <span className="price-row-val" style={{ fontSize: "0.9rem" }}>₹{taxes.toLocaleString("en-IN")}</span>
+              </div>
+              
+              <div className="price-total-row" style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "24px", marginBottom: "32px" }}>
+                <span className="price-total-label" style={{ fontSize: "1.2rem" }}>TOTAL</span>
+                <span className="price-total-val" style={{ fontSize: "3.5rem" }}>₹{price.toLocaleString("en-IN")}</span>
+              </div>
+
+              <button className="pay-btn" onClick={handleProceed} disabled={loading} style={{ height: "64px", fontSize: "1rem" }}>
+                {loading ? "PROCESSING..." : "PROCEED TO PAYMENT"}
+              </button>
+              
+              <div style={{ marginTop: "24px", fontSize: "10px", color: "rgba(255,255,255,0.3)", textAlign: "center", lineHeight: 1.6, fontFamily: "var(--fm)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Secure SSL Encrypted Payment <br/> Authorized by SkyMind Reserve
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

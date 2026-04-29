@@ -4,7 +4,7 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 from ml.price_model import PricePredictor
 
-print("🚀 SkyMind Manual Training Start...")
+print("SkyMind Manual Training Start...")
 model = PricePredictor()
 model.train()
-print("✅ Training sequence complete.")
+print("Training sequence complete.")

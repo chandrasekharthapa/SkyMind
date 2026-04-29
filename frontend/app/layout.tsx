@@ -5,11 +5,11 @@ import QueryProvider from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://skymind.app"),
-  title: "SkyMind — AI Flight Intelligence",
+  title: "SkyMind - AI Flight Intelligence",
   description:
     "ML-powered flight price prediction, hidden route discovery, and seamless booking for Indian and international flights.",
   openGraph: {
-    title: "SkyMind — AI Flight Intelligence",
+    title: "SkyMind - AI Flight Intelligence",
     description:
       "Book smarter with AI-powered price forecasts and hidden route discovery.",
     type: "website",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "SkyMind — AI Flight Intelligence",
+        alt: "SkyMind - AI Flight Intelligence",
       },
     ],
   },
@@ -47,7 +47,7 @@ export default function RootLayout({
         />
       </head>
       {/* font-sans applies Instrument Sans as the base body font via Tailwind */}
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <QueryProvider>{children}</QueryProvider>
         <Toaster
           theme="light"

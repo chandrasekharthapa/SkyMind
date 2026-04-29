@@ -198,7 +198,7 @@ INSERT INTO public.airlines (iata_code,icao_code,name,short_name,country,is_dome
 CREATE TABLE public.profiles (
   id                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   auth_user_id        UUID UNIQUE,
-  email               TEXT UNIQUE NOT NULL,
+  email               TEXT UNIQUE,
   full_name           TEXT,
   display_name        TEXT,
   phone               TEXT,
@@ -325,7 +325,6 @@ CREATE TABLE public.flights (
   terminal         TEXT,
   gate             TEXT,
   baggage_kg       INT DEFAULT 15,
-  amadeus_offer_id TEXT,
   raw_offer        JSONB,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -399,7 +398,6 @@ CREATE TABLE public.bookings (
   booking_reference     TEXT UNIQUE NOT NULL,
   user_id               UUID REFERENCES public.profiles(id),
   flight_id             UUID REFERENCES public.flights(id),
-  amadeus_booking_id    TEXT,
   pnr                   TEXT,
   status                TEXT DEFAULT 'PENDING',
   payment_status        TEXT DEFAULT 'UNPAID',
@@ -746,27 +744,50 @@ DECLARE
   v_profile_id UUID;
   v_name TEXT;
 BEGIN
+  -- Determine Display Name (fallback to phone if email missing)
   v_name := COALESCE(
     NEW.raw_user_meta_data->>'full_name',
     NEW.raw_user_meta_data->>'name',
-    SPLIT_PART(NEW.email, '@', 1)
+    SPLIT_PART(NEW.email, '@', 1),
+    'User ' || SUBSTRING(NEW.id::TEXT, 1, 8)
   );
 
-  INSERT INTO public.profiles (auth_user_id, email, full_name, display_name, email_verified)
-  VALUES (NEW.id, NEW.email, v_name, v_name, (NEW.email_confirmed_at IS NOT NULL))
-  ON CONFLICT (email) DO UPDATE SET
-    auth_user_id   = EXCLUDED.auth_user_id,
-    email_verified = EXCLUDED.email_verified
+  -- Insert into Profiles (handles NEW.email being NULL)
+  INSERT INTO public.profiles (
+    auth_user_id, 
+    email, 
+    phone,
+    full_name, 
+    display_name, 
+    email_verified,
+    phone_verified
+  )
+  VALUES (
+    NEW.id, 
+    NEW.email, 
+    NEW.phone,
+    v_name, 
+    v_name, 
+    (NEW.email_confirmed_at IS NOT NULL),
+    (NEW.phone_confirmed_at IS NOT NULL)
+  )
+  ON CONFLICT (auth_user_id) DO UPDATE SET
+    email          = COALESCE(EXCLUDED.email, profiles.email),
+    phone          = COALESCE(EXCLUDED.phone, profiles.phone),
+    email_verified = EXCLUDED.email_verified,
+    phone_verified = EXCLUDED.phone_verified
   RETURNING id INTO v_profile_id;
 
-  -- Queue welcome email
-  INSERT INTO public.notifications
-    (user_id, type, channel, recipient, subject, message, template_id)
-  VALUES
-    (v_profile_id, 'WELCOME', 'EMAIL', NEW.email,
-     'Welcome to SkyMind!',
-     'Hi ' || v_name || '! Your AI-powered flight companion is ready.',
-     'welcome_email');
+  -- Queue welcome email ONLY if email exists
+  IF NEW.email IS NOT NULL THEN
+    INSERT INTO public.notifications
+      (user_id, type, channel, recipient, subject, message, template_id)
+    VALUES
+      (v_profile_id, 'WELCOME', 'EMAIL', NEW.email,
+       'Welcome to SkyMind!',
+       'Hi ' || v_name || '! Your AI-powered flight companion is ready.',
+       'welcome_email');
+  END IF;
 
   RETURN NEW;
 END;

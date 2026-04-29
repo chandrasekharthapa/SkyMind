@@ -108,7 +108,7 @@ async def test_sms(req: TestSMSRequest):
     return {"success": ok, "recipient": phone}
 
 # =========================================================
-# 🛡️ OTP FLOW (Multi-Channel Fallback)
+# OTP FLOW (Multi-Channel Fallback)
 # =========================================================
 @router.post("/send-otp")
 async def send_otp(req: OTPSendRequest):

@@ -1,5 +1,6 @@
 # ============================================================
 # SkyMind Backend — Requirements (2026 Production)
+# Amadeus API removed — using self-contained data pipeline
 # ============================================================
 
 # --- Core Framework ---

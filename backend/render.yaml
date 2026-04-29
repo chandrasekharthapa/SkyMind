@@ -17,18 +17,6 @@ services:
       - key: DATABASE_URL
         sync: false
 
-      # ── Flight APIs ────────────────────────────────────
-      - key: AMADEUS_CLIENT_ID
-        sync: false
-      - key: AMADEUS_CLIENT_SECRET
-        sync: false
-      - key: AMADEUS_API_KEY
-        sync: false
-      - key: AMADEUS_API_SECRET
-        sync: false
-      - key: AVIATIONSTACK_API_KEY
-        sync: false
-
       # ── Payment ────────────────────────────────────────
       - key: RAZORPAY_KEY_ID
         sync: false
@@ -56,10 +44,8 @@ services:
         value: "whatsapp:+14155238886"
 
       # ── CORS ───────────────────────────────────────────
-      # Comma-separated list of allowed frontend origins
       - key: CORS_ORIGINS
         sync: false
-        # Example value: https://skymind.vercel.app,https://www.skymind.app
 
       # ── Security ───────────────────────────────────────
       - key: SECRET_KEY

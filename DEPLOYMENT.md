@@ -34,7 +34,7 @@ cd backend
 # Copy and fill env
 cp .env.example .env
 # Fill: SUPABASE_URL, SUPABASE_SERVICE_KEY, DATABASE_URL
-# Optional: AMADEUS_*, RAZORPAY_*, GMAIL_*, FAST2SMS_API_KEY
+# Optional: RAZORPAY_*, GMAIL_*, FAST2SMS_API_KEY
 
 pip install -r requirements.txt
 
@@ -71,8 +71,7 @@ npm run dev
 | `SUPABASE_SERVICE_KEY` | ✅ | Service role key (not anon) |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string for ML training |
 | `SECRET_KEY` | ✅ | JWT secret — generate with `openssl rand -hex 32` |
-| `AMADEUS_CLIENT_ID` | ⚡ | Amadeus API client ID (free sandbox) |
-| `AMADEUS_CLIENT_SECRET` | ⚡ | Amadeus API client secret |
+
 | `RAZORPAY_KEY_ID` | ⚡ | Razorpay key ID (`rzp_test_*` for sandbox) |
 | `RAZORPAY_KEY_SECRET` | ⚡ | Razorpay secret |
 | `GMAIL_USER` | 📧 | Gmail address for notifications |

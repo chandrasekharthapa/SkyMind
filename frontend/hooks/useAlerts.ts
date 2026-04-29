@@ -177,10 +177,10 @@ export function useAlerts(userId?: string): UseAlertsReturn {
 }
 
 function _fireBrowserNotification(alert: AlertRecord): void {
-  const title = `🎯 Price Alert: ${alert.origin} → ${alert.destination}`;
-  const body = `Price ₹${
+  const title = `Price Alert: ${alert.origin} to ${alert.destination}`;
+  const body = `Price INR ${
     alert.current_price?.toLocaleString("en-IN") ?? "--"
-  } hit your target of ₹${alert.target_price.toLocaleString("en-IN")}!`;
+  } hit your target of INR ${alert.target_price.toLocaleString("en-IN")}!`;
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission === "granted") {
     new Notification(title, { body, icon: "/favicon.ico" });

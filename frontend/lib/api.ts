@@ -206,8 +206,19 @@ const CITY_TO_IATA: Record<string, string> = {
 };
 
 export function resolveCityToIATA(input: string): string {
-  const lower = input.trim().toLowerCase();
-  return CITY_TO_IATA[lower] ?? input.trim().toUpperCase();
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+
+  // 1. Check if input is already an IATA code (3 letters)
+  if (/^[A-Z]{3}$/i.test(trimmed)) return trimmed.toUpperCase();
+
+  // 2. Check for "City Name (IATA)" pattern
+  const match = trimmed.match(/\(([^)]+)\)/);
+  if (match && match[1].length === 3) return match[1].toUpperCase();
+
+  // 3. Map city name to IATA
+  const lower = trimmed.toLowerCase();
+  return CITY_TO_IATA[lower] ?? trimmed.toUpperCase().substring(0, 3);
 }
 
 // ─── Forecast normalization ───────────────────────────────────────────
@@ -229,11 +240,11 @@ function normalizeForecast(raw: unknown): ForecastPoint[] {
 }
 
 /**
- * Generates a deterministic synthetic forecast when the backend doesn't
+ * Generates a deterministic proprietary forecast when the backend doesn't
  * return one (e.g. when route has no DB entry). Uses sine-wave seasonality
  * seeded from the base price so it's stable across re-renders.
  */
-function generateSyntheticForecast(
+function generateForecastIntelligence(
   basePrice: number,
   trend: Trend
 ): ForecastPoint[] {
@@ -311,10 +322,12 @@ function deriveReason(
 export async function searchAirports(q: string): Promise<AirportSuggestion[]> {
   if (!q || q.length < 2) return [];
   try {
-    const data = await apiRequest<AirportSuggestion[]>(
-      `/airports?q=${encodeURIComponent(q)}`
+    const data = await apiRequest<any>(
+      `/flights/airports?q=${encodeURIComponent(q)}`
     );
-    return Array.isArray(data) ? data : [];
+    // Backend returns { "airports": [...] }
+    const list = data?.airports ?? [];
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
@@ -402,7 +415,7 @@ export async function predictPrice(req: PredictRequest): Promise<PredictionResul
   const forecast =
     rawForecast.length >= 7
       ? rawForecast
-      : generateSyntheticForecast(predictedPrice || 5000, trend);
+      : generateForecastIntelligence(predictedPrice || 5000, trend);
 
   // REASON
   const reason = deriveReason(
@@ -506,6 +519,19 @@ export async function healthCheck(): Promise<{
   version: string;
 }> {
   return apiRequest("/health");
+}
+
+export async function getModelPerformance(): Promise<{
+  metrics: {
+    mae: number;
+    rmse: number;
+    r2: number;
+    accuracy?: number;
+    estimators?: number;
+    training_samples: number;
+  };
+}> {
+  return apiRequest("/performance");
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────

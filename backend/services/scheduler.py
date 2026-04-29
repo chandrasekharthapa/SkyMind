@@ -1,14 +1,10 @@
 """
 SkyMind — Background Scheduler
-Updated to support 2026 Weighted AI Retraining and Live Data Ingestion.
-
-FIX: _collect_batch now guards against the missing mmt_scraper module.
-     If the scraper isn't implemented yet the job logs a warning and exits
-     cleanly instead of crashing the APScheduler thread silently.
+Updated for self-contained data pipeline (no external APIs).
+Handles: price alert checking, model retraining, synthetic data ingestion.
 """
 
 import logging
-import time
 import asyncio
 import random
 from datetime import datetime, timedelta, timezone
@@ -19,169 +15,82 @@ from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
 
-# Initialize scheduler with IST timezone
 _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
-
-# ── Route batches ─────────────────────────────────────────
-
+# Route batches for synthetic data ingestion
 ROUTE_BATCHES = [
-
-    # 🔥 Batch 1
-    [
-        ("DEL", "BOM"), ("BOM", "DEL"),
-        ("DEL", "BLR"), ("BLR", "DEL"),
-        ("DEL", "HYD"), ("HYD", "DEL"),
-    ],
-
-    # 🔥 Batch 2
-    [
-        ("DEL", "CCU"), ("CCU", "DEL"),
-        ("DEL", "MAA"), ("MAA", "DEL"),
-        ("BOM", "BLR"), ("BLR", "BOM"),
-    ],
-
-    # 🔥 Batch 3
-    [
-        ("BOM", "HYD"), ("HYD", "BOM"),
-        ("BLR", "HYD"), ("HYD", "BLR"),
-        ("BLR", "MAA"), ("MAA", "BLR"),
-    ],
-
-    # 🔥 Batch 4
-    [
-        ("BOM", "MAA"), ("MAA", "BOM"),
-        ("BBI", "DEL"), ("DEL", "BBI"),
-        ("BBI", "BOM"), ("BOM", "BBI"),
-    ],
-
-    # 🔥 Batch 5
-    [
-        ("BBI", "BLR"), ("BLR", "BBI"),
-        ("BBI", "HYD"), ("HYD", "BBI"),
-        ("CCU", "BOM"), ("BOM", "CCU"),
-    ],
-
-    # 🔥 Batch 6
-    [
-        ("CCU", "BLR"), ("BLR", "CCU"),
-        ("MAA", "HYD"), ("HYD", "MAA"),
-    ],
+    [("BBI", "DEL"), ("DEL", "BBI"), ("BBI", "BOM"), ("BOM", "BBI"), ("DEL", "BOM"), ("BOM", "DEL")],
+    [("DEL", "BLR"), ("BLR", "DEL"), ("DEL", "HYD"), ("HYD", "DEL"), ("BOM", "BLR"), ("BLR", "BOM")],
+    [("DEL", "MAA"), ("MAA", "DEL"), ("DEL", "CCU"), ("CCU", "DEL"), ("BOM", "HYD"), ("HYD", "BOM")],
+    [("BOM", "MAA"), ("MAA", "BOM"), ("BLR", "HYD"), ("HYD", "BLR"), ("BLR", "MAA"), ("MAA", "BLR")],
+    [("DEL", "DXB"), ("DXB", "DEL"), ("BOM", "DXB"), ("DXB", "BOM"), ("DEL", "SIN"), ("SIN", "DEL")],
+    [("DEL", "DOH"), ("DOH", "DEL"), ("DEL", "LHR"), ("LHR", "DEL"), ("BOM", "SIN"), ("SIN", "BOM")],
 ]
 
-DATE_BUCKETS = [1, 2, 3, 4, 5, 6, 7, 9, 10, 14, 17, 20, 21, 25, 28, 30]
+DATE_BUCKETS = [1, 2, 3, 5, 7, 10, 14, 21, 28, 30]
 
 
-# ── MMT SCRAPER TASK ─────────────────────────────────────
+# ── SYNTHETIC DATA INGESTION ──────────────────────────────────────────
 
-def _collect_batch(batch_index: int) -> None:
+def _ingest_synthetic_batch(batch_index: int) -> None:
     """
-    Scrape MakeMyTrip for one batch.
-
-    FIX: Guards the import of services.mmt_scraper which may not yet be
-    implemented. Previously this would raise ImportError inside the
-    APScheduler thread and fail silently, making it very hard to debug.
-    Now it logs a clear warning and returns early.
+    Generate synthetic price data and persist to Supabase price_history.
+    Replaces the former Amadeus/MMT scraper jobs.
+    Uses the internal FlightDataService — always succeeds.
     """
-    try:
-        from services.mmt_scraper import scrape_mmt  # type: ignore[import]
-    except ImportError:
-        logger.warning(
-            "[Scheduler] services.mmt_scraper not found — "
-            "skipping batch %d. Implement the scraper or remove this job.",
-            batch_index,
-        )
-        return
-
-    logger.info(f"🛫 [MMT] Scraping batch {batch_index}...")
+    logger.info(f"[Scheduler] Ingesting synthetic data batch {batch_index}...")
 
     try:
+        from services.flight_data_service import flight_data_service
         from database.database import database as db
 
         routes = ROUTE_BATCHES[batch_index % len(ROUTE_BATCHES)]
         today = datetime.now(timezone.utc)
 
-        # Shuffle routes (anti-detection)
         random.shuffle(routes)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
         for origin, destination in routes:
             for days_out in DATE_BUCKETS:
-
                 target_date = (today + timedelta(days=days_out)).strftime("%Y-%m-%d")
 
                 try:
-                    data = loop.run_until_complete(
-                        scrape_mmt(origin, destination, target_date)
+                    # Generate training records for this route+date
+                    records = flight_data_service.format_for_training(
+                        origin=origin,
+                        destination=destination,
+                        departure_date=target_date,
                     )
 
-                    if not data:
-                        logger.warning(f"[MMT] No data for {origin}-{destination}")
-                        continue
-
-                    insert_batch = []
-
-                    for row in data:
-                        try:
-                            price = float(row["price"])
-                            if price < 1000:
-                                continue
-
-                            dep_date_obj = today + timedelta(days=days_out)
-                            calc_urgency = round(1 / (days_out + 1), 4)
-
-                            insert_batch.append({
-                                "origin_code": origin,
-                                "destination_code": destination,
-                                "airline_code": row.get("airline_code", "AI"),
-                                "flight_number": "UNK",
-                                "cabin_class": "Economy",
-                                "price": price,
-                                "currency": "INR",
-                                "departure_date": target_date,
-                                "days_until_dep": days_out,
-                                "day_of_week": dep_date_obj.weekday(),
-                                "month": dep_date_obj.month,
-                                "week_of_year": dep_date_obj.isocalendar()[1],
-                                "is_holiday": False,
-                                "is_weekend": dep_date_obj.weekday() >= 5,
-                                "seats_available": 50,
-                                "recorded_at": datetime.now(timezone.utc).isoformat(),
-                                "is_live": True,
-                                "training_weight": 2.0,
-                                "urgency": calc_urgency,
-                            })
-
-                        except Exception:
-                            continue
-
-                    if insert_batch:
-                        db.supabase.table("price_history").insert(insert_batch).execute()
-                        logger.info(
-                            f"   ✅ [MMT] Saved {len(insert_batch)} rows for {origin}-{destination}"
+                    if records:
+                        db.supabase.table("price_history").insert(records).execute()
+                        logger.debug(
+                            f"   Ingested {len(records)} records: {origin}→{destination} on {target_date}"
                         )
 
-                    # Random delay (anti-block)
-                    time.sleep(random.uniform(4, 7))
-
                 except Exception as route_err:
-                    logger.warning(f"[MMT] Route {origin}→{destination} failed: {route_err}")
+                    logger.warning(
+                        f"   Batch {batch_index} route {origin}→{destination}: {route_err}"
+                    )
 
-        loop.close()
+        logger.info(f"[Scheduler] Batch {batch_index} complete.")
 
     except Exception as exc:
-        logger.error(f"[MMT] Batch {batch_index} failed: {exc}")
+        logger.error(f"[Scheduler] Batch {batch_index} failed: {exc}")
 
 
-# ── EXISTING TASKS (UNCHANGED) ───────────────────────────
+# ── PRICE ALERT CHECKER ───────────────────────────────────────────────
 
 def _check_price_alerts() -> None:
-    logger.info("⏰ Checking price alerts...")
+    """
+    Check active price alerts against latest synthetic prices.
+    Sends notifications when target price is reached.
+    """
+    logger.info("[Scheduler] Checking price alerts...")
     try:
         from services.notifications import dispatcher
+        from services.flight_data_service import flight_data_service, ROUTE_BASE_PRICES
         from database.database import database as db
+        from datetime import date
 
         res = (
             db.supabase.table("price_alerts")
@@ -190,70 +99,87 @@ def _check_price_alerts() -> None:
             .execute()
         )
 
+        today = date.today()
+
         for alert in res.data or []:
             try:
-                ph = (
-                    db.supabase.table("price_history")
-                    .select("price")
-                    .eq("origin_code", alert["origin_code"])
-                    .eq("destination_code", alert["destination_code"])
-                    .order("recorded_at", desc=True)
-                    .limit(1)
-                    .execute()
-                )
-                if not ph.data:
+                origin = alert.get("origin_code", "")
+                destination = alert.get("destination_code", "")
+                dep_date = alert.get("departure_date")
+
+                if not origin or not destination:
                     continue
 
-                current_price = float(ph.data[0]["price"])
-                target_price = float(alert["target_price"])
+                # Get estimated current price from synthetic engine
+                if dep_date:
+                    try:
+                        dep_date_obj = datetime.strptime(str(dep_date), "%Y-%m-%d").date()
+                        days_until = max(0, (dep_date_obj - today).days)
+                    except Exception:
+                        days_until = 30
+                else:
+                    days_until = 30
 
+                # Use base price with urgency factor as current price estimate
+                base = ROUTE_BASE_PRICES.get((origin, destination), 5000)
+                urgency_factor = 1.0 + max(0, (7 - days_until) / 7) * 0.35
+                current_price = round(base * urgency_factor / 50) * 50
+
+                target_price = float(alert.get("target_price", 0))
+
+                # Update last known price
                 db.supabase.table("price_alerts").update(
                     {"last_price": current_price}
                 ).eq("id", alert["id"]).execute()
 
+                # Trigger notification if target met
                 if current_price <= target_price:
                     dispatcher.send_price_alert(alert, current_price)
                     db.supabase.table("price_alerts").update(
                         {"triggered_count": (alert.get("triggered_count") or 0) + 1}
                     ).eq("id", alert["id"]).execute()
 
-            except Exception:
+            except Exception as alert_err:
+                logger.debug(f"Alert processing error: {alert_err}")
                 continue
 
     except Exception as exc:
         logger.error(f"Alert check failed: {exc}")
 
 
+# ── MODEL RETRAINING ──────────────────────────────────────────────────
+
 def _retrain_models() -> None:
-    logger.info("🤖 Starting Daily XGBoost Retraining...")
+    """Retrain XGBoost model on latest price history data."""
+    logger.info("[Scheduler] Starting daily XGBoost retraining...")
     try:
         from ml.price_model import get_predictor
         predictor = get_predictor()
-
         predictor.train()
         predictor.load()
-
-        logger.info("✅ SkyMind AI updated with latest data.")
+        logger.info("[Scheduler] Model retrained successfully.")
     except Exception as exc:
-        logger.error(f"Retraining failed: {exc}")
+        logger.error(f"[Scheduler] Retraining failed: {exc}")
 
 
-# ── STARTUP ─────────────────────────────────────────────
+# ── SCHEDULER STARTUP ─────────────────────────────────────────────────
 
 def start_scheduler() -> None:
     if _scheduler.running:
         logger.info("Scheduler already running.")
         return
 
+    # Synthetic data ingestion — staggered across the day
     for i in range(len(ROUTE_BATCHES)):
         _scheduler.add_job(
-            _collect_batch,
-            CronTrigger(hour=1 + i // 3, minute=(i * 20) % 60),
+            _ingest_synthetic_batch,
+            CronTrigger(hour=2 + i, minute=15),
             args=[i],
-            id=f"collect_batch_{i}",
+            id=f"ingest_batch_{i}",
             replace_existing=True,
         )
 
+    # Price alert checks every 30 minutes
     _scheduler.add_job(
         _check_price_alerts,
         IntervalTrigger(minutes=30),
@@ -261,6 +187,7 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
+    # Daily model retraining at 5am IST
     _scheduler.add_job(
         _retrain_models,
         CronTrigger(hour=5, minute=0),
@@ -269,4 +196,4 @@ def start_scheduler() -> None:
     )
 
     _scheduler.start()
-    logger.info("🚀 SkyMind Background Scheduler active.")
+    logger.info("[Scheduler] SkyMind background scheduler active.")

@@ -11,7 +11,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from xgboost import XGBRegressor
 
 logger = logging.getLogger(__name__)
@@ -53,56 +53,58 @@ class PricePredictor:
         ]
 
         self.encoders: dict = {}
+        self.metrics: dict = {}
         self._trained = False
 
     # ── Train ─────────────────────────────────────────────────────────
     def train(self) -> None:
         from database.database import database
 
-        logger.info("🚀 Loading training dataset…")
+        logger.info("Loading training dataset…")
         df = database.get_training_dataset()
-                # =========================================================
-        # 🔥 DATA FIXES (SAFE + IMPORTANT)
+        
+        # =========================================================
+        # DATA FIXES (SAFE + IMPORTANT)
         # =========================================================
 
         # Ensure recorded_at is datetime
-        if "recorded_at" in df.columns:
+        if df is not None and "recorded_at" in df.columns:
             df["recorded_at"] = pd.to_datetime(df["recorded_at"], errors="coerce")
 
         # Sort correctly for time learning
-        df = df.sort_values("recorded_at")
+        if df is not None and "recorded_at" in df.columns:
+            df = df.sort_values("recorded_at")
 
         # ── FIX FAKE SEATS ─────────────────────────
-        df["seats_available"] = np.where(
-            df["is_live"] == 1.0,
-            df["seats_available"],
-            50
-        )
-        df["seats_available"] = df["seats_available"].clip(1, 100)
+        if df is not None and "is_live" in df.columns and "seats_available" in df.columns:
+            df["seats_available"] = np.where(
+                df["is_live"] == 1.0,
+                df["seats_available"],
+                50
+            )
+            df["seats_available"] = df["seats_available"].clip(1, 100)
 
         # ── FIX DEMAND ─────────────────────────────
-        df["demand_score"] = np.where(
-            df["is_live"] == 1.0,
-            df["demand_score"],
-            0.5
-        )
+        if df is not None and "is_live" in df.columns and "demand_score" in df.columns:
+            df["demand_score"] = np.where(
+                df["is_live"] == 1.0,
+                df["demand_score"],
+                0.5
+            )
 
         # ── ADD TIME INTELLIGENCE ─────────────────
-        df["price_lag_1"] = df.groupby(
-            ["origin_code", "destination_code"]
-        )["price"].shift(1)
+        if df is not None and "price" in df.columns:
+            df["price_lag_1"] = df.groupby(["origin_code", "destination_code"])["price"].shift(1)
+            df["price_lag_3"] = df.groupby(["origin_code", "destination_code"])["price"].shift(3)
 
-        df["price_lag_3"] = df.groupby(
-            ["origin_code", "destination_code"]
-        )["price"].shift(3)
+            df["price_change_1d"] = df["price"] - df["price_lag_1"]
+            df["price_change_3d"] = df["price"] - df["price_lag_3"]
 
-        df["price_change_1d"] = df["price"] - df["price_lag_1"]
-        df["price_change_3d"] = df["price"] - df["price_lag_3"]
-
-        df = df.fillna(0)
+        if df is not None:
+            df = df.fillna(0)
 
         if df is None or len(df) < 200:
-            logger.warning("⚠️  Insufficient data — using existing model if available.")
+            logger.warning("Insufficient data — using existing model if available.")
             if os.path.exists(MODEL_PATH):
                 self.load()
             return
@@ -135,10 +137,16 @@ class PricePredictor:
 
         # ── Label encoding ───────────────────────────────────────────
         for col in ("origin_code", "destination_code", "airline_code"):
+            if col not in df.columns:
+                df[col] = "UNKNOWN"
             df[col] = df[col].astype(str).str.upper()
             unique_vals = sorted(df[col].unique())
             self.encoders[col] = {v: i + 1 for i, v in enumerate(unique_vals)}
             df[col] = df[col].map(self.encoders[col]).fillna(0).astype(int)
+
+        for col in self.feature_cols:
+            if col not in df.columns:
+                df[col] = 0
 
         X = df[self.feature_cols]
         y = df["price"]
@@ -167,14 +175,23 @@ class PricePredictor:
         mape = float(np.mean(np.abs((y_test.values - preds) / np.maximum(y_test.values, 1))) * 100)
 
         logger.info(
-            f"📊 Model performance — MAE: ₹{mae:.0f}  RMSE: ₹{rmse:.0f}  MAPE: {mape:.1f}%  Accuracy: {100-mape:.1f}%"
+            f"Model performance — MAE: ₹{mae:.0f}  RMSE: ₹{rmse:.0f}  MAPE: {mape:.1f}%  Accuracy: {100-mape:.1f}%"
         )
+        
+        self.metrics = {
+            "mae": float(mae),
+            "rmse": float(rmse),
+            "r2": float(r2_score(y_test, preds)),
+            "accuracy": float((100 - mape) / 100),
+            "estimators": 900,
+            "training_samples": len(df)
+        }
 
         # ── Save ─────────────────────────────────────────────────────
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
         with open(MODEL_PATH, "wb") as fh:
-            pickle.dump({"model": self.model, "encoders": self.encoders}, fh)
-        logger.info(f"💾 Model saved → {MODEL_PATH}")
+            pickle.dump({"model": self.model, "encoders": self.encoders, "metrics": self.metrics}, fh)
+        logger.info(f"Model saved → {MODEL_PATH}")
 
     # ── Load ──────────────────────────────────────────────────────────
     def load(self) -> None:
@@ -182,11 +199,25 @@ class PricePredictor:
             data = pickle.load(fh)
         self.model = data["model"]
         self.encoders = data["encoders"]
+        self.metrics = data.get("metrics", {})
         self._trained = True
-        logger.info("✅ Price Predictor loaded from disk.")
+        logger.info("Price Predictor loaded from disk.")
+
+    def ensure_ready(self) -> None:
+        if self._trained:
+            return
+        if os.path.exists(MODEL_PATH):
+            self.load()
+            return
+        self.train()
+
+    def get_performance(self) -> dict:
+        self.ensure_ready()
+        return self.metrics
 
     # ── Predict ───────────────────────────────────────────────────────
     def predict(self, features: dict) -> float:
+        self.ensure_ready()
         df = pd.DataFrame([features])
 
         # Standardizing inputs
@@ -212,8 +243,12 @@ class PricePredictor:
         df = df.fillna(0)
 
         for col in ("origin_code", "destination_code", "airline_code"):
-            val = str(df[col].iloc[0]).upper()
+            val = str(df.get(col, pd.Series([""])).iloc[0]).upper()
             df[col] = self.encoders.get(col, {}).get(val, 0)
+            
+        for col in self.feature_cols:
+            if col not in df.columns:
+                df[col] = 0
 
         try:
             X = df[self.feature_cols]
@@ -236,6 +271,48 @@ class PricePredictor:
                 16,
             ) % 10000
             return float(3000 + seed)
+
+    # ── Forecast (Needed for backend) ─────────────────────────────────
+    def forecast(self, snapshot: dict, days: int = 30) -> list:
+        from datetime import date, timedelta
+        from services.flight_data_service import parse_date
+
+        self.ensure_ready()
+        departure = parse_date(snapshot["departure_date"])
+        today = date.today()
+        forecast = []
+
+        for offset in range(days):
+            target_date = today + timedelta(days=offset + 1)
+            days_until_dep = max(0, (departure - target_date).days)
+            features = {
+                "origin_code": snapshot["origin"],
+                "destination_code": snapshot["destination"],
+                "airline_code": snapshot["airline"],
+                "days_until_dep": days_until_dep,
+                "day_of_week": departure.weekday(),
+                "month": departure.month,
+                "week_of_year": departure.isocalendar().week,
+                "hour_of_day": 12,
+                "is_peak_hour": 0,
+                "seats_available": max(1, int(snapshot.get("seats_available", 50)) - offset // 2),
+                "demand_score": min(1.0, float(snapshot.get("demand_score", 0.5)) + offset * 0.01),
+                "seasonality_factor": float(snapshot.get("seasonality_factor", 1.0)),
+                "price_change_1d": 0,
+                "price_change_3d": 0,
+                "is_live": True,
+            }
+            price = self.predict(features)
+            band = max(120.0, price * 0.06)
+            forecast.append({
+                "day": offset + 1,
+                "date": target_date.isoformat(),
+                "price": price,
+                "lower": round(max(800.0, price - band), 2),
+                "upper": round(price + band, 2),
+            })
+
+        return forecast
 
 
 # ── Singleton ─────────────────────────────────────────────────────────

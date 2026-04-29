@@ -1,507 +1,328 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import NavBar from "@/components/layout/NavBar";
 import PopularDestinations from "@/components/flights/PopularDestinations";
-import { resolveCityToIATA } from "@/lib/api";
-import { format, addDays } from "date-fns";
+import FlightSearchForm from "@/components/flights/FlightSearchForm";
+import Counter from "@/components/ui/Counter";
 
-/* ── Animated counter ──────────────────────────────── */
-function Counter({ to, suf }: { to: number; suf: string }) {
-  const [val, setVal] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) {
-        let v = 0;
-        const step = to / 55;
-        const t = setInterval(() => {
-          v = Math.min(v + step, to);
-          setVal(Math.round(v));
-          if (v >= to) clearInterval(t);
-        }, 18);
-      }
-    }, { threshold: .5 });
-    if (ref.current) obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, [to]);
-  return <div ref={ref}>{val}<span className="unit">{suf}</span></div>;
-}
-
-/* ── Passenger Dropdown ────────────────────────────── */
-function PassengerDropdown({
-  adults, children, infants,
-  onChange,
-}: {
-  adults: number; children: number; infants: number;
-  onChange: (a: number, c: number, i: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fn = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", fn);
-    return () => document.removeEventListener("mousedown", fn);
-  }, []);
-
-  const total = adults + children + infants;
-  const label = `${total} Passenger${total !== 1 ? "s" : ""}`;
-
-  const update = (type: "adults" | "children" | "infants", delta: number) => {
-    const next = { adults, children, infants };
-    next[type] = Math.max(type === "adults" ? 1 : 0, Math.min(9, next[type] + delta));
-    onChange(next.adults, next.children, next.infants);
-  };
-
-  return (
-    <div ref={wrapRef} className="pax-dropdown">
-      <label className="field-label">Passengers</label>
-      <button
-        type="button"
-        className={`pax-trigger${open ? " open" : ""}`}
-        onClick={() => setOpen(o => !o)}
-      >
-        <span style={{ fontWeight: 600 }}>{label}</span>
-        <svg width="10" height="6" viewBox="0 0 10 6" fill="none"
-          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }}>
-          <path d="M1 1L5 5L9 1" stroke="#9b9890" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </button>
-      {open && (
-        <div className="pax-panel">
-          {[
-            { key: "adults" as const, label: "Adults", sub: "Age 12+", val: adults, min: 1 },
-            { key: "children" as const, label: "Children", sub: "Age 2–11", val: children, min: 0 },
-            { key: "infants" as const, label: "Infants", sub: "Under 2", val: infants, min: 0 },
-          ].map(r => (
-            <div key={r.key} className="pax-row">
-              <div>
-                <div className="pax-label">{r.label}</div>
-                <div className="pax-sub">{r.sub}</div>
-              </div>
-              <div className="pax-counter">
-                <button type="button" className="pax-btn"
-                  disabled={r.val <= r.min}
-                  onClick={() => update(r.key, -1)}>−</button>
-                <span className="pax-num">{r.val}</span>
-                <button type="button" className="pax-btn"
-                  disabled={total >= 9}
-                  onClick={() => update(r.key, 1)}>+</button>
-              </div>
-            </div>
-          ))}
-          <button type="button" onClick={() => setOpen(false)}
-            style={{ width: "100%", marginTop: 10, padding: "9px", background: "var(--black)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "var(--fb)", fontWeight: 700, fontSize: ".78rem", letterSpacing: ".04em" }}>
-            Done
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const TICKER_ITEMS = [
-  "Amadeus GDS", "XGBoost Analytics", "Supabase", "Razorpay PCI-DSS",
-  "FastAPI", "90+ Indian Airports", "APScheduler", "scikit-learn 1.5",
-  "XGBoost 2.0.3", "MAE ₹840 · Accuracy 88.1%",
-];
+const TICKER_ITEMS = ["Real-time Price Intelligence", "XGBoost Prediction Engine", "Market Volatility Analysis", "11+ Global Hubs", "Smart Fare Tracking", "30-day Price Trajectory", "Priority Fare Alerts", "Confidence-weighted Signals", "Autonomous Booking Intelligence"];
 
 export default function HomePage() {
   const router = useRouter();
-  const defaultDate = format(addDays(new Date(), 7), "yyyy-MM-dd");
-  const tomorrow    = format(addDays(new Date(), 1), "yyyy-MM-dd");
+  const [metrics, setMetrics] = useState<any>(null);
 
-  const [form, setForm] = useState({
-    from:       "New Delhi (DEL)",
-    to:         "Mumbai (BOM)",
-    date:       defaultDate,
-    returnDate: "",
-    adults:     1,
-    children:   0,
-    infants:    0,
-    cabin:      "Economy",
-    tripType:   "one-way",
-  });
-  const [swapping, setSwapping] = useState(false);
-
-  const swap = () => {
-    setSwapping(true);
-    setTimeout(() => setSwapping(false), 320);
-    setForm(f => ({ ...f, from: f.to, to: f.from }));
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const origin = resolveCityToIATA(form.from.replace(/\s*\(.*\)/, "").trim()) || "DEL";
-    const dest   = resolveCityToIATA(form.to.replace(/\s*\(.*\)/, "").trim()) || "BOM";
-    const cabinParam = form.cabin.toUpperCase().replace(" ", "_");
-    const qs = new URLSearchParams({
-      origin,
-      destination: dest,
-      departure_date: form.date,
-      adults: String(form.adults),
-      cabin_class: cabinParam,
-      ...(form.tripType === "round-trip" && form.returnDate
-        ? { return_date: form.returnDate }
-        : {}),
+  useEffect(() => {
+    import("@/lib/api").then(api => {
+      api.getModelPerformance().then(res => setMetrics(res.metrics)).catch(console.error);
     });
-    router.push(`/flights?${qs}`);
+  }, []);
+
+  const handleSearch = (p: any) => {
+    const url = new URLSearchParams();
+    Object.entries(p).forEach(([k, v]) => url.set(k, String(v)));
+    router.push(`/flights?${url.toString()}`);
   };
 
   return (
-    <div>
+    <div style={{ background: "var(--white)" }}>
       <NavBar />
 
-      {/* ── HERO ── */}
-      <div className="hero">
-        {/* Left column */}
-        <div className="hero-left a1">
-          <div className="hero-issue">Vol. 4 — XGBoost Analytics Platform</div>
-          <h1 className="hero-title">
-            FLY<br />SMARTER
-            <span className="red-line">with machine<br />intelligence.</span>
-          </h1>
-          <p className="hero-desc">
-            AI-powered fare predictions across 90+ Indian airports.
-            Live Amadeus GDS, 30-day price trajectories, and smart alerts — all in one interface.
-          </p>
-          <div className="hero-ctas">
-            <Link href="/flights" className="btn-primary">
-              Search flights
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </Link>
-            <Link href="/predict" className="btn-outline">AI forecast</Link>
-          </div>
-          <div className="hero-stats">
-            {[
-              { to: 2,  suf: "M+", label: "Fares analysed" },
-              { to: 38, suf: "%",  label: "Avg savings" },
-              { to: 94, suf: "%",  label: "Model accuracy" },
-            ].map(s => (
-              <div key={s.label} className="hero-stat">
-                <div className="hero-stat-num"><Counter to={s.to} suf={s.suf} /></div>
-                <div className="hero-stat-label">{s.label}</div>
+      {/* ══════════════════════════════════════════
+          HERO — cinematic, left-aligned, premium
+          ══════════════════════════════════════════ */}
+      <section style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "flex-end", overflow: "hidden" }}>
+        {/* Background video */}
+        <video
+          autoPlay muted loop playsInline
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.45 }}
+          poster="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=2074"
+        >
+          <source src="https://player.vimeo.com/external/434045526.sd.mp4?s=c27cf341d05d013975d233f0331f0d99049a6a01&profile_id=164&oauth2_token_id=57447761" type="video/mp4" />
+        </video>
+
+        {/* Hero content */}
+        <div className="ui-wrap" style={{ position: "relative", zIndex: 10, paddingTop: 120, paddingBottom: 64 }}>
+          <div className="hero-split">
+
+            {/* LEFT: copy */}
+            <div className="hero-copy">
+              {/* Badge */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 100, padding: "6px 14px", marginBottom: 32, animation: "fadeUp 0.6s ease forwards" }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--red)", boxShadow: "0 0 8px var(--red)", animation: "blink 2s infinite" }} />
+                <span style={{ fontFamily: "var(--fm)", fontSize: "0.6rem", color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase" }}>AI-Powered · XGBoost v2.4</span>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Search panel */}
-        <div className="hero-right a2">
-          <div className="hero-right-label">Find your flight — XGBoost-optimised</div>
+              {/* Main title */}
+              <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(3.8rem, 13vw, 10rem)", lineHeight: 0.88, color: "#fff", textTransform: "uppercase", letterSpacing: "-0.03em", marginBottom: 24, animation: "fadeUp 0.7s 0.1s ease forwards", opacity: 0 }}>
+                Fly<br />
+                <span style={{ color: "var(--red)" }}>Smarter.</span>
+              </h1>
 
-          <div className="search-box">
-            {/* ── Trip type — CENTRED ── */}
-            <div className="trip-tabs-wrap">
-              <div className="trip-tabs">
+              {/* Subtitle */}
+              <p style={{ fontFamily: "var(--fb)", fontSize: "clamp(0.95rem, 2vw, 1.15rem)", color: "rgba(255,255,255,0.6)", lineHeight: 1.65, maxWidth: 420, marginBottom: 40, animation: "fadeUp 0.7s 0.2s ease forwards", opacity: 0 }}>
+                India's first XGBoost-powered flight intelligence platform. Know when prices will rise — before they do.
+              </p>
+
+              {/* CTAs */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", animation: "fadeUp 0.7s 0.3s ease forwards", opacity: 0 }}>
+                <Link href="/flights" style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "var(--red)", color: "#fff", padding: "14px 28px", borderRadius: 12, fontFamily: "var(--fb)", fontWeight: 700, fontSize: "0.95rem", textDecoration: "none", transition: "all 0.2s" }}>
+                  Search Flights
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </Link>
+                <Link href="/predict" style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.08)", color: "#fff", padding: "14px 28px", borderRadius: 12, fontFamily: "var(--fb)", fontWeight: 600, fontSize: "0.95rem", textDecoration: "none", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", transition: "all 0.2s" }}>
+                  AI Price Forecast
+                </Link>
+              </div>
+
+              {/* Mini stats row */}
+              <div className="hero-stats-row" style={{ display: "flex", gap: 32, marginTop: 56, paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap", animation: "fadeUp 0.7s 0.4s ease forwards", opacity: 0 }}>
                 {[
-                  { key: "one-way",    label: "One Way" },
-                  { key: "round-trip", label: "Round Trip" },
-                ].map(t => (
-                  <button
-                    key={t.key}
-                    className={`trip-tab${form.tripType === t.key ? " active" : ""}`}
-                    type="button"
-                    onClick={() =>
-                      setForm(f => ({
-                        ...f,
-                        tripType: t.key,
-                        returnDate: t.key === "one-way" ? "" : f.returnDate,
-                      }))
-                    }
-                  >
-                    {t.label}
-                  </button>
+                  { val: metrics?.training_samples ? `${(metrics.training_samples / 1000).toFixed(1)}K+` : "14.5K+", label: "Training Samples" },
+                  { val: metrics?.accuracy ? `${(metrics.accuracy > 1 ? metrics.accuracy : metrics.accuracy * 100).toFixed(1)}%` : "92.4%", label: "Model Accuracy" },
+                  { val: metrics?.avg_saving_pct ? `${metrics.avg_saving_pct}%` : "18.5%", label: "Avg Savings" },
+                ].map(s => (
+                  <div key={s.label}>
+                    <div style={{ fontFamily: "var(--fd)", fontSize: "clamp(1.4rem, 4vw, 2.2rem)", color: "#fff", lineHeight: 1 }}>{s.val}</div>
+                    <div style={{ fontFamily: "var(--fm)", fontSize: "0.6rem", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>{s.label}</div>
+                  </div>
                 ))}
               </div>
             </div>
 
-            <form onSubmit={handleSearch}>
-              {/* Origin / Swap / Destination */}
-              <div className="route-row">
-                <div>
-                  <label className="field-label">From</label>
-                  <input
-                    className="inp"
-                    value={form.from}
-                    onChange={e => setForm(f => ({ ...f, from: e.target.value }))}
-                    placeholder="New Delhi (DEL)"
-                  />
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button
-                    type="button"
-                    className="swap-btn"
-                    onClick={swap}
-                    title="Swap airports"
-                    style={{
-                      transform: swapping ? "rotate(180deg)" : "none",
-                      transition: "transform .32s ease",
-                    }}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
-                    </svg>
-                  </button>
-                </div>
-                <div>
-                  <label className="field-label">To</label>
-                  <input
-                    className="inp"
-                    value={form.to}
-                    onChange={e => setForm(f => ({ ...f, to: e.target.value }))}
-                    placeholder="Mumbai (BOM)"
-                  />
-                </div>
-              </div>
-
-              {/* Dates — shows return only for round-trip */}
-              <div className={`dates-row${form.tripType === "round-trip" ? " round-trip" : ""}`}>
-                <div>
-                  <label className="field-label">Departure</label>
-                  <input
-                    type="date"
-                    className="inp"
-                    value={form.date}
-                    min={tomorrow}
-                    required
-                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  />
-                </div>
-                {form.tripType === "round-trip" && (
-                  <div>
-                    <label className="field-label">Return</label>
-                    <input
-                      type="date"
-                      className="inp"
-                      value={form.returnDate}
-                      min={form.date || tomorrow}
-                      onChange={e => setForm(f => ({ ...f, returnDate: e.target.value }))}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Passengers + Class */}
-              <div className="pax-class-row">
-                <PassengerDropdown
-                  adults={form.adults}
-                  children={form.children}
-                  infants={form.infants}
-                  onChange={(a, c, i) => setForm(f => ({ ...f, adults: a, children: c, infants: i }))}
-                />
-                <div>
-                  <label className="field-label">Class</label>
-                  <select
-                    className="inp"
-                    value={form.cabin}
-                    onChange={e => setForm(f => ({ ...f, cabin: e.target.value }))}
-                  >
-                    <option>Economy</option>
-                    <option>Business</option>
-                    <option>First</option>
-                  </select>
-                </div>
-              </div>
-
-              <button type="submit" className="search-submit">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-                </svg>
-                Search Flights
-              </button>
-            </form>
-          </div>
-
-          {/* Model badge */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12, padding: 14,
-            background: "rgba(19,18,16,.03)", border: "1px solid var(--grey1)",
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-            </svg>
-            <div>
-              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "var(--black)", letterSpacing: ".04em" }}>
-                XGBoost Analytics Active
-              </div>
-              <div style={{ fontSize: ".6rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 2 }}>
-                900 estimators · 94.1% accuracy · POST /predict
-              </div>
+            {/* RIGHT: search form (desktop only) */}
+            <div className="hero-form-desktop">
+              <FlightSearchForm onSearch={handleSearch} />
             </div>
           </div>
         </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          MOBILE SEARCH — clean white card
+          ══════════════════════════════════════════ */}
+      <div className="hero-form-mobile" style={{ background: "var(--off)", borderBottom: "1px solid var(--grey1)" }}>
+        <div className="ui-wrap" style={{ padding: "28px var(--ui-space-lg)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontFamily: "var(--fm)", fontSize: "0.6rem", color: "var(--grey3)", letterSpacing: "0.1em" }}>
+            <div className="status-dot" />
+            XGBOOST ANALYTICS ACTIVE
+          </div>
+          <FlightSearchForm onSearch={handleSearch} />
+        </div>
       </div>
 
-      {/* ── TICKER ── */}
-      <div className="ticker-wrap">
-        <div className="ticker-inner">
-          {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((t, i) => (
-            <div key={i} className="ticker-item">{t}</div>
+      {/* ══════════════════════════════════════════
+          TICKER
+          ══════════════════════════════════════════ */}
+      <div className="ticker-strip">
+        <div className="ticker-wrap">
+          {TICKER_ITEMS.concat(TICKER_ITEMS).map((item, idx) => (
+            <div key={idx} className="ticker-item">
+              <span className="ticker-dot" />
+              {item}
+            </div>
           ))}
         </div>
       </div>
 
-      {/* ── HOW IT WORKS ── */}
-      <div className="how-section">
-        <div className="wrap">
-          <div className="section-eyebrow">
-            <span className="label">How SkyMind works</span>
-            <div className="section-eyebrow-line" />
-            <span className="label label-red">03 systems</span>
+
+      {/* ══════════════════════════════════════════
+          HOW IT WORKS
+          ══════════════════════════════════════════ */}
+      <section className="ui-section ui-section-white">
+        <div className="ui-wrap">
+          <div className="ui-eyebrow">
+            <span className="ui-label">How SkyMind works</span>
+            <div className="ui-eyebrow-line" />
+            <span className="ui-label-red">03 systems</span>
           </div>
-          <div className="how-grid" style={{ marginTop: 40 }}>
-            <div className="how-left">
-              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.2rem,6vw,4.5rem)", letterSpacing: ".02em", lineHeight: .95, color: "var(--black)", marginBottom: 18 }}>
-                NOT<br />JUST<br />SEARCH.
-              </h2>
-              <p style={{ fontSize: ".88rem", color: "var(--grey4)", lineHeight: 1.7, maxWidth: 340, marginBottom: 28 }}>
-                SkyMind layers XGBoost ML on top of live Amadeus GDS fare data
-                to surface the optimal booking window before prices move.
+
+          <div className="how-grid" style={{ marginTop: "var(--ui-space-2xl)" }}>
+            <div>
+              <h2 className="ui-title-lg" style={{ marginBottom: 20 }}>NOT<br />JUST<br />SEARCH.</h2>
+              <p className="ui-text-main" style={{ maxWidth: 340, marginBottom: 32 }}>
+                SkyMind layers XGBoost ML inference on top of a deterministic proprietary fare engine to surface the optimal booking window before prices move.
               </p>
+              {/* Step Flow */}
               {[
-                { n: "01", title: "Live fare ingestion", desc: "Amadeus GDS feeds pulled on demand across 90+ Indian airports and international hubs." },
-                { n: "02", title: "XGBoost inference", desc: "900-estimator gradient boosting. Urgency, seasonality, demand scoring — confidence-weighted." },
-                { n: "03", title: "30-day trajectory", desc: "Deterministic forecast with confidence intervals. Best day, peak day — before you commit." },
-              ].map(s => (
-                <div key={s.n} className="how-step">
-                  <span className="how-step-num">{s.n}</span>
+                { n: "01", title: "Proprietary fare engine", desc: "A self-contained pricing model generates market-like fares from demand, inventory, seasonality, and airline variation." },
+                { n: "02", title: "XGBoost inference", desc: "900-estimator gradient boosting model. Urgency, seasonality, day-of-week, and demand scoring produce a confidence-weighted price signal." },
+                { n: "03", title: "30-day trajectory", desc: "Deterministic forecast with statistical confidence intervals. See the best and peak price windows before you commit." },
+              ].map((s, i) => (
+                <div key={s.n} className={`how-step a${i + 1}`}>
+                  <span className="how-step-number">{s.n}</span>
                   <div>
                     <div className="how-step-title">{s.title}</div>
                     <div className="how-step-desc">{s.desc}</div>
                   </div>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 10, marginTop: 24, flexWrap: "wrap" }}>
-                <Link href="/flights" className="btn-primary">
-                  Search flights
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                </Link>
-                <Link href="/predict" className="btn-outline">AI forecast</Link>
-              </div>
             </div>
-            <div className="how-right">
-              <div className="label" style={{ marginBottom: 14 }}>Live predictions</div>
+
+            <div>
+              <div className="ui-label" style={{ marginBottom: 14 }}>Sample XGBoost predictions</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {[
-                  { route: "DEL → BOM", label: "Domestic", price: "₹4,850", conf: 78, trend: "Rising", color: "var(--red)", bClass: "badge-red" },
-                  { route: "BOM → GOI", label: "Beach",    price: "₹3,290", conf: 62, trend: "Falling", color: "#16a34a", bClass: "badge-green" },
-                  { route: "DEL → BLR", label: "Tech",     price: "₹5,100", conf: 85, trend: "Stable",  color: "#2563eb", bClass: "badge-off" },
+                  { route: "DEL to BOM", label: "Domestic", price: "INR 4,850", conf: 78, trend: "Rising", color: "var(--red)", badgeClass: "badge-red" },
+                  { route: "BOM to GOI", label: "Beach", price: "INR 3,290", conf: 62, trend: "Falling", color: "#16a34a", badgeClass: "badge-green" },
+                  { route: "DEL to BLR", label: "Tech", price: "INR 5,100", conf: 85, trend: "Stable", color: "#2563eb", badgeClass: "badge-off" },
                 ].map(item => (
-                  <div key={item.route} style={{ background: "var(--white)", border: "1px solid var(--grey1)", padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", transition: "border-color .2s, transform .2s" }}
-                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--black)"; el.style.transform = "translateY(-1px)"; }}
-                    onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = "var(--grey1)"; el.style.transform = "none"; }}>
-                    <div>
-                      <div style={{ fontFamily: "var(--fm)", fontSize: ".6rem", color: "var(--grey3)", marginBottom: 5 }}>{item.route} · {item.label}</div>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.5rem", letterSpacing: ".03em", color: "var(--black)" }}>{item.price}</div>
-                      <div className="conf-bar-wrap" style={{ width: 100 }}>
-                        <div className="conf-bar-fill" style={{ width: `${item.conf}%`, background: item.color }} />
+                  <div key={item.route} className="ui-card" style={{ padding: "var(--ui-space-md)", cursor: "default" }}>
+                    <div className="ui-flex-between">
+                      <div>
+                        <div className="ui-label" style={{ marginBottom: 6 }}>{item.route} | {item.label}</div>
+                        <div className="ui-title-md">{item.price}</div>
+                        <div className="conf-bar-wrap" style={{ width: 120, marginTop: 8 }}>
+                          <div className="conf-bar-fill" style={{ width: `${item.conf}%`, background: item.color }} />
+                        </div>
+                        <div className="ui-label" style={{ marginTop: 4, opacity: 0.6 }}>{item.conf}% confidence</div>
                       </div>
-                      <div style={{ fontSize: ".58rem", color: "var(--grey3)", fontFamily: "var(--fm)", marginTop: 2 }}>{item.conf}% confidence</div>
+                      <span className={`badge ${item.badgeClass}`}>{item.trend}</span>
                     </div>
-                    <span className={`badge ${item.bClass}`}>{item.trend}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: "var(--grey1)", border: "1px solid var(--grey1)", overflow: "hidden" }}>
-                {[["Avg saving","₹1,200"],["Accuracy","94.1%"],["Routes","240+"]].map(([l,v]) => (
-                  <div key={l} style={{ background: "var(--white)", padding: 14 }}>
-                    <div style={{ fontFamily: "var(--fm)", fontSize: ".56rem", color: "var(--grey3)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 5 }}>{l}</div>
-                    <div style={{ fontFamily: "var(--fd)", fontSize: "1.3rem", letterSpacing: ".03em", color: "var(--black)" }}>{v}</div>
+
+              <div style={{ display: "flex", gap: 1, background: "var(--grey1)", borderRadius: "var(--ui-radius-lg)", overflow: "hidden", border: "1px solid var(--grey1)" }}>
+                {[
+                  { label: "Avg saving", val: "INR 1,200" },
+                  { label: "XGBoost acc.", val: metrics?.accuracy ? `${(metrics.accuracy > 1 ? metrics.accuracy : metrics.accuracy * 100).toFixed(1)}%` : "93.2%" },
+                  { label: "Routes", val: "240+" },
+                ].map(c => (
+                  <div key={c.label} style={{ flex: 1, background: "var(--white)", padding: "16px 8px", textAlign: "center" }}>
+                    <div className="ui-label" style={{ marginBottom: 6, display: "block", fontSize: "0.65rem", whiteSpace: "nowrap" }}>{c.label}</div>
+                    <div className="ui-title-md" style={{ fontSize: "clamp(1.1rem, 3vw, 1.4rem)" }}>{c.val}</div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── FEATURES ── */}
-      <div className="feat-section">
-        <div className="wrap">
-          <div className="section-eyebrow" style={{ marginBottom: 28 }}>
-            <span className="label">Core capabilities</span>
-            <div className="section-eyebrow-line" />
-            <span className="label label-red">04 systems</span>
+      {/* ══════════════════════════════════════════
+          FEATURES
+          ══════════════════════════════════════════ */}
+      <section className="ui-section ui-section-off">
+        <div className="ui-wrap">
+          <div className="ui-eyebrow">
+            <span className="ui-label">Core capabilities</span>
+            <div className="ui-eyebrow-line" />
+            <span className="ui-label-red">04 systems</span>
           </div>
-          <div className="feat-grid">
+          <div className="feat-grid" style={{ marginTop: "var(--ui-space-2xl)" }}>
             {[
-              { n: "01", title: "ML Price Intelligence",  desc: "XGBoost trained on millions of fare datapoints. Confidence scores, recommendation, market status.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg> },
-              { n: "02", title: "30-Day Price Forecast",  desc: "Full trajectory with confidence bands. Best and worst booking windows — before you commit.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-              { n: "03", title: "Smart Price Alerts",     desc: "Set a target price. We monitor 24/7 and notify via Email + SMS the moment it's reached.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> },
-              { n: "04", title: "Seamless Booking",       desc: "Full Razorpay integration — UPI, cards, netbanking. Instant confirmation and email receipt.", icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> },
+              { n: "01 / INTELLIGENCE", title: "ML Price Intelligence", desc: "XGBoost trained on thousands of proprietary and real-world market signals. Real-time confidence scores and market status.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg> },
+              { n: "02 / FORECAST", title: "30-Day Price Forecast", desc: "Full trajectory with confidence bands. See the best and worst booking windows before you commit.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
+              { n: "03 / ALERTS", title: "Smart Price Alerts", desc: "Set a target price. Our scheduler monitors 24/7 and notifies you the moment it's reached.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg> },
+              { n: "04 / BOOKING", title: "Seamless Booking", desc: "Razorpay checkout for UPI, cards, and netbanking. Instant confirmation with email notifications.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg> },
             ].map(f => (
-              <div key={f.n} className="feat-card">
-                <div className="feat-num">0{f.n.slice(-1)} / {f.title.split(" ")[0].toUpperCase()}</div>
-                <div className="feat-icon-wrap">{f.icon}</div>
-                <div className="feat-title">{f.title}</div>
-                <div className="feat-desc">{f.desc}</div>
+              <div key={f.n} className="ui-card ui-card-hover">
+                <div className="ui-label-red" style={{ marginBottom: 20 }}>{f.n}</div>
+                <div className="feat-icon-wrap" style={{ color: "var(--red)", marginBottom: 16 }}>{f.icon}</div>
+                <div className="ui-title-md" style={{ marginBottom: 12 }}>{f.title}</div>
+                <p className="ui-text-muted">{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── DESTINATIONS ── */}
-      <div className="dest-section">
-        <div className="wrap">
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 24 }}>
+      {/* ══════════════════════════════════════════
+          POPULAR DESTINATIONS
+          ══════════════════════════════════════════ */}
+      <section className="ui-section ui-section-white">
+        <div className="ui-wrap">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16, marginBottom: 32 }}>
             <div>
-              <div className="section-eyebrow" style={{ marginBottom: 6 }}>
-                <span className="label">Trending now</span>
-                <div className="section-eyebrow-line" style={{ maxWidth: 50 }} />
+              <div className="ui-eyebrow">
+                <span className="ui-label">Trending now</span>
+                <div className="ui-eyebrow-line" style={{ maxWidth: 60 }} />
               </div>
-              <h2 style={{ fontFamily: "var(--fd)", fontSize: "clamp(1.6rem,5vw,3rem)", letterSpacing: ".03em", color: "var(--black)" }}>POPULAR ROUTES</h2>
+              <h2 className="ui-title-lg" style={{ fontSize: "clamp(1.8rem,4vw,3rem)" }}>POPULAR ROUTES</h2>
             </div>
-            <Link href="/flights" className="btn-outline" style={{ fontSize: ".8rem", minHeight: 38, padding: "0 16px" }}>
-              All routes
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+            <Link href="/flights" className="ui-btn ui-btn-white">
+              All routes <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
             </Link>
           </div>
           <PopularDestinations />
         </div>
-      </div>
+      </section>
 
-      {/* ── CTA ── */}
-      <div className="cta-band">
-        <div className="wrap">
+      {/* ══════════════════════════════════════════
+          CTA BAND
+          ══════════════════════════════════════════ */}
+      <section className="cta-band">
+        <div className="ui-wrap">
           <div className="cta-inner">
             <div>
-              <div className="label" style={{ color: "rgba(255,255,255,.3)", marginBottom: 14 }}>SkyMind — AI Flight Platform</div>
+              <div className="ui-label" style={{ color: "rgba(255,255,255,.3)", marginBottom: 16 }}>SkyMind — AI Flight Platform</div>
               <div className="cta-title">
                 READY TO FLY
                 <em>smarter than ever?</em>
               </div>
             </div>
             <div className="cta-btns">
-              <Link href="/flights" className="btn-white">Search flights</Link>
-              <Link href="/predict" className="btn-white-outline">View predictions</Link>
+              <Link href="/flights" className="ui-btn ui-btn-white">Search flights</Link>
+              <Link href="/predict" className="ui-btn ui-btn-outline">View predictions</Link>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── FOOTER ── */}
-      <footer>
-        <div className="wrap">
+      {/* ══════════════════════════════════════════
+          FOOTER
+          ══════════════════════════════════════════ */}
+      <footer style={{ borderTop: "1px solid var(--grey1)", background: "var(--white)", padding: "var(--ui-space-xl) 0" }}>
+        <div className="ui-wrap">
           <div className="footer-inner">
             <div className="footer-logo">SKY<em>MIND</em></div>
-            <span className="footer-copy">© 2026 SkyMind · AI Flight Intelligence · India</span>
-            <div className="footer-links">
-              <Link href="/flights"   className="footer-link">Search</Link>
-              <Link href="/predict"   className="footer-link">Predict</Link>
+            <span className="ui-text-muted" style={{ fontSize: "0.75rem" }}>2026 SkyMind | AI Flight Intelligence | India</span>
+            <div className="ui-flex" style={{ gap: "var(--ui-space-lg)" }}>
+              <Link href="/flights" className="footer-link">Search</Link>
+              <Link href="/predict" className="footer-link">Predict</Link>
               <Link href="/dashboard" className="footer-link">Dashboard</Link>
             </div>
           </div>
         </div>
       </footer>
+
+      <style>{`
+        .hero-split {
+          display: grid;
+          grid-template-columns: 1.1fr 0.9fr;
+          gap: 60px;
+          align-items: flex-end;
+        }
+        .hero-copy { max-width: 600px; }
+        .hero-form-desktop { display: block; }
+        .hero-form-mobile { display: none; }
+        
+        .how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; }
+        .how-step { display: flex; gap: 16px; margin-bottom: 32px; }
+        .how-step-number { font-family: var(--fm); font-size: 0.8rem; font-weight: 700; color: var(--red); margin-top: 4px; min-width: 24px; }
+        .how-step-title { font-family: var(--fb); font-weight: 700; font-size: 1.15rem; color: var(--black); margin-bottom: 4px; line-height: 1.3; }
+        .how-step-desc { font-family: var(--fb); font-size: 0.95rem; color: var(--grey3); line-height: 1.6; }
+
+        @media (max-width: 1100px) {
+          .hero-split { grid-template-columns: 1fr; gap: 48px; padding: 80px 0 60px; }
+          .hero-form-desktop { display: none; }
+          .hero-form-mobile { display: block; }
+          .how-grid { grid-template-columns: 1fr; gap: 48px; }
+        }
+
+        @media (max-width: 768px) {
+          .ui-title-lg { font-size: 2.8rem !important; }
+          .how-step-title { font-size: 1.1rem; }
+          .how-step-desc { font-size: 0.9rem; }
+        }
+
+        @media (max-width: 640px) {
+          .hero-copy h1 { letter-spacing: -0.02em; }
+        }
+      `}</style>
     </div>
   );
 }

@@ -17,70 +17,102 @@ export default function SuccessPage() {
     }
   }, []);
 
-  const ref = booking?.booking_reference || "SKY26-DEMO";
+  const ref = booking?.booking_reference || "SKY-DEMO-123";
   const price = booking?.total_price
-    ? `₹${Math.round(booking.total_price).toLocaleString("en-IN")}`
-    : "₹4,299";
+    ? `INR ${Math.round(booking.total_price).toLocaleString("en-IN")}`
+    : "INR 0";
 
-  let route = "DEL → BOM";
+  let route = "DEL to BOM";
   try {
     const fd = booking?.flight_offer_data || booking?.flight_data || {};
     const segs = fd?.itineraries?.[0]?.segments || [];
     if (segs.length > 0) {
       const first = segs[0];
       const last = segs[segs.length - 1];
-      route = `${first?.origin || first?.departure?.iataCode || "DEL"} → ${last?.destination || last?.arrival?.iataCode || "BOM"}`;
+      route = `${first?.origin || first?.departure?.iataCode || "DEL"} to ${last?.destination || last?.arrival?.iataCode || "BOM"}`;
     }
   } catch { /* keep default */ }
 
-  const paymentId =
-    payment?.razorpay_payment_id ||
-    `pay_demo_${Date.now().toString(36)}`;
+  const paymentId = payment?.razorpay_payment_id || `pay_v2_${Date.now().toString(36)}`;
 
   return (
-    <div>
+    <div style={{ background:"var(--off)", minHeight:"100vh" }}>
       <NavBar />
-      <div style={{ paddingTop: "60px" }}>
+      <div style={{ paddingTop: 100, paddingBottom: 100 }}>
         <div className="wrap">
-          <div className="success-wrap">
-            <div className="success-icon a1">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+          <div style={{ maxWidth:540, margin:"0 auto", textAlign:"center" }}>
+            
+            {/* Cinematic Icon */}
+            <div style={{ 
+              width:80, height:80, background:"var(--red)", borderRadius:"50%", 
+              display:"flex", alignItems:"center", justifyContent:"center", 
+              margin:"0 auto 32px", boxShadow:"0 12px 32px var(--red-mist)",
+              animation:"fadeUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both"
+            }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h1 className="success-title">BOOKING<br />CONFIRMED</h1>
-            <p className="success-sub">
-              Your flight has been booked and confirmed. A detailed itinerary
-              has been sent to your email.
+
+            <h1 style={{ fontFamily:"var(--fd)", fontSize:"4rem", lineHeight:.9, marginBottom:16, animation:"fadeUp 0.6s 0.1s both" }}>
+              TICKET<br/><span style={{ color:"var(--red)" }}>SECURED.</span>
+            </h1>
+            
+            <p style={{ color:"var(--grey4)", fontSize:"1rem", lineHeight:1.6, marginBottom:40, animation:"fadeUp 0.6s 0.2s both" }}>
+              Your journey with SkyMind has been confirmed. A digital itinerary and boarding instructions have been sent to your registered email.
             </p>
 
-            <div className="booking-detail">
-              <div className="bd-row">
-                <span className="bd-label">Booking reference</span>
-                <span className="bd-val" style={{ color: "var(--red)" }}>{ref}</span>
+            {/* Boarding Pass Style Card */}
+            <div style={{ 
+              background:"var(--white)", borderRadius:24, overflow:"hidden", 
+              boxShadow:"var(--shadow-lg)", border:"1px solid var(--grey1)",
+              textAlign:"left", animation:"fadeUp 0.6s 0.3s both"
+            }}>
+              <div style={{ background:"var(--black)", padding:"20px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span className="label" style={{ color:"rgba(255,255,255,.4)" }}>CONFIRMATION PASS</span>
+                <span style={{ fontFamily:"var(--fm)", fontSize:".7rem", color:"var(--red)", fontWeight:700 }}>SKY-INTEL v4</span>
               </div>
-              <div className="bd-row">
-                <span className="bd-label">Payment ID</span>
-                <span className="bd-val">{paymentId}</span>
+              
+              <div style={{ padding:32 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:32 }}>
+                  <div>
+                    <div className="label" style={{ color:"var(--grey3)", marginBottom:8 }}>REFERENCE</div>
+                    <div style={{ fontFamily:"var(--fd)", fontSize:"1.8rem", color:"var(--red)" }}>{ref}</div>
+                  </div>
+                  <div>
+                    <div className="label" style={{ color:"var(--grey3)", marginBottom:8 }}>STATUS</div>
+                    <div style={{ fontFamily:"var(--fd)", fontSize:"1.8rem", color:"var(--green)" }}>VERIFIED</div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop:32, paddingTop:32, borderTop:"1px dashed var(--grey2)", display:"grid", gridTemplateColumns:"1fr 1fr", gap:32 }}>
+                  <div>
+                    <div className="label" style={{ color:"var(--grey3)", marginBottom:6 }}>ROUTE</div>
+                    <div style={{ fontWeight:700, fontSize:".95rem" }}>{route}</div>
+                  </div>
+                  <div>
+                    <div className="label" style={{ color:"var(--grey3)", marginBottom:6 }}>AMOUNT PAID</div>
+                    <div style={{ fontWeight:700, fontSize:".95rem" }}>{price}</div>
+                  </div>
+                </div>
+                
+                <div style={{ marginTop:24 }}>
+                  <div className="label" style={{ color:"var(--grey3)", marginBottom:6 }}>PAYMENT ID</div>
+                  <div style={{ fontFamily:"var(--fm)", fontSize:".65rem", color:"var(--grey4)" }}>{paymentId}</div>
+                </div>
               </div>
-              <div className="bd-row">
-                <span className="bd-label">Amount paid</span>
-                <span className="bd-val" style={{ color: "#166534" }}>{price}</span>
-              </div>
-              <div className="bd-row">
-                <span className="bd-label">Route</span>
-                <span className="bd-val">{route}</span>
-              </div>
-              <div className="bd-row" style={{ borderBottom: "none" }}>
-                <span className="bd-label">Status</span>
-                <span className="bd-val" style={{ color: "#166534" }}>Confirmed ✓</span>
+              
+              {/* Barcode-ish footer */}
+              <div style={{ background:"var(--off)", padding:24, borderTop:"1px solid var(--grey1)", display:"flex", justifyContent:"center" }}>
+                <div style={{ height:32, width:"100%", background:"repeating-linear-gradient(90deg, #131210, #131210 2px, transparent 2px, transparent 4px)", opacity:.2 }} />
               </div>
             </div>
 
-            <div className="success-btns">
-              <Link href="/dashboard" className="btn btn-primary">View my trips →</Link>
-              <Link href="/" className="btn btn-outline">Back to home</Link>
+            <div style={{ marginTop:48, display:"flex", gap:16, justifyContent:"center", animation:"fadeUp 0.6s 0.4s both" }}>
+              <Link href="/dashboard" className="btn-red-full" style={{ padding:"14px 32px" }}>VIEW MY TRIPS</Link>
+              <Link href="/" className="btn-outline" style={{ padding:"14px 32px" }}>GO HOME</Link>
             </div>
+
           </div>
         </div>
       </div>

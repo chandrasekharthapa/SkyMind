@@ -30,10 +30,10 @@ A production-grade intelligent flight platform combining real-time search, ML pr
 │   scikit-learn + Prophet + Pandas                 │
 └────┬──────────────┬──────────────────────────────┘
      │              │
-┌────▼────┐  ┌──────▼──────┐
-│Supabase │  │ Amadeus API  │
-│Postgres │  │ AviationStack│
-└─────────┘  └─────────────┘
+┌────▼────┐
+│Supabase │
+│Postgres │
+└─────────┘
 ```
 
 ---
@@ -61,7 +61,7 @@ A production-grade intelligent flight platform combining real-time search, ML pr
 - Pandas + NumPy
 
 **APIs**
-- Amadeus Flight Offers Search API
+
 - AviationStack (live flight data)
 - Razorpay (payments)
 
@@ -73,7 +73,7 @@ A production-grade intelligent flight platform combining real-time search, ML pr
 - Node.js 18+
 - Python 3.11+
 - Supabase account
-- Amadeus API key (free sandbox)
+
 - Razorpay test keys
 
 ### 1. Clone & Install
@@ -105,8 +105,7 @@ NEXT_PUBLIC_RAZORPAY_KEY=rzp_test_xxxx
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_KEY=your_service_key
 DATABASE_URL=postgresql://user:pass@host:5432/db
-AMADEUS_CLIENT_ID=your_amadeus_client_id
-AMADEUS_CLIENT_SECRET=your_amadeus_secret
+
 AVIATIONSTACK_API_KEY=your_aviationstack_key
 RAZORPAY_KEY_ID=rzp_test_xxxx
 RAZORPAY_KEY_SECRET=your_razorpay_secret
@@ -141,11 +140,6 @@ npm run dev
 2. Run `database/schema.sql` in SQL Editor
 3. Enable Row Level Security on all tables
 4. Copy URL and anon key to env files
-
-### Amadeus API (Free Sandbox)
-1. Register at developers.amadeus.com
-2. Create an app → get Client ID & Secret
-3. Free sandbox: 2,000 API calls/month
 
 ### Razorpay Test Mode
 1. Register at razorpay.com
@@ -209,7 +203,7 @@ flight-ai-platform/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/flights/search` | Search flights via Amadeus |
+| GET | `/flights/search` | Search flights |
 | GET | `/flights/prediction/{route}` | Get AI price prediction |
 | GET | `/flights/hidden-routes` | Find cheaper alternate routes |
 | POST | `/booking/create` | Create booking |

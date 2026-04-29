@@ -14,9 +14,9 @@ function lerp(v:number,a:number,b:number,c:number,d:number):number {
   return ((v-a)/(b-a))*(d-c)+c;
 }
 function fmtINR(n:number):string {
-  if (n>=100000) return `₹${(n/100000).toFixed(1)}L`;
-  if (n>=1000) return `₹${(n/1000).toFixed(1)}k`;
-  return `₹${Math.round(n)}`;
+  if (n>=100000) return `INR ${(n/100000).toFixed(1)}L`;
+  if (n>=1000) return `INR ${(n/1000).toFixed(1)}k`;
+  return `INR ${Math.round(n)}`;
 }
 
 interface Props { forecast: ForecastPoint[]; trend: Trend; height?: number; }

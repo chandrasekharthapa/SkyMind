@@ -119,16 +119,16 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
     # ── Templates ───────────────────────────────────────────────────
     def send_welcome(self, to_email: str, name: str) -> bool:
         body = f"""
-<p>Hi <strong>{name}</strong>! 👋</p>
+<p>Hi <strong>{name}</strong>!</p>
 <p>Welcome to SkyMind — India's smartest flight booking platform.</p>
-<div class="info-box">🧠 <strong>AI Price Prediction</strong> — Know exactly when to book on 950+ routes</div>
-<div class="info-box">📊 <strong>30-Day Forecast</strong> — See fare trends before you decide</div>
-<div class="info-box">🔔 <strong>Price Alerts</strong> — SMS + email when fares drop to your budget</div>
+<div class="info-box"><strong>AI Price Prediction</strong> — Know exactly when to book on 950+ routes</div>
+<div class="info-box"><strong>30-Day Forecast</strong> — See fare trends before you decide</div>
+<div class="info-box"><strong>Price Alerts</strong> — SMS + email when fares drop to your budget</div>
 <p style="text-align:center;margin-top:24px">
-  <a href="https://skymind.app/flights" class="btn">✈️ Search Flights Now</a>
+  <a href="https://skymind.app/flights" class="btn">Search Flights Now</a>
 </p>"""
-        html = self._wrap("linear-gradient(135deg,#0ea5e9,#6366f1)", "✈️", "Welcome to SkyMind!", "Your AI travel companion is ready", body)
-        return self.send(to_email, "👋 Welcome to SkyMind — Smarter flights await!", html, f"Welcome {name}! Start at skymind.app")
+        html = self._wrap("linear-gradient(135deg,#0ea5e9,#6366f1)", "", "Welcome to SkyMind!", "Your AI travel companion is ready", body)
+        return self.send(to_email, "Welcome to SkyMind — Smarter flights await!", html, f"Welcome {name}! Start at skymind.app")
 
     def send_otp(self, to_email: str, otp: str, purpose: str = "verification") -> bool:
         body = f"""
@@ -139,9 +139,9 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
     <div style="color:#64748b;font-size:13px;margin-top:8px">Valid for <strong>10 minutes</strong></div>
   </div>
 </div>
-<div class="info-box" style="border-color:#f59e0b;background:#fffbeb">🔒 SkyMind staff will <em>never</em> ask for this code. Keep it private.</div>"""
-        html = self._wrap("linear-gradient(135deg,#0284c7,#0ea5e9)", "🔐", "Verification Code", f"For: {purpose}", body)
-        return self.send(to_email, f"🔐 SkyMind OTP: {otp}", html, f"Your SkyMind OTP: {otp}. Valid 10 min. Do not share.")
+<div class="info-box" style="border-color:#f59e0b;background:#fffbeb">SkyMind staff will <em>never</em> ask for this code. Keep it private.</div>"""
+        html = self._wrap("linear-gradient(135deg,#0284c7,#0ea5e9)", "", "Verification Code", f"For: {purpose}", body)
+        return self.send(to_email, f"SkyMind OTP: {otp}", html, f"Your SkyMind OTP: {otp}. Valid 10 min. Do not share.")
 
     def send_booking_confirmation(self, to_email: str, data: dict) -> bool:
         body = f"""
@@ -157,10 +157,10 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
   <div class="row"><span class="lbl">Date</span><span class="val">{data.get('departure_date','')}</span></div>
   <div class="row"><span class="lbl">Amount Paid</span><span class="val" style="color:#16a34a;font-size:18px">{data.get('amount','')}</span></div>
 </div>
-<div class="info-box">⏰ Web check-in opens 48 hours before departure.</div>
+<div class="info-box">Web check-in opens 48 hours before departure.</div>
 <p style="text-align:center"><a href="https://skymind.app/dashboard" class="btn">View Booking</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#10b981,#059669)", "🎉", "Booking Confirmed!", "Your flight is booked and ready", body)
-        return self.send(to_email, f"✈️ Booking {data.get('booking_ref')} Confirmed | SkyMind", html, f"Booking {data.get('booking_ref')} confirmed. Amount: {data.get('amount')}")
+        html = self._wrap("linear-gradient(135deg,#10b981,#059669)", "", "Booking Confirmed!", "Your flight is booked and ready", body)
+        return self.send(to_email, f"Booking {data.get('booking_ref')} Confirmed | SkyMind", html, f"Booking {data.get('booking_ref')} confirmed. Amount: {data.get('amount')}")
 
     def send_price_alert(self, to_email: str, data: dict) -> bool:
         try:
@@ -185,10 +185,10 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
   <div class="row"><span class="lbl">Travel Date</span><span class="val">{data.get('departure_date','')}</span></div>
   <div class="row"><span class="lbl">You Save</span><span class="val" style="color:#16a34a">₹{savings:,.0f}</span></div>
 </div>
-<div class="info-box" style="border-color:#ef4444;background:#fef2f2">⚡ <strong>Act fast!</strong> Prices can change in minutes.</div>
+<div class="info-box" style="border-color:#ef4444;background:#fef2f2"><strong>Act fast!</strong> Prices can change in minutes.</div>
 <p style="text-align:center"><a href="https://skymind.app/flights?origin={data.get('origin')}&destination={data.get('destination')}&date={data.get('departure_date')}" class="btn">Book Now →</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#10b981,#16a34a)", "🎯", "Price Alert Triggered!", f"{data.get('origin','')} → {data.get('destination','')} price dropped!", body)
-        return self.send(to_email, f"🔔 Price Alert: {data.get('origin')}→{data.get('destination')} now ₹{float(data.get('current_price',0)):,.0f}", html, f"Price dropped! Book now at skymind.app")
+        html = self._wrap("linear-gradient(135deg,#10b981,#16a34a)", "", "Price Alert Triggered!", f"{data.get('origin','')} → {data.get('destination','')} price dropped!", body)
+        return self.send(to_email, f"Price Alert: {data.get('origin')}→{data.get('destination')} now ₹{float(data.get('current_price',0)):,.0f}", html, f"Price dropped! Book now at skymind.app")
 
     def send_cancellation(self, to_email: str, data: dict) -> bool:
         body = f"""
@@ -200,8 +200,8 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
   <div class="row"><span class="lbl">Refund ETA</span><span class="val">{data.get('refund_eta','5–7 days')}</span></div>
 </div>
 <p style="text-align:center"><a href="https://skymind.app/flights" class="btn">Book New Flight</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#64748b,#475569)", "❌", "Booking Cancelled", f"Refund of ₹{data.get('refund_amount','0')} is on its way", body)
-        return self.send(to_email, f"❌ Booking {data.get('booking_ref')} Cancelled | SkyMind", html, "")
+        html = self._wrap("linear-gradient(135deg,#64748b,#475569)", "", "Booking Cancelled", f"Refund of ₹{data.get('refund_amount','0')} is on its way", body)
+        return self.send(to_email, f"Booking {data.get('booking_ref')} Cancelled | SkyMind", html, "")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -301,20 +301,20 @@ class WhatsAppService:
             return False
 
     def send_otp(self, phone: str, otp: str) -> bool:
-        return self.send(phone, f"🔐 *SkyMind OTP:* {otp}\nValid 10 min. Do NOT share.")
+        return self.send(phone, f"*SkyMind OTP:* {otp}\nValid 10 min. Do NOT share.")
 
     def send_booking_confirmation(self, phone: str, d: dict) -> bool:
-        return self.send(phone, f"✈️ *SkyMind Booking Confirmed!*\n\n*Ref:* {d.get('booking_ref','')}\n*Route:* {d.get('origin','')} → {d.get('destination','')}\n*Amount:* ₹{d.get('amount','')}\n\nBon voyage! 🌟")
+        return self.send(phone, f"*SkyMind Booking Confirmed!*\n\n*Ref:* {d.get('booking_ref','')}\n*Route:* {d.get('origin','')} → {d.get('destination','')}\n*Amount:* ₹{d.get('amount','')}\n\nBon voyage!")
 
     def send_price_alert(self, phone: str, d: dict) -> bool:
         try:
             savings = float(d.get("target_price", 0)) - float(d.get("current_price", 0))
         except (TypeError, ValueError):
             savings = 0
-        return self.send(phone, f"🎯 *Price Alert — SkyMind*\n\n{d.get('origin','')} → {d.get('destination','')}\nCurrent: ₹{float(d.get('current_price',0)):,.0f}\nTarget: ₹{float(d.get('target_price',0)):,.0f}\n*Save: ₹{savings:,.0f}*\n\n⚡ Book now at skymind.app/flights")
+        return self.send(phone, f"*Price Alert — SkyMind*\n\n{d.get('origin','')} → {d.get('destination','')}\nCurrent: ₹{float(d.get('current_price',0)):,.0f}\nTarget: ₹{float(d.get('target_price',0)):,.0f}\n*Save: ₹{savings:,.0f}*\n\nBook now at skymind.app/flights")
 
     def send_cancellation(self, phone: str, d: dict) -> bool:
-        return self.send(phone, f"❌ *Booking Cancelled — SkyMind*\n\nRef: {d.get('booking_ref','')}\nRefund: ₹{d.get('refund_amount','0')} in {d.get('refund_eta','5-7 days')}")
+        return self.send(phone, f"*Booking Cancelled — SkyMind*\n\nRef: {d.get('booking_ref','')}\nRefund: ₹{d.get('refund_amount','0')} in {d.get('refund_eta','5-7 days')}")
 
 
 # ══════════════════════════════════════════════════════════════════════

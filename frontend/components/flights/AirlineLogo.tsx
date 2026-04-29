@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 
-// ─── Air India official color palette ────────────────────────────────
+//  Air India official color palette 
 const AIRLINE_COLORS: Record<string, { bg: string; text: string; accent?: string }> = {
-  AI:   { bg: "#E11D48", text: "#fff" },      // Air India — brand red
-  "6E": { bg: "#1B2F6E", text: "#fff" },      // IndiGo — navy
+  AI:   { bg: "#E11D48", text: "#fff" },      // Air India  brand red
+  "6E": { bg: "#1B2F6E", text: "#fff" },      // IndiGo  navy
   SG:   { bg: "#FF0000", text: "#fff" },      // SpiceJet
   UK:   { bg: "#4A235A", text: "#fff" },      // Vistara (now Air India)
   IX:   { bg: "#C8102E", text: "#fff" },      // Air India Express
@@ -41,6 +41,7 @@ const AIRLINE_DOMAINS: Record<string, string> = {
 function getLogoSources(iata: string): string[] {
   const code = iata.toUpperCase();
   const sources: string[] = [];
+  sources.push(`https://pics.avs.io/200/200/${code}.png`);
   sources.push(`https://content.airhex.com/content/logos/airlines_${code}_200_200_s.png`);
   const domain = AIRLINE_DOMAINS[code];
   if (domain) {
@@ -58,7 +59,7 @@ interface AirlineLogoProps {
 }
 
 /**
- * AirlineLogo — renders airline logo with graceful fallback.
+ * AirlineLogo  renders airline logo with graceful fallback.
  * For Air India (AI), uses brand-red background with "AI" monogram.
  * All logos display with consistent sizing on the 8px grid.
  */

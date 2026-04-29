@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel
 
 from config import settings
-from database import database as db
+from database.database import database as db
 from services.notifications import dispatcher
 
 router = APIRouter()
@@ -154,8 +154,9 @@ async def verify_payment(
             {
                 "payment_status": "PAID",
                 "status": "CONFIRMED",
-                "razorpay_payment_id": req.razorpay_payment_id,
+                "payment_id": req.razorpay_payment_id,
                 "razorpay_order_id": req.razorpay_order_id,
+                "razorpay_signature": req.razorpay_signature,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", req.booking_id).execute()
