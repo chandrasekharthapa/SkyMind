@@ -234,8 +234,8 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               </div>
             </div>
 
-            <button type="submit" className="ui-btn ui-btn-red" style={{ height: 60, fontSize: "1rem", marginTop: 8 }}>
-              <SearchIcon /> SEARCH FLIGHTS
+            <button type="submit" className="ui-btn ui-btn-red" style={{ marginTop: 8 }}>
+              <SearchIcon size={18} /> SEARCH FLIGHTS
             </button>
           </div>
         )}

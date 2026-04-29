@@ -33,7 +33,7 @@ export default function HomePage() {
       {/* ══════════════════════════════════════════
           HERO — cinematic, left-aligned, premium
           ══════════════════════════════════════════ */}
-      <section style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "flex-end", overflow: "hidden" }}>
+      <section style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
         {/* Background video */}
         <video
           autoPlay muted loop playsInline
@@ -58,7 +58,7 @@ export default function HomePage() {
               {/* Main title */}
               <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(3.8rem, 13vw, 10rem)", lineHeight: 0.88, color: "#fff", textTransform: "uppercase", letterSpacing: "-0.03em", marginBottom: 24, animation: "fadeUp 0.7s 0.1s ease forwards", opacity: 0 }}>
                 Fly<br />
-                <span style={{ color: "var(--red)" }}>Smarter.</span>
+                <span style={{ color: "var(--red)" }}>Smarter</span>
               </h1>
 
               {/* Subtitle */}
@@ -68,11 +68,11 @@ export default function HomePage() {
 
               {/* CTAs */}
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", animation: "fadeUp 0.7s 0.3s ease forwards", opacity: 0 }}>
-                <Link href="/flights" style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "var(--red)", color: "#fff", padding: "14px 28px", borderRadius: 12, fontFamily: "var(--fb)", fontWeight: 700, fontSize: "0.95rem", textDecoration: "none", transition: "all 0.2s" }}>
+                <Link href="/flights" className="ui-btn ui-btn-red">
                   Search Flights
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                 </Link>
-                <Link href="/predict" style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.08)", color: "#fff", padding: "14px 28px", borderRadius: 12, fontFamily: "var(--fb)", fontWeight: 600, fontSize: "0.95rem", textDecoration: "none", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(8px)", transition: "all 0.2s" }}>
+                <Link href="/predict" className="ui-btn ui-btn-outline" style={{ backdropFilter: "blur(8px)" }}>
                   AI Price Forecast
                 </Link>
               </div>
@@ -294,7 +294,7 @@ export default function HomePage() {
           display: grid;
           grid-template-columns: 1.1fr 0.9fr;
           gap: 60px;
-          align-items: flex-end;
+          align-items: center;
         }
         .hero-copy { max-width: 600px; }
         .hero-form-desktop { display: block; }

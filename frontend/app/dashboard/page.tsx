@@ -47,21 +47,19 @@ export default function DashboardPage() {
       
       if (session?.user) {
         setUser(session.user);
-        // Fetch verified profile
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .single();
+        const { data: prof } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
         setProfile(prof);
-      }
 
-      const [bkRes, alRes] = await Promise.all([
-        supabase.from("bookings").select("*").order("created_at",{ascending:false}).limit(10),
-        supabase.from("price_alerts").select("*").eq("is_active",true).limit(5),
-      ]);
-      setBookings(!bkRes.error && bkRes.data ? bkRes.data : []);
-      setAlerts(!alRes.error && alRes.data ? alRes.data : []);
+        const [bkRes, alRes] = await Promise.all([
+          supabase.from("bookings").select("*").eq("user_id", session.user.id).order("created_at",{ascending:false}).limit(10),
+          supabase.from("price_alerts").select("*").eq("user_id", session.user.id).eq("is_active",true).limit(5),
+        ]);
+        setBookings(!bkRes.error && bkRes.data ? bkRes.data : []);
+        setAlerts(!alRes.error && alRes.data ? alRes.data : []);
+      } else {
+        setBookings([]); 
+        setAlerts([]);
+      }
     } catch {
       setBookings([]); setAlerts([]);
     } finally { setLoading(false); }
@@ -140,11 +138,13 @@ export default function DashboardPage() {
                      ))}
                    </div>
                 ) : bookings.length === 0 ? (
-                  <div style={{ padding: 60, textAlign: "center", background: "var(--off)", borderRadius: 12, border: "1px dashed var(--grey2)" }}>
-                    <div style={{ color:"var(--grey2)", marginBottom:16, display: "flex", justifyContent: "center" }}><PlaneIcon /></div>
-                    <div style={{ fontSize: "1.2rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 8 }}>NO FLIGHTS BOOKED</div>
-                    <div style={{ fontSize: "14px", color: "var(--grey3)", marginBottom: 24 }}>You haven't booked any trips yet. Discover your next destination.</div>
-                    <Link href="/flights" className="btn-red-full" style={{ width: "auto", display: "inline-flex" }}>Search Flights</Link>
+                  <div style={{ padding: 80, textAlign: "center", background: "var(--white)", borderRadius: 20, border: "1px dashed var(--grey2)", boxShadow: "var(--shadow-sm)" }}>
+                    <div style={{ color:"var(--red)", marginBottom:20, display: "flex", justifyContent: "center", opacity: 0.5 }}>
+                      <PlaneIcon />
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>No active itineraries</div>
+                    <div style={{ fontSize: "14px", color: "var(--grey3)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven't booked any flights yet. Use our AI to find the perfect fare.</div>
+                    <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "14px 40px" }}>Search Flights</Link>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

@@ -60,7 +60,24 @@ body {
 }
 
 /* ATOMIC UI KIT */
-.ui-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--ui-space-sm); padding: 12px var(--ui-space-lg); border-radius: var(--ui-radius-lg); font-family: var(--fb); font-weight: 600; font-size: 0.9rem; letter-spacing: 0.01em; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent; text-decoration: none; white-space: nowrap; }
+.ui-btn { 
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center; 
+  gap: var(--ui-space-sm); 
+  padding: 14px var(--ui-space-xl); 
+  border-radius: var(--ui-radius-lg); 
+  font-family: var(--fb); 
+  font-weight: 700; 
+  font-size: 0.95rem; 
+  letter-spacing: 0.02em; 
+  cursor: pointer; 
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+  border: 1px solid transparent; 
+  text-decoration: none; 
+  white-space: nowrap; 
+  height: 52px;
+}
 .ui-btn:active { transform: scale(0.98); }
 .ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -132,10 +149,25 @@ body {
 .ui-flex { display: flex; align-items: center; }
 .ui-flex-between { display: flex; align-items: center; justify-content: space-between; }
 
-/* TOUCH OPTIMIZATIONS */
-@media (hover: none) {
-  .ui-btn, .ui-input { height: 56px; }
-  .ui-input { font-size: 16px; }
+/* RESPONSIVE SCALING */
+@media (max-width: 768px) {
+  .ui-btn { 
+    height: 46px; 
+    padding: 10px var(--ui-space-lg); 
+    font-size: 0.85rem; 
+  }
+  .ui-input { 
+    height: 48px; 
+    font-size: 0.95rem; 
+  }
+}
+
+@media (max-width: 480px) {
+  .ui-btn {
+    height: 44px;
+    padding: 8px var(--ui-space-md);
+    font-size: 0.8rem;
+  }
 }
 
 @keyframes fadeUp {
