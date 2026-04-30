@@ -16,7 +16,9 @@ from xgboost import XGBRegressor
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = os.getenv("MODEL_PATH", "./ml/models") + "/global_model.pkl"
+# Standardise path relative to this file's location
+BASE_ML_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_ML_DIR, "models", "global_model.pkl")
 
 
 class PricePredictor:

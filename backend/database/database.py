@@ -350,7 +350,7 @@ class Database:
             res = self.supabase.storage.from_("models").upload(
                 path=remote_name,
                 file=content,
-                file_options={"content-type": "application/octet-stream", "x-upsert": "true"}
+                file_options={"content-type": "application/octet-stream", "upsert": True}
             )
             logger.info(f"Model uploaded to Supabase Storage: {remote_name}")
             return True

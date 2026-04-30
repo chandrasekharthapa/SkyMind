@@ -46,6 +46,14 @@ function searchReducer(state: State, action: Action): State {
   }
 }
 
+const PlaneIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5S18 2 16.5 3.5L13 7 4.8 6.2c-.5-.1-.9.1-1.1.5L2 8.9c-.2.4-.1.9.2 1.2l4.6 4.1-1.5 6.4 2.8 2.8 5.3-3.2 4.1 4.6c.3.4.8.5 1.2.2l1.1-1.2c.4-.2.6-.6.5-1.1z" /></svg>
+);
+
+const CalendarIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+);
+
 const CITY_NAMES: Record<string, string> = {
   DEL: "New Delhi", BOM: "Mumbai", BLR: "Bengaluru", HYD: "Hyderabad",
   MAA: "Chennai", CCU: "Kolkata", AMD: "Ahmedabad", COK: "Kochi",
@@ -171,7 +179,19 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               </div>
             <div>
               <label className="ui-field-label">Departure Date</label>
-              <input type="date" className="ui-input" value={state.departure_date} min={today} onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} />
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                  <CalendarIcon />
+                </span>
+                <input 
+                  type="date" 
+                  className="ui-input" 
+                  style={{ paddingLeft: 44 }}
+                  value={state.departure_date} 
+                  min={today} 
+                  onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
+                />
+              </div>
             </div>
             <button type="submit" className="ui-btn ui-btn-red" style={{ height: 56, fontSize: "1rem", marginTop: 8 }}>
               <SearchIcon /> GET AI FORECAST
@@ -208,12 +228,36 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
             <div className="dates-row">
               <div style={{ flex: 1 }}>
                 <label className="ui-field-label">Departure</label>
-                <input type="date" className="ui-input" value={state.departure_date} min={today} onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} />
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                    <CalendarIcon />
+                  </span>
+                  <input 
+                    type="date" 
+                    className="ui-input" 
+                    style={{ paddingLeft: 44 }}
+                    value={state.departure_date} 
+                    min={today} 
+                    onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
+                  />
+                </div>
               </div>
               {state.trip_type === "ROUND_TRIP" && (
                 <div style={{ flex: 1 }}>
                   <label className="ui-field-label">Return</label>
-                  <input type="date" className="ui-input" value={state.return_date} min={state.departure_date} onChange={e => dispatch({ type: 'SET_FIELD', field: 'return_date', value: e.target.value })} />
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                      <CalendarIcon />
+                    </span>
+                    <input 
+                      type="date" 
+                      className="ui-input" 
+                      style={{ paddingLeft: 44 }}
+                      value={state.return_date || ''} 
+                      min={state.departure_date || today} 
+                      onChange={e => dispatch({ type: 'SET_FIELD', field: 'return_date', value: e.target.value })} 
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -324,11 +368,11 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
 
         @media (max-width: 768px) {
           .ui-search-form { padding: var(--ui-space-md) !important; }
-          .locations-row { grid-template-columns: 1fr; gap: 0; }
+          .locations-row { grid-template-columns: 1fr; gap: 8px; }
           .dates-row, .options-row { flex-direction: column; gap: 16px; align-items: stretch; }
           .dates-row > div, .options-row > div { width: 100%; min-width: 0; }
-          .swap-wrapper { display: flex; justify-content: center; height: 0; position: relative; z-index: 5; }
-          .ui-swap-btn { width: 36px; height: 36px; transform: rotate(90deg); position: absolute; top: -18px; border: 1px solid var(--grey1); background: #fff; display: flex; align-items: center; justify-content: center; }
+          .swap-wrapper { display: flex; justify-content: center; height: 12px; position: relative; z-index: 5; margin: -10px 0; }
+          .ui-swap-btn { width: 36px; height: 36px; transform: rotate(90deg); border: 1px solid var(--grey1); background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         }
       `}</style>
     </div>

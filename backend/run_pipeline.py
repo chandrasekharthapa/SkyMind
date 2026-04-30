@@ -55,6 +55,7 @@ def run_retraining():
                 logger.info("Model persistence successful.")
             else:
                 logger.error("Model persistence failed.")
+                sys.exit(1)
         else:
             logger.error("Model file not found after training.")
             
