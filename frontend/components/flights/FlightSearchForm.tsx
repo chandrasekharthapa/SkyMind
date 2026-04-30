@@ -124,7 +124,10 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
         background: variant === 'slim' ? 'transparent' : 'var(--white)', 
         border: variant === 'slim' ? 'none' : '1px solid var(--grey1)', 
         borderRadius: 'var(--ui-radius-xl)', 
-        boxShadow: variant === 'slim' ? 'none' : '0 4px 24px rgba(0,0,0,0.02)' 
+        boxShadow: variant === 'slim' ? 'none' : '0 4px 24px rgba(0,0,0,0.02)',
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box'
       }}>
       
       {/* Trip Type Toggle */}
@@ -320,8 +323,10 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
         }
 
         @media (max-width: 768px) {
+          .ui-search-form { padding: var(--ui-space-md) !important; }
           .locations-row { grid-template-columns: 1fr; gap: 0; }
           .dates-row, .options-row { flex-direction: column; gap: 16px; align-items: stretch; }
+          .dates-row > div, .options-row > div { width: 100%; min-width: 0; }
           .swap-wrapper { display: flex; justify-content: center; height: 0; position: relative; z-index: 5; }
           .ui-swap-btn { width: 36px; height: 36px; transform: rotate(90deg); position: absolute; top: -18px; border: 1px solid var(--grey1); background: #fff; display: flex; align-items: center; justify-content: center; }
         }

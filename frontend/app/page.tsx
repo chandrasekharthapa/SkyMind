@@ -104,7 +104,7 @@ export default function HomePage() {
           MOBILE SEARCH — clean white card
           ══════════════════════════════════════════ */}
       <div className="hero-form-mobile" style={{ background: "var(--off)", borderBottom: "1px solid var(--grey1)" }}>
-        <div className="ui-wrap" style={{ padding: "28px var(--ui-space-lg)" }}>
+        <div className="ui-wrap" style={{ padding: "28px var(--ui-space-md)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontFamily: "var(--fm)", fontSize: "0.6rem", color: "var(--grey3)", letterSpacing: "0.1em" }}>
             <div className="status-dot" />
             XGBOOST ANALYTICS ACTIVE
