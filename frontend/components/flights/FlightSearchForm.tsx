@@ -183,11 +183,9 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               <label className="ui-field-label">Departure Date</label>
               <div 
                 className="date-input-trigger"
-                onClick={() => {
-                  try { (departureRef.current as any)?.showPicker(); } catch (e) { departureRef.current?.click(); }
-                }}
                 style={{ position: 'relative', cursor: 'pointer' }}
               >
+                {/* Visual Layer */}
                 <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                   <CalendarIcon />
                 </span>
@@ -196,6 +194,7 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                   {state.departure_date ? format(new Date(state.departure_date), 'd MMM yyyy') : 'Select Date'}
                 </div>
 
+                {/* Interaction Layer - On Top for Mobile */}
                 <input 
                   type="date" 
                   ref={departureRef}
@@ -205,12 +204,14 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                     opacity: 0,
                     width: '100%',
                     height: '100%',
-                    pointerEvents: 'none',
-                    zIndex: -1
+                    cursor: 'pointer',
+                    zIndex: 10,
+                    fontSize: '16px' // Prevents iOS zoom
                   }}
                   value={state.departure_date} 
                   min={today} 
                   onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
+                  onClick={(e) => (e.target as any).showPicker?.()}
                 />
               </div>
             </div>
@@ -251,9 +252,6 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                 <label className="ui-field-label">Departure</label>
                 <div 
                   className="date-input-trigger"
-                  onClick={() => {
-                    try { (departureRef.current as any)?.showPicker(); } catch (e) { departureRef.current?.click(); }
-                  }}
                   style={{ position: 'relative', cursor: 'pointer' }}
                 >
                   <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
@@ -273,12 +271,14 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                       opacity: 0,
                       width: '100%',
                       height: '100%',
-                      pointerEvents: 'none',
-                      zIndex: -1
+                      cursor: 'pointer',
+                      zIndex: 10,
+                      fontSize: '16px'
                     }}
                     value={state.departure_date} 
                     min={today} 
                     onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
+                    onClick={(e) => (e.target as any).showPicker?.()}
                   />
                 </div>
               </div>
@@ -288,9 +288,6 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                   <label className="ui-field-label">Return</label>
                   <div 
                     className="date-input-trigger"
-                    onClick={() => {
-                      try { (returnRef.current as any)?.showPicker(); } catch (e) { returnRef.current?.click(); }
-                    }}
                     style={{ position: 'relative', cursor: 'pointer' }}
                   >
                     <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
@@ -310,12 +307,14 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
                         opacity: 0,
                         width: '100%',
                         height: '100%',
-                        pointerEvents: 'none',
-                        zIndex: -1
+                        cursor: 'pointer',
+                        zIndex: 10,
+                        fontSize: '16px'
                       }}
                       value={state.return_date || ''} 
                       min={state.departure_date || today} 
                       onChange={e => dispatch({ type: 'SET_FIELD', field: 'return_date', value: e.target.value })} 
+                      onClick={(e) => (e.target as any).showPicker?.()}
                     />
                   </div>
                 </div>
