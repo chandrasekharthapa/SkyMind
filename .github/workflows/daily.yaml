@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -25,8 +25,11 @@ jobs:
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> $GITHUB_ENV
           echo "SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}" >> $GITHUB_ENV
-          echo "AMADEUS_API_KEY=${{ secrets.AMADEUS_API_KEY }}" >> $GITHUB_ENV
-          echo "AMADEUS_SECRET=${{ secrets.AMADEUS_API_SECRET }}" >> $GITHUB_ENV
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> $GITHUB_ENV
+          echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> $GITHUB_ENV
+          echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> $GITHUB_ENV
+          echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> $GITHUB_ENV
 
       - name: Run pipeline
         env:
