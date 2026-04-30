@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useState } from "react";
+import React, { useReducer, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { format, addDays } from "date-fns";
 import { Search as SearchIcon, ArrowLeftRight } from "lucide-react";
@@ -80,6 +80,8 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
   const router = useRouter();
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultDeparture = format(addDays(new Date(), 7), "yyyy-MM-dd");
+  const departureRef = useRef<HTMLInputElement>(null);
+  const returnRef = useRef<HTMLInputElement>(null);
 
   const [state, dispatch] = useReducer(searchReducer, {
     origin: initialData?.origin || "DEL",
@@ -179,30 +181,32 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               </div>
             <div>
               <label className="ui-field-label">Departure Date</label>
-              <div style={{ position: 'relative' }}>
+              <div 
+                className="date-input-trigger"
+                onClick={() => {
+                  try { (departureRef.current as any)?.showPicker(); } catch (e) { departureRef.current?.click(); }
+                }}
+                style={{ position: 'relative', cursor: 'pointer' }}
+              >
                 <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                   <CalendarIcon />
                 </span>
                 
-                <div className="ui-input" style={{ 
-                  paddingLeft: 44, 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  cursor: 'pointer'
-                }}>
+                <div className="ui-input" style={{ paddingLeft: 44, display: 'flex', alignItems: 'center' }}>
                   {state.departure_date ? format(new Date(state.departure_date), 'd MMM yyyy') : 'Select Date'}
                 </div>
 
                 <input 
                   type="date" 
+                  ref={departureRef}
                   style={{ 
                     position: 'absolute',
                     inset: 0,
                     opacity: 0,
                     width: '100%',
                     height: '100%',
-                    cursor: 'pointer',
-                    zIndex: 3
+                    pointerEvents: 'none',
+                    zIndex: -1
                   }}
                   value={state.departure_date} 
                   min={today} 
@@ -245,33 +249,32 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
             <div className="dates-row">
               <div style={{ flex: 1 }}>
                 <label className="ui-field-label">Departure</label>
-                <div style={{ position: 'relative' }}>
-                  {/* Icon */}
+                <div 
+                  className="date-input-trigger"
+                  onClick={() => {
+                    try { (departureRef.current as any)?.showPicker(); } catch (e) { departureRef.current?.click(); }
+                  }}
+                  style={{ position: 'relative', cursor: 'pointer' }}
+                >
                   <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                     <CalendarIcon />
                   </span>
                   
-                  {/* Formatted Display */}
-                  <div className="ui-input" style={{ 
-                    paddingLeft: 44, 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    cursor: 'pointer'
-                  }}>
+                  <div className="ui-input" style={{ paddingLeft: 44, display: 'flex', alignItems: 'center' }}>
                     {state.departure_date ? format(new Date(state.departure_date), 'd MMM yyyy') : 'Select Date'}
                   </div>
 
-                  {/* Invisible Native Input */}
                   <input 
                     type="date" 
+                    ref={departureRef}
                     style={{ 
                       position: 'absolute',
                       inset: 0,
                       opacity: 0,
                       width: '100%',
                       height: '100%',
-                      cursor: 'pointer',
-                      zIndex: 3
+                      pointerEvents: 'none',
+                      zIndex: -1
                     }}
                     value={state.departure_date} 
                     min={today} 
@@ -283,30 +286,32 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               {state.trip_type === "ROUND_TRIP" && (
                 <div style={{ flex: 1 }}>
                   <label className="ui-field-label">Return</label>
-                  <div style={{ position: 'relative' }}>
+                  <div 
+                    className="date-input-trigger"
+                    onClick={() => {
+                      try { (returnRef.current as any)?.showPicker(); } catch (e) { returnRef.current?.click(); }
+                    }}
+                    style={{ position: 'relative', cursor: 'pointer' }}
+                  >
                     <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                       <CalendarIcon />
                     </span>
                     
-                    <div className="ui-input" style={{ 
-                      paddingLeft: 44, 
-                      display: 'flex', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}>
+                    <div className="ui-input" style={{ paddingLeft: 44, display: 'flex', alignItems: 'center' }}>
                       {state.return_date ? format(new Date(state.return_date), 'd MMM yyyy') : 'Select Return'}
                     </div>
 
                     <input 
                       type="date" 
+                      ref={returnRef}
                       style={{ 
                         position: 'absolute',
                         inset: 0,
                         opacity: 0,
                         width: '100%',
                         height: '100%',
-                        cursor: 'pointer',
-                        zIndex: 3
+                        pointerEvents: 'none',
+                        zIndex: -1
                       }}
                       value={state.return_date || ''} 
                       min={state.departure_date || today} 
@@ -396,8 +401,7 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
           position: absolute; 
           left: 50%;
           transform: translateX(-50%) translateY(-18px) rotate(90deg);
-          border: 1px solid var(--grey1); 
-          background: #fff; 
+          background: var(--white); 
           box-shadow: var(--shadow-sm); 
           z-index: 5;
           display: flex;
@@ -427,7 +431,7 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
           .dates-row, .options-row { flex-direction: column; gap: 16px; align-items: stretch; }
           .dates-row > div, .options-row > div { width: 100%; min-width: 0; }
           .swap-wrapper { display: flex; justify-content: center; height: 12px; position: relative; z-index: 5; margin: -10px 0; }
-          .ui-swap-btn { width: 36px; height: 36px; transform: rotate(90deg); border: 1px solid var(--grey1); background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+          .ui-swap-btn { width: 36px; height: 36px; transform: rotate(90deg); border: 1px solid var(--grey1); background: var(--white); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         }
       `}</style>
     </div>

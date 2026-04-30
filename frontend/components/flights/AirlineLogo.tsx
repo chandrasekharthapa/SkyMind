@@ -74,7 +74,7 @@ export default function AirlineLogo({ code, name, size = 42, className }: Airlin
     width: `${size}px`,
     height: `${size}px`,
     flexShrink: 0,
-    border: "1px solid #E2E8F0",
+    border: "1px solid var(--border-color)",
     overflow: "hidden",
     display: "flex",
     alignItems: "center",
@@ -113,7 +113,7 @@ export default function AirlineLogo({ code, name, size = 42, className }: Airlin
 
   return (
     <div
-      style={{ ...boxStyle, background: "#F8FAFC", padding: "3px" }}
+      style={{ ...boxStyle, background: "var(--white)", padding: "3px" }}
       className={className}
       title={name}
     >

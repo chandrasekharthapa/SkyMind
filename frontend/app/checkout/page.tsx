@@ -100,28 +100,28 @@ export default function CheckoutPage() {
       <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       <NavBar />
       
-      <div className="booking-subnav" style={{ marginTop: 60 }}>
-        <div className="wrap">
+      <div className="booking-subnav" style={{ marginTop: 64 }}>
+        <div className="ui-wrap">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <button onClick={() => router.back()} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontFamily: "var(--fb)", fontWeight: 700, color: "var(--grey4)" }}>
-              <ChevronLeft size={16} /> Back to Details
+              <ChevronLeft size={16} /> <span className="back-text">Back to Details</span>
             </button>
             <div className="steps">
-              <div className="step done"><div className="step-num">1</div> Details</div>
+              <div className="step done"><div className="step-num">1</div> <span>Details</span></div>
               <div className="step-sep" />
-              <div className="step active"><div className="step-num">2</div> Payment</div>
+              <div className="step active"><div className="step-num">2</div> <span>Payment</span></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="wrap booking-body">
+      <div className="ui-wrap booking-body">
         <div className="booking-layout">
           
           <div className="booking-left">
             <div className="form-block">
               <div className="form-block-head">
-                <div className="form-block-num" style={{ background: "var(--black)", borderColor: "var(--black)", color: "#fff" }}>
+                <div className="form-block-num" style={{ background: "var(--black)", borderColor: "var(--black)", color: "var(--white)" }}>
                   <CreditCard size={14} />
                 </div>
                 <h2 className="form-block-title">Secure Payment Protocol</h2>
@@ -182,7 +182,7 @@ export default function CheckoutPage() {
                   <Plane size={18} color="var(--red)" />
                   <div>
                     <div style={{ fontSize: "10px", color: "var(--red)", fontWeight: 700, letterSpacing: "0.1em" }}>REF: {ref}</div>
-                    <div style={{ fontSize: "18px", fontFamily: "var(--fd)", color: "#fff", letterSpacing: "0.05em" }}>{origin} ➔ {destination}</div>
+                    <div style={{ fontSize: "18px", fontFamily: "var(--fd)", color: "var(--black)", letterSpacing: "0.05em" }}>{origin} ➔ {destination}</div>
                   </div>
                 </div>
 

@@ -69,7 +69,7 @@ export default function SuccessPage() {
               textAlign:"left", animation:"fadeUp 0.6s 0.3s both"
             }}>
               <div style={{ background:"var(--black)", padding:"20px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span className="label" style={{ color:"rgba(255,255,255,.4)" }}>CONFIRMATION PASS</span>
+                <span className="label" style={{ color: "var(--white)", opacity: 0.5 }}>CONFIRMATION PASS</span>
                 <span style={{ fontFamily:"var(--fm)", fontSize:".7rem", color:"var(--red)", fontWeight:700 }}>SKY-INTEL v4</span>
               </div>
               

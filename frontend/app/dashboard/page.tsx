@@ -81,7 +81,7 @@ export default function DashboardPage() {
           <div className="ui-wrap">
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 32 }}>
               <div>
-                <div style={{ fontFamily: "var(--fm)", fontSize: ".65rem", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--grey3)", marginBottom: 12 }}>
+                <div style={{ fontFamily: "var(--fm)", fontSize: ".65rem", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--grey4)", marginBottom: 12 }}>
                   User Dashboard / Account
                 </div>
                 <h1 className="dash-title" style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.8rem, 6vw, 4.5rem)", lineHeight: 0.9, textTransform: "uppercase" }}>
@@ -90,7 +90,7 @@ export default function DashboardPage() {
                   </em>
                 </h1>
                 <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 12 }}>
-                  <span className="badge badge-black" style={{ padding: "6px 12px", background: "var(--black)", color: "#fff" }}>Gold Tier</span>
+                  <span className="badge badge-black" style={{ padding: "6px 12px", background: "var(--black)", color: "var(--white)" }}>Gold Tier</span>
                   <span style={{ fontSize: "12px", fontWeight: 700, fontFamily: "var(--fm)", color: "var(--grey4)" }}>
                     {confirmedTrips * 1200} SkyMind Points
                   </span>
@@ -128,7 +128,7 @@ export default function DashboardPage() {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                   <h2 style={{ fontFamily: "var(--fd)", fontSize: "2rem", letterSpacing: "0.04em" }}>YOUR ITINERARIES</h2>
                   <div style={{ height: 1, flex: 1, background: "var(--grey1)", margin: "0 20px" }} />
-                  <span style={{ fontSize: "12px", color: "var(--grey3)", fontFamily: "var(--fm)" }}>{bookings.length} Items</span>
+                  <span style={{ fontSize: "12px", color: "var(--grey4)", fontFamily: "var(--fm)" }}>{bookings.length} Items</span>
                 </div>
 
                 {loading ? (
@@ -143,7 +143,7 @@ export default function DashboardPage() {
                       <PlaneIcon />
                     </div>
                     <div style={{ fontSize: "1.5rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>No active itineraries</div>
-                    <div style={{ fontSize: "14px", color: "var(--grey3)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven't booked any flights yet. Use our AI to find the perfect fare.</div>
+                    <div style={{ fontSize: "14px", color: "var(--grey4)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven't booked any flights yet. Use our AI to find the perfect fare.</div>
                     <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "14px 40px" }}>Search Flights</Link>
                   </div>
                 ) : (
@@ -166,7 +166,7 @@ export default function DashboardPage() {
                           background: "linear-gradient(to right, var(--off), var(--white))" 
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--black)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "10px", fontFamily: "var(--fm)" }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "10px", fontFamily: "var(--fm)" }}>
                               {(b.origin_code || "??").substring(0,2)}
                             </div>
                             <div>
@@ -238,16 +238,16 @@ export default function DashboardPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                 {/* Price Alerts Card */}
                 <div className="sidebar-card" style={{ padding: 0 }}>
-                  <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)", background: "var(--black)", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)", background: "#000", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontFamily: "var(--fm)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em" }}>PRICE ALERTS</span>
-                    <span className="badge" style={{ background: "var(--red)", color: "#fff" }}>{alerts.length} ACTIVE</span>
+                    <span className="badge" style={{ background: "var(--red)", color: "var(--white)" }}>{alerts.length} ACTIVE</span>
                   </div>
                   <div style={{ padding: "8px 0" }}>
                     {alerts.length === 0 && !loading && (
                       <div style={{ padding: 32, textAlign: "center", background: "var(--off)" }}>
                         <div style={{ color:"var(--grey2)", marginBottom:12, display: "flex", justifyContent: "center" }}><BellIcon /></div>
                         <div style={{ fontSize: "14px", fontFamily: "var(--fb)", fontWeight: 600, color: "var(--black)", marginBottom: 4 }}>NO ALERTS SET</div>
-                        <div style={{ fontSize: "12px", color: "var(--grey3)" }}>Track routes to get notified.</div>
+                        <div style={{ fontSize: "12px", color: "var(--grey4)" }}>Track routes to get notified.</div>
                       </div>
                     )}
                     {alerts.map(a => (
@@ -338,7 +338,7 @@ const styles = `
   .dash-stat-item:last-child { border-right: none; }
   .stat-icon { color: var(--red); opacity: 0.8; }
   .stat-val { font-size: 32px; font-family: var(--fd); color: var(--black); letter-spacing: -0.02em; line-height: 1; }
-  .stat-label { font-size: 11px; font-family: var(--fm); color: var(--grey3); text-transform: uppercase; letter-spacing: 0.12em; fontWeight: 700; }
+  .stat-label { font-size: 11px; font-family: var(--fm); color: var(--grey4); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
 
   @media (max-width: 1024px) {
     .dash-grid { grid-template-columns: 1fr !important; }

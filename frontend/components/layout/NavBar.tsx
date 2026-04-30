@@ -13,6 +13,7 @@ export default function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
+  const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 4);
@@ -27,6 +28,19 @@ export default function NavBar() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => setProfile(data));
+    } else {
+      setProfile(null);
+    }
+  }, [user]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
 
   const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 
@@ -47,7 +61,7 @@ export default function NavBar() {
             <div className="ui-nav-logo-box" style={{ transition: "transform 0.2s" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5S18 2 16.5 3.5L13 7 4.8 6.2c-.5-.1-.9.1-1.1.5L2 8.9c-.2.4-.1.9.2 1.2l4.6 4.1-1.5 6.4 2.8 2.8 5.3-3.2 4.1 4.6c.3.4.8.5 1.2.2l1.1-1.2c.4-.2.6-.6.5-1.1z"/></svg>
             </div>
-            <span style={{ fontFamily: "var(--fd)", fontSize: "1.4rem", color: "var(--black)", lineHeight: 1, letterSpacing: "-0.01em" }}>
+            <span style={{ fontFamily: "var(--fd)", fontSize: "1.4rem", color: theme === 'dark' ? '#fff' : '#000', lineHeight: 1, letterSpacing: "-0.01em" }}>
               SKY<em style={{ color: "var(--red)", fontStyle: "normal", fontWeight: 800 }}>MIND</em>
             </span>
           </Link>
@@ -93,25 +107,21 @@ export default function NavBar() {
             
             {user ? (
               <>
-                <Link href="/dashboard" className="ui-nav-link">
-                  <div style={{ width: 18, height: 18, background: "var(--red)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6rem", borderRadius: "4px", fontWeight: 800 }}>
-                    {user.email?.[0]?.toUpperCase() ?? "U"}
+                <Link href="/dashboard" className={`ui-nav-link ${pathname === '/dashboard' ? 'active' : ''}`}>
+                  <div style={{ width: 22, height: 22, borderRadius: "5px", background: "var(--red)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 800 }}>
+                    {(profile?.display_name || user.email || "U")[0].toUpperCase()}
                   </div>
-                  Account
+                  ACCOUNT
                 </Link>
-                <button 
-                  onClick={async () => { await supabase.auth.signOut(); router.push("/"); }}
-                  className="ui-nav-link"
-                  style={{ background: "none", border: "none", cursor: "pointer" }}
-                >
-                  Sign Out
+                <button onClick={handleSignOut} className="ui-nav-link" style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.7rem" }}>
+                  SIGN OUT
                 </button>
               </>
             ) : (
               <Link href="/auth" className="ui-nav-link">Sign In</Link>
             )}
             
-            <Link href="/flights" className="ui-btn ui-btn-red" style={{ height: "100%", borderRadius: 0, padding: "0 36px", fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+            <Link href="/flights" className="ui-btn ui-btn-red" style={{ height: "100%", borderRadius: 0, padding: "0 24px", fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>
               Book Now
             </Link>
           </div>

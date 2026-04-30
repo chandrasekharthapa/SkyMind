@@ -63,7 +63,7 @@ function PredictContent() {
   return (
     <div style={{ background: "var(--white)", minHeight: "100vh" }}>
       {/* Hero Section */}
-      <div style={{ position: "relative", background: "var(--black)", padding: "120px 0 60px", color: "#fff", overflow: "hidden" }}>
+      <div style={{ position: "relative", background: "#000", padding: "120px 0 60px", color: "#fff", overflow: "hidden" }}>
         <video autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.3 }} poster="https://images.unsplash.com/photo-1464012658250-24927044342b?auto=format&fit=crop&q=80&w=2074">
           <source src="https://player.vimeo.com/external/494163967.sd.mp4?s=bc32356c36195503080d944c9b1f727877259160&profile_id=164&oauth2_token_id=57447761" type="video/mp4" />
         </video>
@@ -165,11 +165,11 @@ function PredictContent() {
                       <div style={{ fontSize: "0.8rem", color: "#15803d", opacity: 0.8 }}>Target: ₹{Math.round(bestDay?.price || 0).toLocaleString("en-IN")}</div>
                     </div>
                   </div>
-                  <div style={{ padding: 24, background: "var(--black)", color: "#fff", borderRadius: 20, display: "flex", alignItems: "center", gap: 20 }}>
+                  <div style={{ padding: 24, background: "var(--white)", color: "var(--black)", borderRadius: 20, display: "flex", alignItems: "center", gap: 20, border: "1px solid var(--grey1)" }}>
                     <div className="rec-icon" style={{ background: "var(--red)" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg></div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: "var(--fb)", fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.4)", marginBottom: 4, textTransform: "uppercase" }}>AI Recommendation</div>
-                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.6rem", color: result.recommendation === "BOOK_NOW" ? "var(--red)" : "#fff" }}>{recLabel}</div>
+                      <div style={{ fontFamily: "var(--fd)", fontSize: "1.6rem", color: result.recommendation === "BOOK_NOW" ? "var(--red)" : "var(--black)" }}>{recLabel}</div>
                       <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{result.reason}</div>
                     </div>
                   </div>

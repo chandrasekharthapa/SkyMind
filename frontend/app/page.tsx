@@ -304,7 +304,7 @@ export default function HomePage() {
         .how-step { display: flex; gap: 16px; margin-bottom: 32px; }
         .how-step-number { font-family: var(--fm); font-size: 0.8rem; font-weight: 700; color: var(--red); margin-top: 4px; min-width: 24px; }
         .how-step-title { font-family: var(--fb); font-weight: 700; font-size: 1.15rem; color: var(--black); margin-bottom: 4px; line-height: 1.3; }
-        .how-step-desc { font-family: var(--fb); font-size: 0.95rem; color: var(--grey3); line-height: 1.6; }
+        .how-step-desc { font-family: var(--fb); font-size: 0.95rem; color: var(--grey4); line-height: 1.6; }
 
         @media (max-width: 1100px) {
           .hero-split { grid-template-columns: 1fr; gap: 48px; padding: 80px 0 60px; }
