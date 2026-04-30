@@ -49,6 +49,7 @@
   --border-color: #2c2e33;
 }
   
+:root {
   /* FONTS */
   --fd: 'Bebas Neue', sans-serif;
   --fi: 'DM Serif Display', serif;

@@ -64,7 +64,3 @@ export default function RootLayout({
     </html>
   );
 }
-      </body>
-    </html>
-  );
-}
