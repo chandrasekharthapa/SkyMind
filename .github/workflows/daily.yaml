@@ -19,7 +19,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r backend/requirements.txt
 
       - name: Set env variables
         run: |
@@ -29,4 +29,6 @@ jobs:
           echo "AMADEUS_SECRET=${{ secrets.AMADEUS_API_SECRET }}" >> $GITHUB_ENV
 
       - name: Run pipeline
-        run: python run_pipeline.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python backend/run_pipeline.py

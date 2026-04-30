@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -169,17 +170,33 @@ def start_scheduler() -> None:
         logger.info("Scheduler already running.")
         return
 
-    # Synthetic data ingestion — staggered across the day
-    for i in range(len(ROUTE_BATCHES)):
+    _scheduler.start()
+    
+    # Optional: Skip daily heavy jobs if handled by GitHub Actions
+    is_prod = os.getenv("SERVER_ENV") == "production"
+    
+    if is_prod:
+        logger.info("[Scheduler] Production mode: Daily jobs (Ingestion/Retraining) delegated to GitHub Actions.")
+    else:
+        # Synthetic data ingestion — staggered across the day
+        for i in range(len(ROUTE_BATCHES)):
+            _scheduler.add_job(
+                _ingest_synthetic_batch,
+                CronTrigger(hour=2 + i, minute=15),
+                args=[i],
+                id=f"ingest_batch_{i}",
+                replace_existing=True,
+            )
+
+        # Daily model retraining at 5am IST
         _scheduler.add_job(
-            _ingest_synthetic_batch,
-            CronTrigger(hour=2 + i, minute=15),
-            args=[i],
-            id=f"ingest_batch_{i}",
+            _retrain_models,
+            CronTrigger(hour=5, minute=0),
+            id="retrain_models",
             replace_existing=True,
         )
 
-    # Price alert checks every 30 minutes
+    # Price alert checks every 30 minutes (Always run on server if up)
     _scheduler.add_job(
         _check_price_alerts,
         IntervalTrigger(minutes=30),
@@ -187,13 +204,4 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Daily model retraining at 5am IST
-    _scheduler.add_job(
-        _retrain_models,
-        CronTrigger(hour=5, minute=0),
-        id="retrain_models",
-        replace_existing=True,
-    )
-
-    _scheduler.start()
     logger.info("[Scheduler] SkyMind background scheduler active.")

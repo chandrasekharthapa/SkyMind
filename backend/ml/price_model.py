@@ -195,6 +195,16 @@ class PricePredictor:
 
     # ── Load ──────────────────────────────────────────────────────────
     def load(self) -> None:
+        from database.database import database as db
+        
+        # 1. Try to sync from Supabase Storage first if local is missing or we want latest
+        if not os.path.exists(MODEL_PATH):
+            logger.info("Local model missing, attempting to download from Supabase Storage...")
+            db.download_model(MODEL_PATH)
+
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
+
         with open(MODEL_PATH, "rb") as fh:
             data = pickle.load(fh)
         self.model = data["model"]

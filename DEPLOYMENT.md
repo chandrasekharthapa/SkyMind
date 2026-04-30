@@ -1,198 +1,86 @@
-# SkyMind — Complete Integration & Deployment Guide
-> Full-system sync: FastAPI backend ↔ Next.js frontend (2026 production)
+# SkyMind — Deployment & Operations Guide (2026)
+
+This guide covers the full deployment cycle, including the new **GitHub Actions Pipeline** and **Cloud Model Persistence**.
 
 ---
 
-## What Was Done
-
-### Zero Ghost Connections — Integration Map
-
-```
-POST /predict              ←→  hooks/usePrediction.ts  →  app/predict/page.tsx
-GET  /airports             ←→  lib/api.ts searchAirports  →  FlightSearchForm.tsx
-GET  /flights/search       ←→  lib/api.ts searchFlights  →  app/flights/page.tsx
-POST /booking/create       ←→  lib/api.ts createBooking  →  app/booking/page.tsx
-POST /payment/create-order ←→  lib/api.ts createRazorpayOrder  →  app/checkout/page.tsx
-POST /payment/verify       ←→  lib/api.ts verifyPayment  →  app/checkout/page.tsx
-POST /alerts/subscribe     ←→  hooks/useAlerts.ts addAlert  →  app/predict/page.tsx
-GET  /alerts/user/{id}     ←→  hooks/useAlerts.ts poll  →  app/dashboard/page.tsx
-DELETE /alerts/{id}        ←→  hooks/useAlerts.ts removeAlert
-POST /auth/signup          ←→  app/auth/page.tsx
-GET  /user/trips           ←→  app/dashboard/page.tsx
-GET  /health               ←→  deployment health check
-```
+## 1. Prerequisites & Services
+- **Backend**: [Render.com](https://render.com) (Web Service)
+- **Frontend**: [Vercel.com](https://vercel.com) (Next.js)
+- **Database/Cloud**: [Supabase.com](https://supabase.com) (Postgres + Storage)
+- **CI/CD**: GitHub Actions
 
 ---
 
-## Quick Start (Local Dev)
+## 2. Supabase Configuration (Critical)
 
-### 1. Backend
+### Database
+Run `backend/database/skymind_complete.sql` in the Supabase SQL Editor to initialize all tables, views, and functions.
 
+### Storage
+1. Go to **Storage** in the Supabase Dashboard.
+2. Create a new bucket named `models`.
+3. Set the bucket to **Public** (or ensure your Service Role key has full access).
+4. This bucket will hold the `global_model.pkl` trained by GitHub Actions.
+
+---
+
+## 3. GitHub Actions Setup (Retraining Pipeline)
+
+The daily pipeline ensures your AI model stays accurate and your alerts stay active even if your Render backend is sleeping.
+
+### GitHub Secrets
+Add the following to **Settings > Secrets and variables > Actions**:
+| Secret | Description |
+|:---|:---|
+| `SUPABASE_URL` | Your Supabase Project URL |
+| `SUPABASE_SERVICE_KEY` | The **service_role** key (required for storage uploads) |
+| `GMAIL_USER` | Gmail address for flight alerts |
+| `GMAIL_APP_PASSWORD` | 16-character Gmail App Password |
+| `TWILIO_ACCOUNT_SID` | (Optional) For SMS/WhatsApp alerts |
+| `TWILIO_AUTH_TOKEN` | (Optional) |
+
+---
+
+## 4. Backend Deployment (Render)
+
+### Environment Variables
+Ensure the following are set in the Render Dashboard:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+- `DATABASE_URL` (Direct Postgres connection string)
+- `CORS_ORIGINS` (Your Vercel URL)
+- `SECRET_KEY` (Random string for JWT)
+
+### Build & Start
+- **Build Command**: `pip install -r backend/requirements.txt`
+- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Root Directory**: `backend` (or run from root with `uvicorn backend.main:app`)
+
+---
+
+## 5. Frontend Deployment (Vercel)
+
+### Environment Variables
+- `NEXT_PUBLIC_API_BASE_URL`: Your Render URL (e.g., `https://skymind-api.onrender.com`)
+- `NEXT_PUBLIC_SUPABASE_URL`: Same as backend
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase **anon** key
+- `NEXT_PUBLIC_RAZORPAY_KEY`: Your Razorpay test key
+
+---
+
+## 6. Verification Checklist
+
+### Local Pipeline Test
+Run this command from the project root to verify the GitHub logic locally:
 ```bash
-cd backend
-
-# Copy and fill env
-cp .env.example .env
-# Fill: SUPABASE_URL, SUPABASE_SERVICE_KEY, DATABASE_URL
-# Optional: RAZORPAY_*, GMAIL_*, FAST2SMS_API_KEY
-
-pip install -r requirements.txt
-
-uvicorn main:app --reload --port 8000
-# → http://localhost:8000
-# → http://localhost:8000/docs  (Swagger UI)
+export PYTHONPATH=$PYTHONPATH:$(pwd)/backend
+python backend/run_pipeline.py
 ```
+*Check your Supabase `models` bucket to see if `global_model.pkl` appeared.*
 
-### 2. Frontend
-
-```bash
-cd frontend
-
-# Copy and fill env
-cp .env.local.example .env.local
-# Fill: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
-# NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-# NEXT_PUBLIC_RAZORPAY_KEY=rzp_test_xxxx
-
-npm install
-npm run dev
-# → http://localhost:3000
-```
-
----
-
-## Environment Variables Reference
-
-### Backend `.env`
-
-| Key | Required | Description |
-|-----|----------|-------------|
-| `SUPABASE_URL` | ✅ | Project URL from Supabase dashboard |
-| `SUPABASE_SERVICE_KEY` | ✅ | Service role key (not anon) |
-| `DATABASE_URL` | ✅ | PostgreSQL connection string for ML training |
-| `SECRET_KEY` | ✅ | JWT secret — generate with `openssl rand -hex 32` |
-
-| `RAZORPAY_KEY_ID` | ⚡ | Razorpay key ID (`rzp_test_*` for sandbox) |
-| `RAZORPAY_KEY_SECRET` | ⚡ | Razorpay secret |
-| `GMAIL_USER` | 📧 | Gmail address for notifications |
-| `GMAIL_APP_PASSWORD` | 📧 | Gmail App Password (not regular password) |
-| `FAST2SMS_API_KEY` | 📱 | Fast2SMS key for Indian SMS |
-| `TWILIO_ACCOUNT_SID` | 📱 | Twilio SID (fallback SMS + WhatsApp) |
-| `TWILIO_AUTH_TOKEN` | 📱 | Twilio auth token |
-| `CORS_ORIGINS` | 🌐 | Comma-separated allowed frontend origins |
-
-### Frontend `.env.local`
-
-| Key | Required | Description |
-|-----|----------|-------------|
-| `NEXT_PUBLIC_API_BASE_URL` | ✅ | Backend URL (primary) |
-| `NEXT_PUBLIC_API_URL` | ✅ | Backend URL (legacy alias, keep same value) |
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key |
-| `NEXT_PUBLIC_RAZORPAY_KEY` | ⚡ | Razorpay publishable key |
-
----
-
-## Production Deployment
-
-### Backend → Render
-
-1. Connect GitHub repo to [render.com](https://render.com)
-2. New Web Service → `backend/` directory
-3. Build: `pip install -r requirements.txt`
-4. Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --lifespan on`
-5. Add all env vars from the table above
-6. Set `CORS_ORIGINS=https://your-app.vercel.app`
-7. Health check path: `/health`
-
-### Frontend → Vercel
-
-```bash
-cd frontend
-npx vercel --prod
-```
-
-In Vercel dashboard → Settings → Environment Variables:
-- `NEXT_PUBLIC_API_BASE_URL` = `https://your-backend.onrender.com`
-- `NEXT_PUBLIC_API_URL` = same value
-- Add all other `NEXT_PUBLIC_*` vars
-
----
-
-## Key Architecture Decisions
-
-### CORS
-`main.py` reads `CORS_ORIGINS` from env at startup so you never need to redeploy just to add a new frontend domain. Localhost:3000 is always allowed.
-
-### Lifespan
-Uses `@asynccontextmanager` lifespan (FastAPI ≥0.93). The deprecated `@app.on_event("startup")` pattern is gone. APScheduler starts inside lifespan and the ML model loads on startup.
-
-### API Base URL
-All frontend API calls go through `apiRequest()` in `lib/api.ts` which reads `NEXT_PUBLIC_API_BASE_URL` first, falling back to `NEXT_PUBLIC_API_URL`, then `http://localhost:8000`. This means you only need to set one env var.
-
-### Passenger Data
-`passengers` in `POST /booking/create` is strictly `List[PassengerData]` (array of objects). The frontend sends `[{ type, first_name, last_name, ... }]` — never a flat string or a single object.
-
-### Prediction Endpoint
-`POST /predict` lives in `main.py` (not inside a router) so it's reachable at `/predict` exactly as the frontend expects. The `/ai/price` GET endpoint in `routers/prediction.py` is for internal dashboard widgets.
-
-### Date Handling
-All dates are ISO-8601 strings throughout: `"2026-05-15"` for dates, `"2026-05-15T06:30:00"` for datetimes. No `Date` objects cross the API boundary.
-
-### ML Model
-The XGBoost predictor is a singleton (`get_predictor()`). It loads from disk on startup if a saved model exists, otherwise trains from Supabase `price_history` data on first prediction call. **Do not change the feature list or hyperparameters.**
-
----
-
-## Database Schema Notes
-
-The app expects these Supabase tables:
-- `airports` — IATA codes, city, name, country, state
-- `airlines` — carrier data  
-- `routes` — origin/destination pairs with pricing
-- `flights` — cached live flight data
-- `price_history` — ML training data (origin, destination, price, features)
-- `price_alerts` — user price subscriptions
-- `bookings` — booking records with `flight_offer_data` JSONB
-- `profiles` — user profiles linked to `auth.users`
-- `v_domestic_routes` — view joining routes + airports
-
-Run `backend/database/skymind_complete.sql` in Supabase SQL Editor to set up the full schema.
-
----
-
-## Verification Checklist
-
-```
-Backend:
-  ✅ GET  /health              → { status: "ok", model: "loaded" }
-  ✅ GET  /airports?q=del      → airport suggestions
-  ✅ GET  /flights/search?origin=DEL&destination=BOM&departure_date=... → flights
-  ✅ POST /predict             → { predicted_price, forecast[], trend, recommendation }
-  ✅ POST /booking/create      → { booking_id, booking_reference }
-  ✅ POST /payment/create-order → { order_id, amount, key }
-  ✅ POST /payment/verify      → { success: true }
-  ✅ POST /alerts/subscribe    → { alert_id, message }
-  ✅ GET  /alerts/user/{id}    → { alerts[], triggered[] }
-  ✅ DELETE /alerts/{id}       → { success: true }
-
-Frontend:
-  ✅ / (home)                  → Landing page with search form
-  ✅ /flights                  → Search results with ML badges
-  ✅ /predict                  → 30-day chart + alert form
-  ✅ /booking                  → Passenger form
-  ✅ /checkout                 → Razorpay payment
-  ✅ /success                  → Booking confirmation
-  ✅ /dashboard                → Trips + alerts
-  ✅ /auth                     → Email/OTP/Google login
-
-Data flow:
-  ✅ Prediction displays as "BOOK NOW" not "BOOK_NOW"
-  ✅ Confidence displays as "87%" not "0.87"
-  ✅ Forecast has 30 entries with { day, date, price, lower, upper }
-  ✅ Chart renders with shaded CI bands
-  ✅ Booking passengers sent as array of objects
-  ✅ Razorpay signature verified with HMAC-SHA256 compare_digest
-  ✅ CORS allows localhost:3000 and production Vercel URL
-  ✅ Scheduler starts via asynccontextmanager lifespan
-```
+### Production Sync Test
+1. Deploy to Render.
+2. Delete `backend/ml/models/global_model.pkl` if it exists locally.
+3. Start the server. 
+4. **Expected Result**: Log should show `Local model missing, attempting to download from Supabase Storage...` followed by `Model downloaded successfully`.

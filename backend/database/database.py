@@ -339,6 +339,38 @@ class Database:
         except Exception:
             return []
 
+    # ── Supabase Storage (Model Persistence) ────────────────────────
+    def upload_model(self, local_path: str, remote_name: str = "global_model.pkl") -> bool:
+        """Upload a trained model to Supabase Storage."""
+        try:
+            with open(local_path, "rb") as f:
+                content = f.read()
+            
+            # Upsert = True to overwrite existing model
+            res = self.supabase.storage.from_("models").upload(
+                path=remote_name,
+                file=content,
+                file_options={"content-type": "application/octet-stream", "x-upsert": "true"}
+            )
+            logger.info(f"Model uploaded to Supabase Storage: {remote_name}")
+            return True
+        except Exception as exc:
+            logger.error(f"Model upload failed: {exc}")
+            return False
+
+    def download_model(self, local_path: str, remote_name: str = "global_model.pkl") -> bool:
+        """Download the latest model from Supabase Storage."""
+        try:
+            res = self.supabase.storage.from_("models").download(remote_name)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            with open(local_path, "wb") as f:
+                f.write(res)
+            logger.info(f"Model downloaded from Supabase Storage: {remote_name}")
+            return True
+        except Exception as exc:
+            logger.debug(f"Model download failed (this is expected on first run): {exc}")
+            return False
+
 
 # ── Singleton ─────────────────────────────────────────────────────────
 database = Database()
