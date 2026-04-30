@@ -180,13 +180,30 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
             <div>
               <label className="ui-field-label">Departure Date</label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                   <CalendarIcon />
                 </span>
+                
+                <div className="ui-input" style={{ 
+                  paddingLeft: 44, 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  cursor: 'pointer'
+                }}>
+                  {state.departure_date ? format(new Date(state.departure_date), 'd MMM yyyy') : 'Select Date'}
+                </div>
+
                 <input 
                   type="date" 
-                  className="ui-input" 
-                  style={{ paddingLeft: 44 }}
+                  style={{ 
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    width: '100%',
+                    height: '100%',
+                    cursor: 'pointer',
+                    zIndex: 3
+                  }}
                   value={state.departure_date} 
                   min={today} 
                   onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
@@ -229,30 +246,68 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
               <div style={{ flex: 1 }}>
                 <label className="ui-field-label">Departure</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                  {/* Icon */}
+                  <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                     <CalendarIcon />
                   </span>
+                  
+                  {/* Formatted Display */}
+                  <div className="ui-input" style={{ 
+                    paddingLeft: 44, 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    cursor: 'pointer'
+                  }}>
+                    {state.departure_date ? format(new Date(state.departure_date), 'd MMM yyyy') : 'Select Date'}
+                  </div>
+
+                  {/* Invisible Native Input */}
                   <input 
                     type="date" 
-                    className="ui-input" 
-                    style={{ paddingLeft: 44 }}
+                    style={{ 
+                      position: 'absolute',
+                      inset: 0,
+                      opacity: 0,
+                      width: '100%',
+                      height: '100%',
+                      cursor: 'pointer',
+                      zIndex: 3
+                    }}
                     value={state.departure_date} 
                     min={today} 
                     onChange={e => dispatch({ type: 'SET_FIELD', field: 'departure_date', value: e.target.value })} 
                   />
                 </div>
               </div>
+              
               {state.trip_type === "ROUND_TRIP" && (
                 <div style={{ flex: 1 }}>
                   <label className="ui-field-label">Return</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex' }}>
+                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--red)', pointerEvents: 'none', display: 'flex', zIndex: 2 }}>
                       <CalendarIcon />
                     </span>
+                    
+                    <div className="ui-input" style={{ 
+                      paddingLeft: 44, 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}>
+                      {state.return_date ? format(new Date(state.return_date), 'd MMM yyyy') : 'Select Return'}
+                    </div>
+
                     <input 
                       type="date" 
-                      className="ui-input" 
-                      style={{ paddingLeft: 44 }}
+                      style={{ 
+                        position: 'absolute',
+                        inset: 0,
+                        opacity: 0,
+                        width: '100%',
+                        height: '100%',
+                        cursor: 'pointer',
+                        zIndex: 3
+                      }}
                       value={state.return_date || ''} 
                       min={state.departure_date || today} 
                       onChange={e => dispatch({ type: 'SET_FIELD', field: 'return_date', value: e.target.value })} 

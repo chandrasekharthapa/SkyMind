@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "sonner";
 import QueryProvider from "@/components/providers/QueryProvider";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://skymind.app"),
@@ -30,11 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // suppressHydrationWarning prevents hydration mismatches from dark-mode
-    // or any client-side class additions to <html>
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Fonts are loaded here (NOT in globals.css) to avoid double-loading */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -46,22 +44,26 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      {/* font-sans applies Instrument Sans as the base body font via Tailwind */}
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <QueryProvider>{children}</QueryProvider>
-        <Toaster
-          theme="light"
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: "#fff",
-              border: "1px solid #d8d6d2",
-              color: "#131210",
-              fontFamily: "'Instrument Sans',sans-serif",
-              fontSize: ".875rem",
-            },
-          }}
-        />
+        <ThemeProvider>
+          <QueryProvider>{children}</QueryProvider>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: "var(--card-bg)",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-main)",
+                fontFamily: "'Instrument Sans',sans-serif",
+                fontSize: ".875rem",
+              },
+            }}
+          />
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
       </body>
     </html>
   );

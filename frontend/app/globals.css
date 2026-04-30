@@ -18,6 +18,37 @@
   --red-mist: rgba(224, 49, 49, 0.08);
   --green: #2b8a3e;
   
+  --nav-bg: var(--white);
+  --card-bg: var(--white);
+  --input-bg: var(--white);
+  --body-bg: var(--white);
+  --text-main: var(--black);
+  --text-muted: var(--grey4);
+  --border-color: var(--grey1);
+}
+
+[data-theme="dark"] {
+  --white: #1a1b1e;
+  --off: #141517;
+  --grey1: #2c2e33;
+  --grey2: #373a40;
+  --grey3: #5c5f66;
+  --grey4: #909296;
+  --black: #ffffff;
+  
+  --red: #ff6b6b;
+  --red-d: #fa5252;
+  --red-mist: rgba(255, 107, 107, 0.12);
+  
+  --nav-bg: #1a1b1e;
+  --card-bg: #1a1b1e;
+  --input-bg: #25262b;
+  --body-bg: #141517;
+  --text-main: #c1c2c5;
+  --text-muted: #909296;
+  --border-color: #2c2e33;
+}
+  
   /* FONTS */
   --fd: 'Bebas Neue', sans-serif;
   --fi: 'DM Serif Display', serif;
@@ -51,12 +82,13 @@
 
 body {
   font-family: var(--fb);
-  background: var(--white);
-  color: var(--black);
+  background: var(--body-bg);
+  color: var(--text-main);
   line-height: 1.5;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ATOMIC UI KIT */
@@ -95,8 +127,8 @@ body {
   width: 100%; 
   max-width: 100%;
   height: 52px; 
-  background: var(--white); 
-  border: 1px solid #d1d5db; 
+  background: var(--input-bg); 
+  border: 1px solid var(--border-color); 
   border-radius: var(--ui-radius-md); 
   padding: 0 var(--ui-space-md); 
   font-family: var(--fb); 
@@ -115,7 +147,7 @@ input[type="date"].ui-input {
   appearance: none;
 }
 
-.ui-card { background: var(--white); border: 1px solid var(--grey1); border-radius: var(--ui-radius-xl); box-shadow: 0 4px 24px rgba(0,0,0,0.02); padding: var(--ui-space-xl); transition: transform 0.3s ease, box-shadow 0.3s ease; }
+.ui-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--ui-radius-xl); box-shadow: 0 4px 24px rgba(0,0,0,0.02); padding: var(--ui-space-xl); transition: transform 0.3s ease, box-shadow 0.3s ease; }
 .ui-card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.06); }
 
 .ui-glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--ui-radius-xl); }
@@ -143,7 +175,7 @@ input[type="date"].ui-input {
 @media (max-width: 768px) { .ui-wrap { padding: 0 var(--ui-space-md); } }
 
 /* NAVIGATION */
-.ui-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 200; height: 64px; background: var(--white); border-bottom: 1px solid var(--grey1); transition: all 0.3s ease; }
+.ui-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 200; height: 64px; background: var(--nav-bg); border-bottom: 1px solid var(--border-color); transition: all 0.3s ease; }
 .ui-nav-scrolled { background: var(--white); box-shadow: var(--shadow-sm); }
 .ui-nav-inner { height: 100%; display: flex; align-items: stretch; }
 

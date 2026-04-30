@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function NavBar() {
   const [scrolled, setScrolled] = useState(false);
@@ -11,6 +12,7 @@ export default function NavBar() {
   const [user, setUser] = useState<any>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 4);
@@ -66,6 +68,24 @@ export default function NavBar() {
 
           {/* Desktop Action Section */}
           <div className="nav-links-desktop ui-flex" style={{ marginLeft: "auto", height: "100%", gap: "24px", paddingRight: "24px" }}>
+            
+            <button 
+              onClick={toggleTheme}
+              className="ui-nav-link"
+              style={{ 
+                background: "none", 
+                border: "none", 
+                cursor: "pointer", 
+                color: "var(--grey3)",
+                fontFamily: "var(--fm)",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                letterSpacing: "0.1em"
+              }}
+            >
+              {theme === 'light' ? "[ DARK ]" : "[ LIGHT ]"}
+            </button>
+
             <div className="ui-flex" style={{ fontSize: "0.65rem", color: "var(--grey3)", textTransform: "uppercase", fontFamily: "var(--fm)", gap: "8px", fontWeight: 700, letterSpacing: "0.1em" }}>
               <div className="status-dot" style={{ width: 6, height: 6, background: "var(--red)", boxShadow: "0 0 8px var(--red)", animation: "blink 2s infinite" }} />
               AI Live
@@ -97,7 +117,24 @@ export default function NavBar() {
           </div>
 
           {/* Mobile Menu Toggle */}
-          <div className="nav-mobile-btn ui-flex" style={{ marginLeft: "auto", display: "none" }}>
+          <div className="nav-mobile-btn ui-flex" style={{ marginLeft: "auto", display: "none", gap: "12px" }}>
+            <button 
+              onClick={toggleTheme}
+              className="ui-nav-link" 
+              style={{ 
+                background: "none", 
+                border: "none", 
+                cursor: "pointer", 
+                color: "var(--grey3)",
+                fontFamily: "var(--fm)",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                padding: "0 10px"
+              }}
+            >
+              {theme === 'light' ? "[ DARK ]" : "[ LIGHT ]"}
+            </button>
             <button 
               onClick={() => setMobileOpen(o => !o)} 
               className="ui-btn ui-btn-white" 
@@ -130,7 +167,7 @@ export default function NavBar() {
           <button 
             onClick={async () => { await supabase.auth.signOut(); router.push("/"); }}
             className="ui-nav-mobile-link"
-            style={{ width: "100%", background: "none", border: "none", color: "var(--red)" }}
+            style={{ width: "100%", background: "none", border: "none", color: "var(--red)", textAlign: "left" }}
           >
             Sign Out
           </button>
@@ -143,7 +180,6 @@ export default function NavBar() {
           </Link>
         </div>
       </div>
-
     </>
   );
 }
