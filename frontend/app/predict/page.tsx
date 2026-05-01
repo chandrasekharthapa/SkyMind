@@ -166,11 +166,13 @@ function PredictContent() {
                     </div>
                   </div>
                   <div style={{ padding: 24, background: "var(--white)", color: "var(--black)", borderRadius: 20, display: "flex", alignItems: "center", gap: 20, border: "1px solid var(--grey1)" }}>
-                    <div className="rec-icon" style={{ background: "var(--red)" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg></div>
+                    <div className="rec-icon" style={{ background: "linear-gradient(135deg, var(--red) 0%, var(--red-d) 100%)", boxShadow: "0 8px 16px var(--red-mist)" }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 9V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4"/><path d="M2 15v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v4"/><path d="M2 9a3 3 0 0 1 0 6"/><path d="M22 9a3 3 0 0 0 0 6"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                    </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: "var(--fb)", fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.4)", marginBottom: 4, textTransform: "uppercase" }}>AI Recommendation</div>
+                      <div style={{ fontFamily: "var(--fb)", fontSize: "10px", fontWeight: 700, color: "var(--grey3)", marginBottom: 4, textTransform: "uppercase" }}>AI Recommendation</div>
                       <div style={{ fontFamily: "var(--fd)", fontSize: "1.6rem", color: result.recommendation === "BOOK_NOW" ? "var(--red)" : "var(--black)" }}>{recLabel}</div>
-                      <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", marginTop: 2 }}>{result.reason}</div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--grey4)", marginTop: 2 }}>{result.reason}</div>
                     </div>
                   </div>
                 </div>

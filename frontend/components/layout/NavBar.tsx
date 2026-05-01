@@ -118,7 +118,7 @@ export default function NavBar() {
               <Link href="/auth" className="ui-nav-link">Sign In</Link>
             )}
             
-            <Link href="/flights" className="ui-btn ui-btn-red" style={{ height: "100%", borderRadius: 0, padding: "0 24px", fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+            <Link href="/flights" className="ui-btn ui-btn-red" style={{ height: "100%", borderRadius: 0, padding: "0 24px", fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", display: "flex", alignItems: "center" }}>
               Book Now
             </Link>
           </div>
