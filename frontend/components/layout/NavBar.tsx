@@ -83,27 +83,24 @@ export default function NavBar() {
           {/* Desktop Action Section */}
           <div className="nav-links-desktop ui-flex" style={{ marginLeft: "auto", height: "100%", gap: "24px", paddingRight: "24px" }}>
             
-            <button 
+            <div 
               onClick={toggleTheme}
-              className="ui-nav-link"
-              style={{ 
-                background: "none", 
-                border: "none", 
-                cursor: "pointer", 
-                color: "var(--grey3)",
-                fontFamily: "var(--fm)",
-                fontSize: "0.6rem",
-                fontWeight: 700,
-                letterSpacing: "0.1em"
-              }}
+              className="theme-toggle-wrap"
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
-              {theme === 'light' ? "[ DARK ]" : "[ LIGHT ]"}
-            </button>
-
-            <div className="ui-flex" style={{ fontSize: "0.65rem", color: "var(--grey3)", textTransform: "uppercase", fontFamily: "var(--fm)", gap: "8px", fontWeight: 700, letterSpacing: "0.1em" }}>
-              <div className="status-dot" style={{ width: 6, height: 6, background: "var(--red)", boxShadow: "0 0 8px var(--red)", animation: "blink 2s infinite" }} />
-              AI Live
+              <div className="theme-toggle-icons">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              </div>
+              <div className="theme-toggle-thumb">
+                {theme === 'light' 
+                  ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                  : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: "#fff" }}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                }
+              </div>
             </div>
+
+            {/* AI Live indicator removed */}
             
             {user ? (
               <>
@@ -128,23 +125,22 @@ export default function NavBar() {
 
           {/* Mobile Menu Toggle */}
           <div className="nav-mobile-btn ui-flex" style={{ marginLeft: "auto", display: "none", gap: "12px" }}>
-            <button 
+            <div 
               onClick={toggleTheme}
-              className="ui-nav-link" 
-              style={{ 
-                background: "none", 
-                border: "none", 
-                cursor: "pointer", 
-                color: "var(--grey3)",
-                fontFamily: "var(--fm)",
-                fontSize: "0.6rem",
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                padding: "0 10px"
-              }}
+              className="theme-toggle-wrap"
+              style={{ transform: "scale(0.9)" }}
             >
-              {theme === 'light' ? "[ DARK ]" : "[ LIGHT ]"}
-            </button>
+              <div className="theme-toggle-icons">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              </div>
+              <div className="theme-toggle-thumb">
+                {theme === 'light' 
+                  ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                  : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: "#fff" }}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                }
+              </div>
+            </div>
             <button 
               onClick={() => setMobileOpen(o => !o)} 
               className="ui-btn ui-btn-white" 

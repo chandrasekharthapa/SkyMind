@@ -102,7 +102,9 @@ async def predict(req: PredictRequest) -> dict:
 
 
 @router.get("/performance", tags=["Prediction"])
-async def get_performance() -> dict:
+async def get_performance(sync: bool = False) -> dict:
     predictor = get_predictor()
+    if sync:
+        predictor.sync_from_cloud()
     metrics = predictor.get_performance()
     return {"metrics": metrics}

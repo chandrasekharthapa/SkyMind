@@ -57,6 +57,7 @@ class PricePredictor:
         self.encoders: dict = {}
         self.metrics: dict = {}
         self._trained = False
+        self._last_loaded_time: float = 0.0
 
     # ── Train ─────────────────────────────────────────────────────────
     def train(self) -> None:
@@ -213,15 +214,38 @@ class PricePredictor:
         self.encoders = data["encoders"]
         self.metrics = data.get("metrics", {})
         self._trained = True
-        logger.info("Price Predictor loaded from disk.")
+        self._last_loaded_time = os.path.getmtime(MODEL_PATH)
+        logger.info(f"Price Predictor loaded from disk (Last updated: {datetime.fromtimestamp(self._last_loaded_time).strftime('%Y-%m-%d %H:%M:%S')}).")
+
+    def sync_from_cloud(self) -> bool:
+        """Force download from Supabase Storage and reload."""
+        from database.database import database as db
+        logger.info("Forcing model sync from cloud...")
+        if db.download_model(MODEL_PATH):
+            self.load()
+            return True
+        return False
 
     def ensure_ready(self) -> None:
+        # Check if file on disk is newer than what we have in memory
+        if os.path.exists(MODEL_PATH):
+            mtime = os.path.getmtime(MODEL_PATH)
+            if mtime > self._last_loaded_time:
+                logger.info("New model detected on disk, reloading...")
+                try:
+                    self.load()
+                except Exception as exc:
+                    logger.error(f"Failed to reload new model: {exc}")
+        
         if self._trained:
             return
+            
         if os.path.exists(MODEL_PATH):
             self.load()
             return
-        self.train()
+            
+        # If no model exists at all, we could train, but in prod we usually wait for pipeline
+        logger.warning("No model found. In production, this should have been synced from cloud.")
 
     def get_performance(self) -> dict:
         self.ensure_ready()

@@ -417,6 +417,55 @@ input[type="date"].ui-input {
 .hero-card-head-v2 { display: flex; align-items: center; gap: 8px; font-family: var(--fm); font-size: 0.65rem; color: rgba(255,255,255,0.6); letter-spacing: 0.1em; margin-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 16px; }
 .status-dot { width: 8px; height: 8px; background: var(--red); border-radius: 50%; box-shadow: 0 0 10px var(--red); animation: blink 2s infinite; }
 
+/* NEURAL THEME TOGGLE */
+.theme-toggle-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--grey1);
+  padding: 4px;
+  border-radius: 100px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 60px;
+  height: 30px;
+  position: relative;
+  overflow: hidden;
+}
+[data-theme="dark"] .theme-toggle-wrap {
+  background: #25262b;
+  border-color: #373a40;
+}
+.theme-toggle-thumb {
+  width: 22px;
+  height: 22px;
+  background: var(--white);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: absolute;
+  left: 4px;
+  z-index: 2;
+}
+[data-theme="dark"] .theme-toggle-thumb {
+  left: 34px;
+  background: var(--red);
+  box-shadow: 0 0 12px var(--red);
+}
+.theme-toggle-icons {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 6px;
+  color: var(--grey3);
+  position: relative;
+  z-index: 1;
+}
+.theme-toggle-icons svg { width: 12px; height: 12px; }
+
 /* CONFIDENCE BARS */
 .conf-bar-wrap { height: 4px; background: var(--grey2); border-radius: 2px; overflow: hidden; margin: 8px 0; }
 .conf-bar-fill { height: 100%; border-radius: 2px; transition: width 1s ease; }
