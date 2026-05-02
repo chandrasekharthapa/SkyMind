@@ -13,11 +13,15 @@ import random
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr, field_validator
+import logging
 
 from database.database import database as db
 from services.notifications import dispatcher
+from routers.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -160,11 +164,11 @@ async def create_booking(req: CreateBookingRequest):
         try:
             res = db.supabase.table("bookings").insert(booking_payload).execute()
         except Exception as db_err:
-            print(f"[ERROR] Bookings table insert failed: {db_err}")
-            raise HTTPException(500, detail=f"Database error: {str(db_err)}")
+            logger.error(f"Bookings table insert failed: {db_err}")
+            raise HTTPException(500, detail="Database error during booking creation")
 
         if not res.data:
-            print(f"[ERROR] Bookings insert returned no data. Payload: {booking_payload}")
+            logger.error(f"Bookings insert returned no data. Payload: {booking_payload}")
             raise HTTPException(500, detail="Database insert failed (bookings) - No data returned")
 
         # ── 2. Create Passengers ──────────────────────────────────────
@@ -194,16 +198,14 @@ async def create_booking(req: CreateBookingRequest):
             }
             passenger_payloads.append(payload)
 
-        # ── 2. Create Passengers ──────────────────────────────────────
         try:
             p_res = db.supabase.table("passengers").insert(passenger_payloads).execute()
         except Exception as p_err:
-            print(f"[ERROR] Passengers table insert failed: {p_err}")
-            # We don't raise here yet to see if the rest proceeds, but we log it.
+            logger.error(f"Passengers table insert failed: {p_err}")
             p_res = type('obj', (object,), {'data': None}) # mock object
 
         if not p_res.data:
-            print(f"[Warning] Passenger insert returned no data. Payloads: {passenger_payloads}")
+            logger.warning(f"Passenger insert returned no data. Payloads: {passenger_payloads}")
 
         # ── 3. Notifications ──────────────────────────────────────────
         try:
@@ -224,7 +226,7 @@ async def create_booking(req: CreateBookingRequest):
                 },
             )
         except Exception as email_err:
-            print(f"[Non-critical] Confirmation email failed: {email_err}")
+            logger.warning(f"Confirmation email failed: {email_err}")
 
         return {
             "success": True,
@@ -236,8 +238,8 @@ async def create_booking(req: CreateBookingRequest):
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Booking creation error: {exc}")
         raise HTTPException(500, detail="Booking creation failed")
 
 
@@ -246,7 +248,7 @@ async def create_booking(req: CreateBookingRequest):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/{booking_id}")
-async def get_booking(booking_id: str):
+async def get_booking(booking_id: str, current_user_id: str = Depends(get_current_user)):
     try:
         res = (
             db.supabase.table("bookings")
@@ -256,11 +258,17 @@ async def get_booking(booking_id: str):
         )
         if not res.data:
             raise HTTPException(404, detail="Booking not found")
-        return res.data[0]
+        
+        booking = res.data[0]
+        # ── IDOR Prevention ───────────────────────────────────────────
+        if booking.get("user_id") != current_user_id:
+             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        return booking
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Booking fetch error: {exc}")
         raise HTTPException(500, detail="Fetch error")
 
 
@@ -269,11 +277,11 @@ async def get_booking(booking_id: str):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.post("/{booking_id}/cancel")
-async def cancel_booking(booking_id: str):
+async def cancel_booking(booking_id: str, current_user_id: str = Depends(get_current_user)):
     try:
         check = (
             db.supabase.table("bookings")
-            .select("status, payment_status")
+            .select("user_id, status, payment_status")
             .eq("id", booking_id)
             .execute()
         )
@@ -281,6 +289,10 @@ async def cancel_booking(booking_id: str):
             raise HTTPException(404, detail="Booking not found")
 
         row = check.data[0]
+        # ── IDOR Prevention ───────────────────────────────────────────
+        if row.get("user_id") != current_user_id:
+             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied")
+
         if row["status"] == "CANCELLED":
             return {"success": True, "message": "Booking already cancelled"}
 
@@ -304,6 +316,6 @@ async def cancel_booking(booking_id: str):
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Booking cancellation error: {exc}")
         raise HTTPException(500, detail="Cancellation failed")

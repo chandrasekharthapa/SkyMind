@@ -15,6 +15,7 @@ from fastapi import APIRouter, Query, HTTPException
 
 from services.flight_data_service import flight_data_service, ROUTE_DURATIONS
 from ml.price_model import get_predictor
+from database.database import database as db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,41 +30,7 @@ def _model():
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Static airport data
-# ══════════════════════════════════════════════════════════════════════
-
-STATIC_AIRPORTS = [
-    {"iata": "DEL", "city": "New Delhi",       "name": "Indira Gandhi International",       "country": "India"},
-    {"iata": "BOM", "city": "Mumbai",          "name": "Chhatrapati Shivaji Maharaj Intl",  "country": "India"},
-    {"iata": "BLR", "city": "Bengaluru",       "name": "Kempegowda International",          "country": "India"},
-    {"iata": "MAA", "city": "Chennai",         "name": "Chennai International",             "country": "India"},
-    {"iata": "HYD", "city": "Hyderabad",       "name": "Rajiv Gandhi International",        "country": "India"},
-    {"iata": "CCU", "city": "Kolkata",         "name": "Netaji Subhas Chandra Bose Intl",   "country": "India"},
-    {"iata": "COK", "city": "Kochi",           "name": "Cochin International",              "country": "India"},
-    {"iata": "GOI", "city": "Goa",             "name": "Goa International Airport",         "country": "India"},
-    {"iata": "AMD", "city": "Ahmedabad",       "name": "Sardar Vallabhbhai Patel Intl",     "country": "India"},
-    {"iata": "JAI", "city": "Jaipur",          "name": "Jaipur International",              "country": "India"},
-    {"iata": "LKO", "city": "Lucknow",         "name": "Chaudhary Charan Singh Intl",       "country": "India"},
-    {"iata": "PNQ", "city": "Pune",            "name": "Pune Airport",                      "country": "India"},
-    {"iata": "ATQ", "city": "Amritsar",        "name": "Sri Guru Ram Dass Jee Intl",        "country": "India"},
-    {"iata": "BBI", "city": "Bhubaneswar",     "name": "Biju Patnaik International",        "country": "India"},
-    {"iata": "IXR", "city": "Ranchi",          "name": "Birsa Munda Airport",               "country": "India"},
-    {"iata": "PAT", "city": "Patna",           "name": "Jay Prakash Narayan Intl",          "country": "India"},
-    {"iata": "VNS", "city": "Varanasi",        "name": "Lal Bahadur Shastri Intl",          "country": "India"},
-    {"iata": "IDR", "city": "Indore",          "name": "Devi Ahilyabai Holkar Airport",     "country": "India"},
-    {"iata": "BHO", "city": "Bhopal",          "name": "Raja Bhoj Airport",                 "country": "India"},
-    {"iata": "TRV", "city": "Thiruvananthapuram", "name": "Trivandrum International",       "country": "India"},
-    {"iata": "CCJ", "city": "Kozhikode",       "name": "Calicut International",             "country": "India"},
-    {"iata": "CJB", "city": "Coimbatore",      "name": "Coimbatore International",          "country": "India"},
-    {"iata": "GAU", "city": "Guwahati",        "name": "Lokpriya Gopinath Bordoloi Intl",   "country": "India"},
-    {"iata": "IXE", "city": "Mangalore",       "name": "Mangalore International",           "country": "India"},
-    {"iata": "SXR", "city": "Srinagar",        "name": "Sheikh ul-Alam International",      "country": "India"},
-    {"iata": "IXL", "city": "Leh",             "name": "Kushok Bakula Rimpochhe Airport",   "country": "India"},
-    {"iata": "DXB", "city": "Dubai",           "name": "Dubai International",               "country": "UAE"},
-    {"iata": "LHR", "city": "London",          "name": "Heathrow Airport",                  "country": "UK"},
-    {"iata": "SIN", "city": "Singapore",       "name": "Changi Airport",                    "country": "Singapore"},
-    {"iata": "DOH", "city": "Doha",            "name": "Hamad International",               "country": "Qatar"},
-]
+# Airport data is now fetched from the database.
 
 CITY_TO_IATA = {
     "delhi": "DEL", "new delhi": "DEL",
@@ -241,11 +208,26 @@ async def search_flights(
 @router.get("/airports")
 async def search_airports_flights(q: str = Query(..., min_length=1)):
     q_lower = q.lower().strip()
-    results = [
-        a for a in STATIC_AIRPORTS
-        if q_lower in a["city"].lower()
-        or q_lower in a["iata"].lower()
-        or q_lower in a["name"].lower()
-    ]
-    results.sort(key=lambda x: (x["country"] != "India", x["iata"].lower() != q_lower))
-    return {"airports": results[:10]}
+    try:
+        # ── Database Search ──────────────────────────────────────────
+        # Search by code, city, or name using ILIKE
+        res = db.supabase.table("airports").select("iata_code, name, city, country") \
+            .or_(f"iata_code.ilike.%{q_lower}%,city.ilike.%{q_lower}%,name.ilike.%{q_lower}%") \
+            .limit(10) \
+            .execute()
+        
+        results = []
+        for a in (res.data or []):
+            results.append({
+                "iata": a["iata_code"],
+                "city": a["city"],
+                "name": a["name"],
+                "country": a["country"]
+            })
+
+        # Sort: India first, then exact code match
+        results.sort(key=lambda x: (x["country"] != "India", x["iata"].lower() != q_lower))
+        return {"airports": results}
+    except Exception as exc:
+        logger.error(f"Airport search error: {exc}")
+        return {"airports": []}

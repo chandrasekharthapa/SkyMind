@@ -56,15 +56,19 @@ export default function CheckoutPage() {
         order_id: order.order_id,
         handler: async (response: any) => {
           try {
-            await verifyPayment({
+            const res: VerifyPaymentResponse = await verifyPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
               booking_id: booking?.id ?? "",
             });
-            router.push("/success");
-          } catch (err) {
-            router.push("/success"); // Fallback to success as payment is captured
+            if (res.success) {
+              router.push("/success");
+            } else {
+              setPayError("Payment verification failed. Please contact support.");
+            }
+          } catch (err: any) {
+            setPayError("Server communication error. Our system will confirm your booking via email once processed.");
           }
         },
         prefill: {
@@ -182,7 +186,7 @@ export default function CheckoutPage() {
                   <Plane size={18} color="var(--red)" />
                   <div>
                     <div style={{ fontSize: "10px", color: "var(--red)", fontWeight: 700, letterSpacing: "0.1em" }}>REF: {ref}</div>
-                    <div style={{ fontSize: "18px", fontFamily: "var(--fd)", color: "var(--black)", letterSpacing: "0.05em" }}>{origin} ➔ {destination}</div>
+                    <div style={{ fontSize: "18px", fontFamily: "var(--fd)", color: "#fff", letterSpacing: "0.05em" }}>{origin} ➔ {destination}</div>
                   </div>
                 </div>
 

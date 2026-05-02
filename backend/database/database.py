@@ -23,13 +23,20 @@ logger = logging.getLogger(__name__)
 
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 _SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+_SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
 if not _SUPABASE_URL or not _SUPABASE_KEY:
     raise RuntimeError(
         "Missing Supabase credentials (SUPABASE_URL / SUPABASE_SERVICE_KEY)"
     )
 
-_supabase_client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
+# Service client: Bypass RLS (for admin tasks)
+_supabase_service = create_client(_SUPABASE_URL, _SUPABASE_KEY)
+
+# Anon client: Respect RLS (for client-facing tasks if needed, though usually handled by server)
+_supabase_anon = None
+if _SUPABASE_ANON_KEY:
+    _supabase_anon = create_client(_SUPABASE_URL, _SUPABASE_ANON_KEY)
 
 # ══════════════════════════════════════════════════════════════════════
 # SQLAlchemy engine (used for ML training queries)
@@ -177,7 +184,8 @@ def _generate_synthetic_training_dataset() -> pd.DataFrame:
 
 class Database:
     def __init__(self):
-        self.supabase = _supabase_client
+        self.supabase = _supabase_service
+        self.anon = _supabase_anon
 
     # ── ML training dataset ─────────────────────────────────────────
     def get_training_dataset(self) -> pd.DataFrame:

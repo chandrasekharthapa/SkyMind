@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     supabase_url: str = ""
     supabase_service_key: str = ""
+    supabase_jwt_secret: str = ""
 
     # ── Redis ─────────────────────────────────────────────────────────
     redis_url: str = "redis://localhost:6379"

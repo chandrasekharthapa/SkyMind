@@ -5,12 +5,13 @@ Endpoints:
   GET /user/profile/{user_id}
 """
 
-import traceback
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+import logging
 
 from database import database as db
+from routers.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -20,7 +21,11 @@ router = APIRouter()
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/trips")
-async def get_user_trips(user_id: str = Query(...)):
+async def get_user_trips(user_id: str = Query(...), current_user_id: str = Depends(get_current_user)):
+    # ── IDOR Prevention ───────────────────────────────────────────
+    if user_id != current_user_id:
+        raise HTTPException(403, detail="Access denied")
+
     try:
         res = (
             db.supabase.table("bookings")
@@ -81,8 +86,8 @@ async def get_user_trips(user_id: str = Query(...)):
             "total_count": len(raw_trips),
         }
 
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Failed to fetch trips for {user_id}: {exc}")
         raise HTTPException(500, detail="Failed to fetch trips")
 
 
@@ -91,7 +96,11 @@ async def get_user_trips(user_id: str = Query(...)):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/profile/{user_id}")
-async def get_profile(user_id: str):
+async def get_profile(user_id: str, current_user_id: str = Depends(get_current_user)):
+    # ── IDOR Prevention ───────────────────────────────────────────
+    if user_id != current_user_id:
+        raise HTTPException(403, detail="Access denied")
+
     try:
         res = (
             db.supabase.table("profiles")
@@ -126,6 +135,6 @@ async def get_profile(user_id: str):
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Profile fetch error for {user_id}: {exc}")
         raise HTTPException(500, detail="Profile fetch error")

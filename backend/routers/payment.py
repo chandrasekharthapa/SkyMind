@@ -11,8 +11,11 @@ import hmac
 import hashlib
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request, Header
 from pydantic import BaseModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 from config import settings
 from database.database import database as db
@@ -174,9 +177,65 @@ async def verify_payment(
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(500, detail="Verification failed")
+# ══════════════════════════════════════════════════════════════════════
+# POST /payment/webhook
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/webhook")
+async def razorpay_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_razorpay_signature: str = Header(None)
+):
+    """
+    Handle asynchronous events from Razorpay.
+    Verifies signature and updates booking status.
+    """
+    if not x_razorpay_signature:
+        raise HTTPException(400, detail="Missing signature")
+
+    raw_body = await request.body()
+    
+    # ── Signature Verification ──────────────────────────────────────
+    # NOTE: In production, use the dedicated webhook secret
+    webhook_secret = getattr(settings, "razorpay_webhook_secret", settings.razorpay_key_secret)
+    expected = hmac.new(
+        webhook_secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, x_razorpay_signature):
+        logger.error("Invalid webhook signature")
+        raise HTTPException(401, detail="Invalid signature")
+
+    data = await request.json()
+    event = data.get("event")
+    payload = data.get("payload", {})
+    
+    logger.info(f"Razorpay Webhook: {event}")
+
+    if event in ["payment.captured", "order.paid"]:
+        payment_entity = payload.get("payment", {}).get("entity", {})
+        order_id = payment_entity.get("order_id")
+        payment_id = payment_entity.get("id")
+        
+        # Find booking by order_id
+        res = db.supabase.table("bookings").select("*").eq("razorpay_order_id", order_id).execute()
+        if res.data:
+            booking = res.data[0]
+            if booking.get("payment_status") != "PAID":
+                db.supabase.table("bookings").update({
+                    "payment_status": "PAID",
+                    "status": "CONFIRMED",
+                    "payment_id": payment_id,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", booking["id"]).execute()
+                
+                background_tasks.add_task(_send_post_payment_comms, booking, payment_id)
+                logger.info(f"Booking {booking['id']} confirmed via webhook")
+
+    return {"status": "ok"}
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -196,8 +255,8 @@ async def get_payment_status(payment_id: str):
             "currency": payment.get("currency"),
             "email": payment.get("email"),
         }
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Razorpay status fetch error: {exc}")
         raise HTTPException(500, detail="Razorpay fetch error")
 
 

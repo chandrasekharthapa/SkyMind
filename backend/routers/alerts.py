@@ -9,11 +9,15 @@ Endpoints:
 import traceback
 from datetime import date
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional
+import logging
 
 from database import database as db
+from routers.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -73,8 +77,11 @@ class AlertRequest(BaseModel):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.post("/subscribe")
-async def subscribe_alert(req: AlertRequest):
+async def subscribe_alert(req: AlertRequest, current_user_id: str = Depends(get_current_user)):
     """Subscribe to a price alert. Prevents duplicate (origin, dest, date) per user."""
+    # ── IDOR Prevention ───────────────────────────────────────────
+    if req.user_id and req.user_id != current_user_id:
+        raise HTTPException(403, detail="Access denied")
     try:
         origin = req.resolved_origin()
         destination = req.resolved_destination()
@@ -145,8 +152,8 @@ async def subscribe_alert(req: AlertRequest):
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Error creating alert: {exc}")
         raise HTTPException(500, detail="Error creating alert")
 
 
@@ -155,8 +162,11 @@ async def subscribe_alert(req: AlertRequest):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.get("/user/{user_id}")
-async def get_user_alerts(user_id: str):
+async def get_user_alerts(user_id: str, current_user_id: str = Depends(get_current_user)):
     """Return all active alerts for a user, normalised to AlertRecord shape."""
+    # ── IDOR Prevention ───────────────────────────────────────────
+    if user_id != current_user_id:
+        raise HTTPException(403, detail="Access denied")
     try:
         res = (
             db.supabase.table("price_alerts")
@@ -198,8 +208,8 @@ async def get_user_alerts(user_id: str):
             "count": len(alerts),
         }
 
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Error fetching alerts for {user_id}: {exc}")
         raise HTTPException(500, detail="Error fetching alerts")
 
 
@@ -208,17 +218,21 @@ async def get_user_alerts(user_id: str):
 # ══════════════════════════════════════════════════════════════════════
 
 @router.delete("/{alert_id}")
-async def delete_alert(alert_id: str):
+async def delete_alert(alert_id: str, current_user_id: str = Depends(get_current_user)):
     """Soft-delete a price alert."""
     try:
         check = (
             db.supabase.table("price_alerts")
-            .select("id")
+            .select("id, user_id")
             .eq("id", alert_id)
             .execute()
         )
         if not check.data:
             raise HTTPException(404, detail="Alert not found")
+        
+        # ── IDOR Prevention ───────────────────────────────────────────
+        if check.data[0].get("user_id") != current_user_id:
+            raise HTTPException(403, detail="Access denied")
 
         db.supabase.table("price_alerts").update({"is_active": False}).eq(
             "id", alert_id
@@ -228,6 +242,6 @@ async def delete_alert(alert_id: str):
 
     except HTTPException:
         raise
-    except Exception:
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error(f"Error deleting alert {alert_id}: {exc}")
         raise HTTPException(500, detail="Error deleting alert")
