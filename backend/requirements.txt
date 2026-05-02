@@ -51,3 +51,4 @@ rapidfuzz>=3.9.3
 
 # --- Utilities ---
 python-dateutil>=2.9.0
+fpdf2>=2.7.8

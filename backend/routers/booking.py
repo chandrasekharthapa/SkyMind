@@ -319,3 +319,56 @@ async def cancel_booking(booking_id: str, current_user_id: str = Depends(get_cur
     except Exception as exc:
         logger.error(f"Booking cancellation error: {exc}")
         raise HTTPException(500, detail="Cancellation failed")
+# ══════════════════════════════════════════════════════════════════════
+# GET /booking/{booking_id}/download
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/{booking_id}/download")
+async def download_ticket(booking_id: str, current_user_id: str = Depends(get_current_user)):
+    """
+    Generate and serve a PDF ticket for the given booking.
+    """
+    try:
+        # 1. Fetch booking
+        res = db.supabase.table("bookings").select("*").eq("id", booking_id).execute()
+        if not res.data:
+            raise HTTPException(404, detail="Booking not found")
+        booking = res.data[0]
+        
+        # 2. IDOR Prevention
+        if booking.get("user_id") != current_user_id:
+             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        # 3. Fetch passengers for the name
+        p_res = db.supabase.table("passengers").select("first_name").eq("booking_id", booking_id).execute()
+        first_name = p_res.data[0].get("first_name", "Traveller") if p_res.data else "Traveller"
+
+        # 4. Generate PDF
+        from services.pdf import generate_ticket_pdf
+        pdf_data = {
+            "name": first_name,
+            "booking_ref": booking.get("booking_reference"),
+            "origin": booking.get("origin_code"),
+            "destination": booking.get("destination_code"),
+            "departure_date": booking.get("departure_date"),
+            "amount": f"{booking.get('currency', 'INR')} {float(booking.get('total_price', 0)):,.2f}",
+            "cabin": booking.get("cabin_class", "ECONOMY")
+        }
+        
+        pdf_bytes = generate_ticket_pdf(pdf_data)
+
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=SkyMind_Ticket_{booking.get('booking_reference')}.pdf"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Ticket download error: {exc}")
+        traceback.print_exc()
+        raise HTTPException(500, detail="Ticket generation failed")

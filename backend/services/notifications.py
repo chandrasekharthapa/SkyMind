@@ -14,7 +14,8 @@ import time
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Optional
+from email.mime.application import MIMEApplication
+from typing import Any, Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -55,20 +56,33 @@ class EmailService:
         server.login(self.gmail_user, self.gmail_password)
         return server
 
-    def send(self, to_email: str, subject: str, html_body: str, text_body: str = "") -> bool:
+    def send(self, to_email: str, subject: str, html_body: str, text_body: str = "", attachments: List[Tuple[str, bytes]] = None) -> bool:
         if not self.gmail_user or not self.gmail_password:
             logger.warning("Gmail credentials missing — email not sent to %s", to_email)
             return False
         try:
-            msg = MIMEMultipart("alternative")
+            # Using 'mixed' to support both body and attachments
+            msg = MIMEMultipart("mixed")
             msg["Subject"] = subject
             msg["From"]    = f"{self.from_name} <{self.gmail_user}>"
             msg["To"]      = to_email
             if self.reply_to:
                 msg["Reply-To"] = self.reply_to
+
+            # Body part (alternative for text/html)
+            body = MIMEMultipart("alternative")
             if text_body:
-                msg.attach(MIMEText(text_body, "plain", "utf-8"))
-            msg.attach(MIMEText(html_body, "html", "utf-8"))
+                body.attach(MIMEText(text_body, "plain", "utf-8"))
+            body.attach(MIMEText(html_body, "html", "utf-8"))
+            msg.attach(body)
+
+            # Attachments
+            if attachments:
+                for filename, data in attachments:
+                    part = MIMEApplication(data)
+                    part.add_header("Content-Disposition", "attachment", filename=filename)
+                    msg.attach(part)
+
             with self._connect() as server:
                 server.sendmail(self.gmail_user, [to_email], msg.as_string())
             logger.info("Email sent → %s | %s", to_email, subject)
@@ -84,83 +98,102 @@ class EmailService:
     @staticmethod
     def _wrap(header_color: str, emoji: str, title: str, subtitle: str, body: str) -> str:
         year = datetime.now().year
+        # Premium Noir Redesign
         return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color:#1a202c}}
-.outer{{padding:28px 12px}}
-.card{{max-width:600px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 6px 32px rgba(0,0,0,.10)}}
-.hdr{{background:{header_color};padding:40px 36px;text-align:center;color:#fff}}
-.hdr-icon{{font-size:48px;margin-bottom:10px;display:block}}
-.hdr h1{{font-size:24px;font-weight:800}}
-.hdr p{{margin-top:6px;opacity:.85;font-size:14px}}
-.body{{padding:32px 36px}}
-.body p{{color:#4a5568;font-size:15px;line-height:1.7;margin-bottom:12px}}
-.row{{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid #edf2f7}}
+body{{font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0b0c0d;color:#ffffff;line-height:1.6}}
+.outer{{padding:40px 12px;background:#0b0c0d}}
+.card{{max-width:600px;margin:0 auto;background:#1a1b1e;border-radius:24px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.5);border:1px solid #2c2e33}}
+.hdr{{background:{header_color};padding:50px 40px;text-align:center;color:#ffffff;border-bottom:1px solid rgba(255,255,255,0.05)}}
+.hdr h1{{font-size:36px;font-weight:800;letter-spacing:-1px;text-transform:uppercase;margin-bottom:8px}}
+.hdr p{{opacity:.7;font-size:15px;font-weight:500;letter-spacing:1px}}
+.body{{padding:40px}}
+.body p{{color:#adb5bd;font-size:16px;margin-bottom:18px}}
+.row{{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #2c2e33}}
 .row:last-child{{border-bottom:none}}
-.lbl{{color:#a0aec0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}}
-.val{{color:#2d3748;font-weight:700;font-size:14px;text-align:right}}
-.btn{{display:inline-block;background:{header_color};color:#fff!important;text-decoration:none;padding:14px 34px;border-radius:10px;font-weight:700;font-size:15px;margin:16px 0}}
-.info-box{{background:#f7fafc;border-left:4px solid #0ea5e9;border-radius:0 10px 10px 0;padding:14px 18px;margin:16px 0;font-size:14px;color:#374151}}
-.footer{{background:#f7fafc;padding:22px 36px;text-align:center;color:#a0aec0;font-size:12px;line-height:1.8}}
-.footer a{{color:#718096;text-decoration:none}}
+.lbl{{color:#495057;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px}}
+.val{{color:#ffffff;font-weight:700;font-size:16px;text-align:right}}
+.btn{{display:inline-block;background:#ff6b6b;color:#ffffff!important;text-decoration:none;padding:18px 40px;border-radius:14px;font-weight:700;font-size:15px;margin:28px 0;box-shadow:0 10px 25px rgba(255,107,107,0.25);transition:all 0.2s}}
+.info-box{{background:#0b0c0d;border-left:4px solid #ff6b6b;border-radius:0 14px 14px 0;padding:20px 24px;margin:28px 0;font-size:14px;color:#adb5bd;border:1px solid #2c2e33;border-left:4px solid #ff6b6b}}
+.footer{{background:#1a1b1e;padding:36px 40px;text-align:center;color:#495057;font-size:12px;border-top:1px solid #2c2e33}}
+.footer a{{color:#adb5bd;text-decoration:none;font-weight:600}}
 </style></head><body>
 <div class="outer"><div class="card">
-<div class="hdr"><span class="hdr-icon">{emoji}</span><h1>{title}</h1><p>{subtitle}</p></div>
+<div class="hdr"><h1>{title}</h1><p>{subtitle}</p></div>
 <div class="body">{body}</div>
 <div class="footer">
-  <p><strong>SkyMind Flights</strong> &nbsp;·&nbsp; AI-powered smarter travel</p>
-  <p style="margin-top:4px"><a href="https://skymind.app">Website</a> &nbsp;·&nbsp; <a href="https://skymind.app/help">Help</a></p>
-  <p style="margin-top:6px;font-size:11px">© {year} SkyMind Technologies · India</p>
+  <p><strong>SkyMind Flights</strong> &nbsp;·&nbsp; AI-powered travel infrastructure</p>
+  <p style="margin-top:10px"><a href="https://skymind.app">Website</a> &nbsp;·&nbsp; <a href="https://skymind.app/help">Help</a></p>
+  <p style="margin-top:14px;font-size:11px;opacity:.4">© {year} SkyMind Technologies · India</p>
 </div></div></div></body></html>"""
 
     # ── Templates ───────────────────────────────────────────────────
     def send_welcome(self, to_email: str, name: str) -> bool:
         body = f"""
-<p>Hi <strong>{name}</strong>!</p>
-<p>Welcome to SkyMind — India's smartest flight booking platform.</p>
-<div class="info-box"><strong>AI Price Prediction</strong> — Know exactly when to book on 950+ routes</div>
-<div class="info-box"><strong>30-Day Forecast</strong> — See fare trends before you decide</div>
-<div class="info-box"><strong>Price Alerts</strong> — SMS + email when fares drop to your budget</div>
-<p style="text-align:center;margin-top:24px">
-  <a href="https://skymind.app/flights" class="btn">Search Flights Now</a>
+<p>Hi <strong>{name}</strong>,</p>
+<p>Welcome to SkyMind — the next generation of AI-powered travel infrastructure.</p>
+<div class="info-box"><strong>Neural Forecasting</strong> — Predict price drops on 950+ global routes</div>
+<div class="info-box"><strong>Manifest Security</strong> — Instant digital tickets and secure itineraries</div>
+<div class="info-box"><strong>Priority Alerts</strong> — Real-time price tracking and route updates</div>
+<p style="text-align:center;margin-top:32px">
+  <a href="https://skymind.app/flights" class="btn">Initiate Flight Search</a>
 </p>"""
-        html = self._wrap("linear-gradient(135deg,#0ea5e9,#6366f1)", "", "Welcome to SkyMind!", "Your AI travel companion is ready", body)
-        return self.send(to_email, "Welcome to SkyMind — Smarter flights await!", html, f"Welcome {name}! Start at skymind.app")
+        html = self._wrap("linear-gradient(135deg,#000000,#1a1b1e)", "", "Access Granted", "Welcome to the SkyMind ecosystem", body)
+        return self.send(to_email, "Welcome to SkyMind — Smarter travel starts here", html, f"Welcome {name}! Explore skymind.app")
 
     def send_otp(self, to_email: str, otp: str, purpose: str = "verification") -> bool:
         body = f"""
-<p>Your one-time password for <strong>{purpose}</strong>:</p>
-<div style="text-align:center;margin:28px 0">
-  <div style="display:inline-block;background:#f0f9ff;border:2px solid #bae6fd;border-radius:14px;padding:24px 44px">
-    <div style="font-size:52px;font-weight:900;letter-spacing:12px;color:#0284c7;font-family:'Courier New',monospace">{otp}</div>
-    <div style="color:#64748b;font-size:13px;margin-top:8px">Valid for <strong>10 minutes</strong></div>
+<p>Your unique security code for <strong>{purpose}</strong>:</p>
+<div style="text-align:center;margin:32px 0">
+  <div style="display:inline-block;background:#0b0c0d;border:2px solid #2c2e33;border-radius:20px;padding:32px 48px">
+    <div style="font-size:56px;font-weight:900;letter-spacing:14px;color:#ff6b6b;font-family:'Courier New',monospace">{otp}</div>
+    <div style="color:#495057;font-size:12px;margin-top:12px;text-transform:uppercase;letter-spacing:2px">Valid for <strong>10 minutes</strong></div>
   </div>
 </div>
-<div class="info-box" style="border-color:#f59e0b;background:#fffbeb">SkyMind staff will <em>never</em> ask for this code. Keep it private.</div>"""
-        html = self._wrap("linear-gradient(135deg,#0284c7,#0ea5e9)", "", "Verification Code", f"For: {purpose}", body)
-        return self.send(to_email, f"SkyMind OTP: {otp}", html, f"Your SkyMind OTP: {otp}. Valid 10 min. Do not share.")
+<div class="info-box" style="border-color:#ff6b6b">SkyMind Security: Staff will never ask for this code. If you didn't request this, please secure your account.</div>"""
+        html = self._wrap("linear-gradient(135deg,#1a1b1e,#0b0c0d)", "", "Secure Access", f"Protocol: {purpose.upper()}", body)
+        return self.send(to_email, f"SkyMind Security Code: {otp}", html, f"Your SkyMind security code: {otp}. Valid 10 min.")
 
     def send_booking_confirmation(self, to_email: str, data: dict) -> bool:
+        try:
+            from services.pdf import generate_ticket_pdf
+            pdf_bytes = generate_ticket_pdf(data)
+            filename = f"SkyMind_Ticket_{data.get('booking_ref', 'BOOKING')}.pdf"
+        except Exception as pdf_err:
+            logger.error(f"Failed to generate PDF for attachment: {pdf_err}")
+            pdf_bytes = None
+            filename = None
+
         body = f"""
 <p>Hi <strong>{data.get('name','Traveller')}</strong>,</p>
-<p>Your booking is confirmed!</p>
-<div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:18px 24px;text-align:center;margin:20px 0">
-  <div style="color:#15803d;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Booking Reference</div>
-  <div style="font-size:38px;font-weight:900;color:#166534;letter-spacing:6px;font-family:'Courier New',monospace;margin:6px 0">{data.get('booking_ref','------')}</div>
-  <div style="color:#64748b;font-size:13px">Show this at the airport</div>
+<p>Your journey is confirmed. We've generated and attached your digital ticket manifest to this email for your convenience.</p>
+<div style="background:#0b0c0d;border:1px solid #2c2e33;border-radius:18px;padding:28px;text-align:center;margin:28px 0">
+  <div style="color:#495057;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">Booking Reference</div>
+  <div style="font-size:44px;font-weight:900;color:#ff6b6b;letter-spacing:6px;font-family:'Courier New',monospace;margin:8px 0">{data.get('booking_ref','------')}</div>
+  <div style="color:#adb5bd;font-size:12px;opacity:.8;text-transform:uppercase;letter-spacing:1px">Manifest Secured & Verified</div>
 </div>
 <div>
-  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','---')} → {data.get('destination','---')}</span></div>
-  <div class="row"><span class="lbl">Date</span><span class="val">{data.get('departure_date','')}</span></div>
-  <div class="row"><span class="lbl">Amount Paid</span><span class="val" style="color:#16a34a;font-size:18px">{data.get('amount','')}</span></div>
+  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','---')} &rarr; {data.get('destination','---')}</span></div>
+  <div class="row"><span class="lbl">Departure</span><span class="val">{data.get('departure_date','')}</span></div>
+  <div class="row"><span class="lbl">Amount</span><span class="val" style="color:#ff6b6b;font-size:18px">{data.get('amount','')}</span></div>
 </div>
-<div class="info-box">Web check-in opens 48 hours before departure.</div>
-<p style="text-align:center"><a href="https://skymind.app/dashboard" class="btn">View Booking</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#10b981,#059669)", "", "Booking Confirmed!", "Your flight is booked and ready", body)
-        return self.send(to_email, f"Booking {data.get('booking_ref')} Confirmed | SkyMind", html, f"Booking {data.get('booking_ref')} confirmed. Amount: {data.get('amount')}")
+<div class="info-box">Your digital ticket is attached as a PDF. Please present it at the airport check-in counter.</div>
+<p style="text-align:center">
+  <a href="https://skymind.app/dashboard" class="btn">View Booking Details</a>
+</p>"""
+        html = self._wrap("linear-gradient(135deg,#e03131,#ff6b6b)", "", "Ticket Secured", "Your flight is confirmed and ready for departure", body)
+        
+        attachments = [(filename, pdf_bytes)] if pdf_bytes else []
+        return self.send(
+            to_email, 
+            f"Ticket Secured: {data.get('booking_ref')} | SkyMind", 
+            html, 
+            f"Booking {data.get('booking_ref')} confirmed. Amount: {data.get('amount')}",
+            attachments=attachments
+        )
 
     def send_price_alert(self, to_email: str, data: dict) -> bool:
         try:
@@ -169,39 +202,43 @@ body{{font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f0f4f8;color
             savings = 0
         body = f"""
 <p>Hi <strong>{data.get('name','Traveller')}</strong>,</p>
-<p>The price you tracked just <strong style="color:#16a34a">dropped below your target</strong>!</p>
-<div style="display:flex;gap:14px;margin:20px 0;flex-wrap:wrap">
-  <div style="flex:1;min-width:120px;background:#fef3c7;border:2px solid #fbbf24;border-radius:12px;padding:18px;text-align:center">
-    <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase">Your Target</div>
-    <div style="font-size:28px;font-weight:900;color:#d97706;margin:6px 0">₹{float(data.get('target_price',0)):,.0f}</div>
+<p>The price for your tracked route has <strong style="color:#ff6b6b">dropped below your target</strong>.</p>
+<div style="display:flex;gap:14px;margin:28px 0;flex-wrap:wrap">
+  <div style="flex:1;min-width:120px;background:#0b0c0d;border:1px solid #2c2e33;border-radius:18px;padding:24px;text-align:center">
+    <div style="font-size:11px;font-weight:800;color:#495057;text-transform:uppercase;letter-spacing:1px">Your Target</div>
+    <div style="font-size:32px;font-weight:900;color:#adb5bd;margin:8px 0">₹{float(data.get('target_price',0)):,.0f}</div>
   </div>
-  <div style="flex:1;min-width:120px;background:#dcfce7;border:2px solid #4ade80;border-radius:12px;padding:18px;text-align:center">
-    <div style="font-size:11px;font-weight:700;color:#14532d;text-transform:uppercase">Current Price</div>
-    <div style="font-size:28px;font-weight:900;color:#16a34a;margin:6px 0">₹{float(data.get('current_price',0)):,.0f}</div>
+  <div style="flex:1;min-width:120px;background:#1a1b1e;border:1px solid #ff6b6b;border-radius:18px;padding:24px;text-align:center">
+    <div style="font-size:11px;font-weight:800;color:#ff6b6b;text-transform:uppercase;letter-spacing:1px">Current Price</div>
+    <div style="font-size:32px;font-weight:900;color:#ffffff;margin:8px 0">₹{float(data.get('current_price',0)):,.0f}</div>
   </div>
 </div>
 <div>
-  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','')} → {data.get('destination','')}</span></div>
+  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','')} &rarr; {data.get('destination','')}</span></div>
   <div class="row"><span class="lbl">Travel Date</span><span class="val">{data.get('departure_date','')}</span></div>
-  <div class="row"><span class="lbl">You Save</span><span class="val" style="color:#16a34a">₹{savings:,.0f}</span></div>
+  <div class="row"><span class="lbl">Neural Savings</span><span class="val" style="color:#ff6b6b">₹{savings:,.0f}</span></div>
 </div>
-<div class="info-box" style="border-color:#ef4444;background:#fef2f2"><strong>Act fast!</strong> Prices can change in minutes.</div>
-<p style="text-align:center"><a href="https://skymind.app/flights?origin={data.get('origin')}&destination={data.get('destination')}&date={data.get('departure_date')}" class="btn">Book Now →</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#10b981,#16a34a)", "", "Price Alert Triggered!", f"{data.get('origin','')} → {data.get('destination','')} price dropped!", body)
-        return self.send(to_email, f"Price Alert: {data.get('origin')}→{data.get('destination')} now ₹{float(data.get('current_price',0)):,.0f}", html, f"Price dropped! Book now at skymind.app")
+<div class="info-box" style="border-color:#ff6b6b"><strong>AI Recommendation:</strong> Price is currently at a 30-day low for this route. Act fast to secure this fare.</div>
+<p style="text-align:center">
+  <a href="https://skymind.app/flights?origin={data.get('origin')}&destination={data.get('destination')}&date={data.get('departure_date')}" class="btn">Book Now &rarr;</a>
+</p>"""
+        html = self._wrap("linear-gradient(135deg,#ff6b6b,#e03131)", "", "Price Alert", f"{data.get('origin','')} &rarr; {data.get('destination','')} Trend", body)
+        return self.send(to_email, f"Price Alert: {data.get('origin')} &rarr; {data.get('destination')} now ₹{float(data.get('current_price',0)):,.0f}", html, f"Price dropped! Book now at skymind.app")
 
     def send_cancellation(self, to_email: str, data: dict) -> bool:
         body = f"""
-<p>Hi <strong>{data.get('name','Traveller')}</strong>, your booking has been cancelled.</p>
+<p>Hi <strong>{data.get('name','Traveller')}</strong>,</p>
+<p>Your booking has been successfully cancelled as requested.</p>
 <div>
   <div class="row"><span class="lbl">Booking Ref</span><span class="val">{data.get('booking_ref','')}</span></div>
-  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','')} → {data.get('destination','')}</span></div>
-  <div class="row"><span class="lbl">Refund Amount</span><span class="val" style="color:#16a34a;font-size:18px">₹{data.get('refund_amount','0')}</span></div>
-  <div class="row"><span class="lbl">Refund ETA</span><span class="val">{data.get('refund_eta','5–7 days')}</span></div>
+  <div class="row"><span class="lbl">Route</span><span class="val">{data.get('origin','')} &rarr; {data.get('destination','')}</span></div>
+  <div class="row"><span class="lbl">Refund Amount</span><span class="val" style="color:#ff6b6b;font-size:18px">₹{data.get('refund_amount','0')}</span></div>
+  <div class="row"><span class="lbl">Refund Status</span><span class="val">Processing</span></div>
 </div>
-<p style="text-align:center"><a href="https://skymind.app/flights" class="btn">Book New Flight</a></p>"""
-        html = self._wrap("linear-gradient(135deg,#64748b,#475569)", "", "Booking Cancelled", f"Refund of ₹{data.get('refund_amount','0')} is on its way", body)
-        return self.send(to_email, f"Booking {data.get('booking_ref')} Cancelled | SkyMind", html, "")
+<div class="info-box">The refund will be credited to your original payment method within {data.get('refund_eta','5–7 days')}.</div>
+<p style="text-align:center"><a href="https://skymind.app/flights" class="btn">Search New Flights</a></p>"""
+        html = self._wrap("linear-gradient(135deg,#495057,#1a1b1e)", "", "Booking Cancelled", f"Refund Protocol Initiated", body)
+        return self.send(to_email, f"Cancellation Confirmed: {data.get('booking_ref')} | SkyMind", html, "")
 
 
 # ══════════════════════════════════════════════════════════════════════
