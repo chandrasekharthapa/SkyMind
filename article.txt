@@ -1,0 +1,172 @@
+On this page       Why Use Proxy Provider    Quick Start    Connection Semantics    Transport Bridging    Session Isolation    Shared Sessions      MCP Feature Forwarding    Disabling Features      Configuration-Based Proxies    Multi-Server Proxies      Component Prefixing    Mirrored Components    Performance Considerations    Component List Caching    Session Reuse for Stateless Backends      Advanced Usage    FastMCPProxy Class    Adding Proxied Components to Existing Server              MCP Providers   MCP Proxy Provider           Copy page              Source components from other MCP servers            Copy page
+The Proxy Provider sources components from another MCP server through a client connection. This lets you expose any MCP server’s tools, resources, and prompts through your own server, whether the source is local or accessed over the network.
+​         Why Use Proxy Provider
+The Proxy Provider enables:
+Bridge transports : Make an HTTP server available via stdio, or vice versa
+Aggregate servers : Combine multiple source servers into one unified server
+Add security : Act as a controlled gateway with authentication and authorization
+Simplify access : Provide a stable endpoint even if backend servers change
+​         Quick Start
+Create a proxy using  create_proxy() :
+from   fastmcp  .  server   import   create_proxy
+# create_proxy() accepts URLs, file paths, and transports directly
+proxy   =   create_proxy  (  &quot;  http://example.com/mcp  &quot;  ,   name  =  &quot;  MyProxy  &quot;  )
+if   __name__   ==   &quot;  __main__  &quot;  :
+proxy  .  run  ()
+This gives you:
+Safe concurrent request handling
+Automatic forwarding of MCP features (sampling, elicitation, etc.)
+Session isolation to prevent context mixing
+To mount a proxy inside another FastMCP server, see  Mounting External Servers .
+​         Connection Semantics
+FastMCP proxies are lazy bridges. Creating the proxy object and starting the local server do not contact the upstream server. The upstream connection begins when an MCP client sends an  initialize  request to the proxy.
+During initialization, the proxy initializes the upstream server before responding locally. If the upstream server is unavailable, the URL does not point to an MCP endpoint, or upstream authentication cannot complete, the proxy initialization fails. This keeps the local proxy’s connection status aligned with the upstream server it represents.
+After initialization, the proxy forwards MCP requests such as  ping ,  tools/list ,  resources/list ,  prompts/list , tool calls, resource reads, sampling, elicitation, logging, and progress through the upstream client.
+​         Transport Bridging
+A common use case is bridging transports between servers:
+from   fastmcp  .  server   import   create_proxy
+# Bridge HTTP server to local stdio
+http_proxy   =   create_proxy  (  &quot;  http://example.com/mcp/sse  &quot;  ,   name  =  &quot;  HTTP-to-stdio  &quot;  )
+# Run locally via stdio for Claude Desktop
+if   __name__   ==   &quot;  __main__  &quot;  :
+http_proxy  .  run  ()    # Defaults to stdio
+Or expose a local server via HTTP:
+from   fastmcp  .  server   import   create_proxy
+# Bridge local server to HTTP
+local_proxy   =   create_proxy  (  &quot;  local_server.py  &quot;  ,   name  =  &quot;  stdio-to-HTTP  &quot;  )
+if   __name__   ==   &quot;  __main__  &quot;  :
+local_proxy  .  run  (  transport  =  &quot;  http  &quot;  ,   host  =  &quot;  0.0.0.0  &quot;  ,   port  =  8080  )
+​         Session Isolation
+create_proxy()  provides session isolation - each request gets its own isolated backend session:
+from   fastmcp  .  server   import   create_proxy
+# Each request creates a fresh backend session (recommended)
+proxy   =   create_proxy  (  &quot;  backend_server.py  &quot;  )
+# Multiple clients can use this proxy simultaneously:
+# - Client A calls a tool → gets isolated session
+# - Client B calls a tool → gets different session
+# - No context mixing
+​         Shared Sessions
+If you pass an already-connected client, the proxy reuses that session:
+from   fastmcp   import   Client
+from   fastmcp  .  server   import   create_proxy
+async   with   Client  (  &quot;  backend_server.py  &quot;  )   as   connected_client  :
+# This proxy reuses the connected session
+proxy   =   create_proxy  (  connected_client  )
+# ⚠️ Warning: All requests share the same session
+Shared sessions may cause context mixing in concurrent scenarios. Use only in single-threaded situations or with explicit synchronization.
+​         MCP Feature Forwarding
+Proxies automatically forward MCP protocol features:
+Feature  Description      Roots  Filesystem root access requests    Sampling  LLM completion requests    Elicitation  User input requests    Logging  Log messages from backend    Progress  Progress notifications
+from   fastmcp  .  server   import   create_proxy
+# All features forwarded automatically
+proxy   =   create_proxy  (  &quot;  advanced_backend.py  &quot;  )
+# When the backend:
+# - Requests LLM sampling → forwarded to your client
+# - Logs messages → appear in your client
+# - Reports progress → shown in your client
+​         Disabling Features
+Selectively disable forwarding:
+from   fastmcp  .  server  .  providers  .  proxy   import   ProxyClient
+backend   =   ProxyClient  (
+&quot;  backend_server.py  &quot;  ,
+sampling_handler  =  None  ,    # Disable LLM sampling
+log_handler  =  None          # Disable log forwarding
+)
+​         Configuration-Based Proxies
+Create proxies from configuration dictionaries:
+from   fastmcp  .  server   import   create_proxy
+config   =   {
+&quot;  mcpServers  &quot;  :   {
+&quot;  default  &quot;  :   {
+&quot;  url  &quot;  :   &quot;  https://example.com/mcp  &quot;  ,
+&quot;  transport  &quot;  :   &quot;  http  &quot;
+}
+}
+}
+proxy   =   create_proxy  (  config  ,   name  =  &quot;  Config-Based Proxy  &quot;  )
+​         Multi-Server Proxies
+Combine multiple servers with automatic namespacing:
+from   fastmcp  .  server   import   create_proxy
+config   =   {
+&quot;  mcpServers  &quot;  :   {
+&quot;  weather  &quot;  :   {
+&quot;  url  &quot;  :   &quot;  https://weather-api.example.com/mcp  &quot;  ,
+&quot;  transport  &quot;  :   &quot;  http  &quot;
+},
+&quot;  calendar  &quot;  :   {
+&quot;  url  &quot;  :   &quot;  https://calendar-api.example.com/mcp  &quot;  ,
+&quot;  transport  &quot;  :   &quot;  http  &quot;
+}
+}
+}
+# Creates unified proxy with prefixed components:
+# - weather_get_forecast
+# - calendar_add_event
+composite   =   create_proxy  (  config  ,   name  =  &quot;  Composite  &quot;  )
+​         Component Prefixing
+Proxied components follow standard prefixing rules:
+Component Type  Pattern      Tools   {prefix}_{tool_name}     Prompts   {prefix}_{prompt_name}     Resources   protocol://{prefix}/path     Templates   protocol://{prefix}/...
+​         Mirrored Components
+Components from a proxy server are “mirrored” - they reflect the remote server’s state and cannot be modified directly.
+To modify a proxied component (like disabling it), create a local copy:
+from   fastmcp   import   FastMCP
+from   fastmcp  .  server   import   create_proxy
+proxy   =   create_proxy  (  &quot;  backend_server.py  &quot;  )
+# Get mirrored tool
+mirrored_tool   =   await   proxy  .  get_tool  (  &quot;  useful_tool  &quot;  )
+# Create modifiable local copy
+local_tool   =   mirrored_tool  .  copy  ()
+# Add to your own server
+my_server   =   FastMCP  (  &quot;  MyServer  &quot;  )
+my_server  .  add_tool  (  local_tool  )
+# Now you can control enabled state
+my_server  .  disable  (  keys  ={  local_tool  .  key  })
+​         Performance Considerations
+Proxying introduces network latency:
+Operation  Local  Proxied (HTTP)       list_tools()   1-2ms  300-400ms     call_tool()   1-2ms  200-500ms
+When mounting proxy servers, this latency affects all operations on the parent server.
+​         Component List Caching
+ProxyProvider  caches the backend’s component lists (tools, resources, templates, prompts) so that individual lookups — like resolving a tool by name during  call_tool  — don’t require a separate backend connection. The cache stores raw component metadata and is shared across all proxy sessions; per-session visibility, auth, and transforms are still applied after cache lookup by the server layer. The cache refreshes whenever an explicit  list_*  call is made, and entries expire after a configurable TTL (default 300 seconds).
+For backends whose component lists change dynamically, disable caching by setting  cache_ttl=0 .
+from   fastmcp  .  server  .  providers  .  proxy   import   ProxyProvider  ,   ProxyClient
+# Default 300s TTL
+provider   =   ProxyProvider  (  lambda  :   ProxyClient  (  &quot;  http://backend/mcp  &quot;  ))
+# Custom TTL
+provider   =   ProxyProvider  (  lambda  :   ProxyClient  (  &quot;  http://backend/mcp  &quot;  ),   cache_ttl  =  60  )
+# Disable caching
+provider   =   ProxyProvider  (  lambda  :   ProxyClient  (  &quot;  http://backend/mcp  &quot;  ),   cache_ttl  =  0  )
+​         Session Reuse for Stateless Backends
+By default, each tool call opens a fresh MCP session to the backend. This is the safe default because it prevents state from leaking between requests. However, for stateless HTTP backends where there’s no session state to protect, this overhead is unnecessary.
+You can reuse a single backend session by providing a client factory that returns the same client instance:
+from   fastmcp  .  server  .  providers  .  proxy   import   FastMCPProxy  ,   ProxyClient
+base_client   =   ProxyClient  (  &quot;  http://backend:8000/mcp  &quot;  )
+shared_client   =   base_client  .  new  ()
+proxy   =   FastMCPProxy  (
+client_factory  =  lambda  :   shared_client  ,
+name  =  &quot;  ReusedSessionProxy  &quot;  ,
+)
+This eliminates the MCP initialization handshake on every call, which can dramatically reduce latency under load. The  Client  uses reference counting for its session lifecycle, so concurrent callers sharing the same instance is safe.
+Only reuse sessions when you know the backend is stateless (e.g. stateless HTTP). For stateful backends (stdio processes, servers that track session state), use the default fresh-session behavior to avoid context mixing.
+​         Advanced Usage
+​         FastMCPProxy Class
+For explicit session control, use  FastMCPProxy  directly:
+from   fastmcp  .  server  .  providers  .  proxy   import   FastMCPProxy  ,   ProxyClient
+# Custom session factory
+def   create_client  ():
+return   ProxyClient  (  &quot;  backend_server.py  &quot;  )
+proxy   =   FastMCPProxy  (  client_factory  =  create_client  )
+This gives you full control over session creation and reuse strategies.
+​         Adding Proxied Components to Existing Server
+Mount a proxy to add components from another server:
+from   fastmcp   import   FastMCP
+from   fastmcp  .  server   import   create_proxy
+server   =   FastMCP  (  &quot;  My Server  &quot;  )
+# Add local tools
+@  server  .  tool
+def   local_tool  ()   -&gt;   str  :
+return   &quot;  Local result  &quot;
+# Mount proxied tools from another server
+external   =   create_proxy  (  &quot;  http://external-server/mcp  &quot;  )
+server  .  mount  (  external  )
+# Now server has both local and proxied tools
+Filesystem Provider       Previous       Skills Provider       Next             ⌘ I                  discord      github      website      x         Powered by                    This documentation is built and hosted on Mintlify, a developer documentation platform

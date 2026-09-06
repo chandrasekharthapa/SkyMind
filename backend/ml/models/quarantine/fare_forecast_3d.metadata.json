@@ -1,0 +1,76 @@
+{
+  "model_version": "2.0.0",
+  "dataset_version": "DS_20260724_231846",
+  "dataset_hash": "9aad653e1c1409b0c7d3b23e8022b04a",
+  "training_timestamp": "2026-07-24T23:18:46.123637+00:00",
+  "prediction_horizon": 3,
+  "split_strategy": "Chronological_Temporal_Split",
+  "observation_count": 132,
+  "train_size": 105,
+  "test_size": 27,
+  "evaluation_metrics": {
+    "mae": 709.1742621527778,
+    "rmse": 1010.2923213596184,
+    "r2": 0.7071867971142742,
+    "mape": 8.261275221126791,
+    "equivalent_accuracy_100_minus_mape": 91.7387247788732,
+    "accuracy": 0.917387247788732,
+    "estimators": 900,
+    "training_samples": 105,
+    "test_samples": 27
+  },
+  "residual_statistics": {
+    "mean_residual_bias": 241.1806278935185,
+    "median_residual": 106.462890625,
+    "std_residual": 981.0822999764569,
+    "max_positive_error": 3400.4228515625,
+    "max_negative_error": -1433.92578125,
+    "worst_abs_error": 3400.4228515625
+  },
+  "feature_importances": {
+    "destination_code": 0.3275907635688782,
+    "origin_code": 0.16449010372161865,
+    "airline_code": 0.15610136091709137,
+    "days_until_dep": 0.13764049112796783,
+    "seats_available": 0.08754376322031021,
+    "urgency": 0.07170788198709488,
+    "day_of_week": 0.0548568032681942,
+    "week_of_year": 6.88400978106074e-05,
+    "month": 0.0,
+    "hour_of_day": 0.0,
+    "is_peak_hour": 0.0,
+    "price_change_1d": 0.0,
+    "price_change_3d": 0.0,
+    "demand_score": 0.0,
+    "seasonality_factor": 0.0,
+    "is_live": 0.0
+  },
+  "prediction_vs_actual_sample": [
+    {
+      "actual_price": 9145.0,
+      "predicted_price": 9038.537109375,
+      "residual": 106.462890625
+    },
+    {
+      "actual_price": 11192.0,
+      "predicted_price": 9988.6240234375,
+      "residual": 1203.3759765625
+    },
+    {
+      "actual_price": 9145.0,
+      "predicted_price": 8912.2021484375,
+      "residual": 232.7978515625
+    },
+    {
+      "actual_price": 9722.0,
+      "predicted_price": 9750.43359375,
+      "residual": -28.43359375
+    },
+    {
+      "actual_price": 6763.0,
+      "predicted_price": 6485.189453125,
+      "residual": 277.810546875
+    }
+  ],
+  "quality_gate_passed": true
+}

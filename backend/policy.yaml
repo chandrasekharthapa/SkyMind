@@ -1,0 +1,40 @@
+version: "2.0"
+default_action: ALLOW
+rules:
+  - id: jailbreak_block
+    priority: 100
+    enabled: true
+    match:
+      guardrail: jailbreak-detect
+      verdict: UNSAFE
+    action: BLOCK
+
+  - id: content_block
+    priority: 90
+    enabled: true
+    match:
+      guardrail: content-safety
+      verdict: UNSAFE
+    action: BLOCK
+
+  - id: topic_block
+    priority: 80
+    enabled: true
+    match:
+      guardrail: topic-control
+      verdict: UNSAFE
+    action: BLOCK
+
+  - id: high_risk_block
+    priority: 70
+    enabled: true
+    match:
+      risk_gt: 95.0
+    action: BLOCK
+
+  - id: unknown_review
+    priority: 50
+    enabled: true
+    match:
+      verdict: UNKNOWN
+    action: REVIEW

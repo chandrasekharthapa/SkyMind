@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-07-27T07:42:04.665336+00:00",
+  "valid": false,
+  "total_rows": 1000,
+  "feature_count": 39,
+  "expected_feature_count": 16,
+  "missing_features": [
+    "demand_score",
+    "seasonality_factor"
+  ],
+  "extra_features": [
+    "id",
+    "flight_number",
+    "cabin_class",
+    "price",
+    "currency",
+    "departure_date",
+    "is_holiday",
+    "is_weekend",
+    "recorded_at",
+    "training_weight",
+    "provider",
+    "search_id",
+    "snapshot_id",
+    "collector_version",
+    "booking_date",
+    "duration",
+    "stops",
+    "terminal",
+    "route",
+    "data_source",
+    "is_synthetic",
+    "search_session_id",
+    "search_timestamp",
+    "price_lag_1",
+    "price_lag_3"
+  ],
+  "feature_ordering_matched": false,
+  "feature_completeness": 0.947,
+  "determinism_verified": true
+}

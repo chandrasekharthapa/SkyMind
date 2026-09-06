@@ -1,0 +1,310 @@
+# SkyMind Domestic Route Catalog & Collector Configuration
+
+collector:
+  batch_size: 8
+  max_workers: 4
+  retry_attempts: 3
+  retry_backoff_seconds: 30
+  departure_buckets:
+    - 1
+    - 2
+    - 3
+    - 5
+    - 7
+    - 10
+    - 14
+    - 21
+    - 30
+    - 45
+    - 60
+    - 75
+    - 90
+
+routes:
+  # Primary Trunk Corridors (High Volume)
+  - origin: DEL
+    destination: BOM
+    enabled: true
+    priority: 100
+  - origin: BOM
+    destination: DEL
+    enabled: true
+    priority: 100
+
+  - origin: DEL
+    destination: BLR
+    enabled: true
+    priority: 95
+  - origin: BLR
+    destination: DEL
+    enabled: true
+    priority: 95
+
+  - origin: DEL
+    destination: HYD
+    enabled: true
+    priority: 90
+  - origin: HYD
+    destination: DEL
+    enabled: true
+    priority: 90
+
+  - origin: DEL
+    destination: MAA
+    enabled: true
+    priority: 90
+  - origin: MAA
+    destination: DEL
+    enabled: true
+    priority: 90
+
+  - origin: DEL
+    destination: CCU
+    enabled: true
+    priority: 90
+  - origin: CCU
+    destination: DEL
+    enabled: true
+    priority: 90
+
+  - origin: DEL
+    destination: BBI
+    enabled: true
+    priority: 85
+  - origin: BBI
+    destination: DEL
+    enabled: true
+    priority: 85
+
+  # BBI's other two corridors. These were only ever in `backend/bash.py`'s
+  # hardcoded STRATEGIC_ROUTES, a second ingestion driver that has been removed;
+  # the collector reads this file and nothing else, so a route absent here was
+  # never collected on a schedule no matter what that script listed.
+  - origin: BBI
+    destination: BOM
+    enabled: true
+    priority: 80
+  - origin: BOM
+    destination: BBI
+    enabled: true
+    priority: 80
+
+  - origin: BBI
+    destination: BLR
+    enabled: true
+    priority: 80
+  - origin: BLR
+    destination: BBI
+    enabled: true
+    priority: 80
+
+  - origin: BOM
+    destination: BLR
+    enabled: true
+    priority: 95
+  - origin: BLR
+    destination: BOM
+    enabled: true
+    priority: 95
+
+  - origin: BOM
+    destination: HYD
+    enabled: true
+    priority: 90
+  - origin: HYD
+    destination: BOM
+    enabled: true
+    priority: 90
+
+  - origin: BOM
+    destination: MAA
+    enabled: true
+    priority: 90
+  - origin: MAA
+    destination: BOM
+    enabled: true
+    priority: 90
+
+  - origin: BOM
+    destination: CCU
+    enabled: true
+    priority: 85
+  - origin: CCU
+    destination: BOM
+    enabled: true
+    priority: 85
+
+  - origin: BLR
+    destination: HYD
+    enabled: true
+    priority: 85
+  - origin: HYD
+    destination: BLR
+    enabled: true
+    priority: 85
+
+  - origin: BLR
+    destination: MAA
+    enabled: true
+    priority: 85
+  - origin: MAA
+    destination: BLR
+    enabled: true
+    priority: 85
+
+  - origin: BLR
+    destination: CCU
+    enabled: true
+    priority: 80
+  - origin: CCU
+    destination: BLR
+    enabled: true
+    priority: 80
+
+  # Secondary Trunk Routes
+  - origin: DEL
+    destination: AMD
+    enabled: true
+    priority: 80
+  - origin: AMD
+    destination: DEL
+    enabled: true
+    priority: 80
+
+  - origin: DEL
+    destination: GOI
+    enabled: true
+    priority: 85
+  - origin: GOI
+    destination: DEL
+    enabled: true
+    priority: 85
+
+  - origin: DEL
+    destination: COK
+    enabled: true
+    priority: 80
+  - origin: COK
+    destination: DEL
+    enabled: true
+    priority: 80
+
+  - origin: DEL
+    destination: PNQ
+    enabled: true
+    priority: 80
+  - origin: PNQ
+    destination: DEL
+    enabled: true
+    priority: 80
+
+  - origin: DEL
+    destination: IXC
+    enabled: true
+    priority: 75
+  - origin: IXC
+    destination: DEL
+    enabled: true
+    priority: 75
+
+  - origin: BOM
+    destination: GOI
+    enabled: true
+    priority: 85
+  - origin: GOI
+    destination: BOM
+    enabled: true
+    priority: 85
+
+  - origin: BOM
+    destination: AMD
+    enabled: true
+    priority: 80
+  - origin: AMD
+    destination: BOM
+    enabled: true
+    priority: 80
+
+  - origin: BLR
+    destination: COK
+    enabled: true
+    priority: 80
+  - origin: COK
+    destination: BLR
+    enabled: true
+    priority: 80
+
+  - origin: BLR
+    destination: GOI
+    enabled: true
+    priority: 85
+  - origin: GOI
+    destination: BLR
+    enabled: true
+    priority: 85
+
+  - origin: HYD
+    destination: MAA
+    enabled: true
+    priority: 80
+  - origin: MAA
+    destination: HYD
+    enabled: true
+    priority: 80
+
+  - origin: HYD
+    destination: CCU
+    enabled: true
+    priority: 80
+  - origin: CCU
+    destination: HYD
+    enabled: true
+    priority: 80
+
+  - origin: DEL
+    destination: VTZ
+    enabled: true
+    priority: 75
+  - origin: VTZ
+    destination: DEL
+    enabled: true
+    priority: 75
+
+  - origin: BOM
+    destination: TRV
+    enabled: true
+    priority: 75
+  - origin: TRV
+    destination: BOM
+    enabled: true
+    priority: 75
+
+  # International — recorded, deliberately not collected.
+  #
+  # These four also came from `backend/bash.py`'s STRATEGIC_ROUTES. They stay
+  # `enabled: false` because the only provider wired to the collector is the
+  # Google Flights scraper reached over MCP (`backend/services/flight_data_service.py`
+  # → `mcp_client.py` → `india-flight-mcp`), and the repository has no evidence it
+  # returns results for an international pair —
+  # `routes_from` would happily hand them to the collector, which would then log
+  # a zero-match warning for each of 13 departure buckets every day and store
+  # nothing. That is indistinguishable in the corpus from a route with no fares,
+  # so it is left switched off rather than made to look collected. Turn these on
+  # once a run against DEL-DXB is shown to persist rows.
+  - origin: DEL
+    destination: DXB
+    enabled: false
+    priority: 70
+  - origin: DXB
+    destination: DEL
+    enabled: false
+    priority: 70
+
+  - origin: BOM
+    destination: DXB
+    enabled: false
+    priority: 70
+  - origin: DXB
+    destination: BOM
+    enabled: false
+    priority: 70

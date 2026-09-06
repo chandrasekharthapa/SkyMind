@@ -1,0 +1,267 @@
+"""
+SkyMind — Price Alerts Router
+Endpoints:
+  POST   /alerts/subscribe          → create alert
+  GET    /alerts/user/{user_id}     → list user's alerts
+  DELETE /alerts/{alert_id}         → soft-delete alert
+"""
+
+import traceback
+from datetime import date
+
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, Field, EmailStr, field_validator
+from typing import Optional
+import logging
+
+# `from database import database as db` used to sit here. Because
+# database/__init__.py is empty, that binds the *submodule* database.database,
+# not the Database() singleton — and `supabase` is an instance attribute, so
+# every db.supabase call below raised AttributeError at request time.
+from backend.database.database import database as db
+from backend.routers.auth import get_current_user
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Request model  (Pydantic V2)
+# ══════════════════════════════════════════════════════════════════════
+
+class AlertRequest(BaseModel):
+    # `user_id: Optional[str] = None` used to live here. It was the same
+    # client-asserted-ownership shape as `bookings.user_id`, but with a milder
+    # symptom, because this endpoint does require a token: a mismatched body value
+    # was rejected with 403, so it could not be used to write against someone
+    # else's account. The live bug was the *absent* case. `payload["user_id"]` was
+    # set only `if req.user_id`, and no caller in this repo sends the field — so
+    # every alert a signed-in user created was stored with a NULL owner while the
+    # token proving who they were sat unread in the request. `GET
+    # /alerts/user/{user_id}` filters on `user_id`, so the alert vanished the
+    # moment the page reloaded, and the duplicate check (also gated on
+    # `req.user_id`) never ran. Ownership now comes from the token, which is the
+    # one rule this codebase applies everywhere: see the matching note in
+    # `backend/routers/booking.py`. Removing the field rather than ignoring it is
+    # deliberate — pydantic drops unknown keys, so an old client still sending
+    # `user_id` gets it discarded instead of a validation error, and a forged one
+    # now has no power at all rather than earning a 403.
+
+    # Route — accept origin / origin_code
+    origin_code: Optional[str] = Field(None, min_length=3, max_length=3)
+    origin: Optional[str] = Field(None)
+
+    destination_code: Optional[str] = Field(None, min_length=3, max_length=3)
+    destination: Optional[str] = Field(None)
+
+    departure_date: Optional[date] = None
+    target_price: float = Field(..., gt=0)
+    currency: str = "INR"
+    cabin_class: str = "ECONOMY"
+
+    # Notification prefs
+    email: Optional[str] = None
+    notify_email: Optional[str] = None  # alternate field from lib/api.ts
+    phone: Optional[str] = None
+    notify_phone: Optional[str] = None  # alternate field
+    notify_sms: bool = False
+    notify_whatsapp: bool = False
+
+    user_label: Optional[str] = None
+
+    @field_validator("origin_code", "destination_code", mode="before")
+    @classmethod
+    def upper_code(cls, v):
+        if v:
+            return str(v).upper().strip()
+        return v
+
+    def resolved_origin(self) -> str:
+        return (self.origin_code or self.origin or "").upper().strip()
+
+    def resolved_destination(self) -> str:
+        return (self.destination_code or self.destination or "").upper().strip()
+
+    def resolved_email(self) -> str | None:
+        return self.email or self.notify_email or None
+
+    def resolved_phone(self) -> str | None:
+        return self.phone or self.notify_phone or None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# POST /alerts/subscribe
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/subscribe")
+async def subscribe_alert(req: AlertRequest, current_user_id: str = Depends(get_current_user)):
+    """Subscribe to a price alert. Prevents duplicate (origin, dest, date) per user.
+
+    `current_user_id` is the verified token subject and is the only source of
+    ownership. It is never None here — `get_current_user` raises 401 first — so
+    both the duplicate check and the insert can rely on it unconditionally, which
+    the previous `if req.user_id` guards could not.
+    """
+    try:
+        origin = req.resolved_origin()
+        destination = req.resolved_destination()
+
+        if not origin or not destination:
+            raise HTTPException(422, detail="origin and destination are required")
+        if origin == destination:
+            raise HTTPException(422, detail="Origin and destination must differ")
+
+        email_val = req.resolved_email()
+        phone_val = req.resolved_phone()
+
+        # ── Duplicate check ──────────────────────────────────────────
+        if req.departure_date:
+            existing = (
+                db.supabase.table("price_alerts")
+                .select("id")
+                .eq("user_id", current_user_id)
+                .eq("origin_code", origin)
+                .eq("destination_code", destination)
+                .eq("departure_date", str(req.departure_date))
+                .eq("is_active", True)
+                .execute()
+            )
+            if existing.data:
+                return {
+                    "success": False,
+                    "alert_id": existing.data[0]["id"],
+                    "message": f"Active alert already exists for {origin}→{destination} on {req.departure_date}.",
+                }
+
+        # ── Insert ───────────────────────────────────────────────────
+        payload: dict = {
+            "user_id": current_user_id,
+            "origin_code": origin,
+            "destination_code": destination,
+            "target_price": req.target_price,
+            "currency": req.currency,
+            "cabin_class": req.cabin_class,
+            "notify_email": bool(email_val),
+            "notify_sms": req.notify_sms or bool(phone_val),
+            "notify_whatsapp": req.notify_whatsapp,
+            "is_active": True,
+        }
+        if req.departure_date:
+            payload["departure_date"] = str(req.departure_date)
+        if email_val:
+            payload["email"] = email_val
+        if phone_val:
+            payload["phone"] = phone_val
+
+        res = db.supabase.table("price_alerts").insert(payload).execute()
+        if not res.data:
+            raise HTTPException(500, detail="Failed to create alert in database")
+
+        alert_id = res.data[0]["id"]
+
+        return {
+            "success": True,
+            "alert_id": alert_id,
+            "message": (
+                f"Alert set! We'll notify you when "
+                f"{origin}→{destination} drops below "
+                f"₹{req.target_price:,.0f}"
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error creating alert: {exc}")
+        raise HTTPException(500, detail="Error creating alert")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# GET /alerts/user/{user_id}
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/user/{user_id}")
+async def get_user_alerts(user_id: str, current_user_id: str = Depends(get_current_user)):
+    """Return all active alerts for a user, normalised to AlertRecord shape."""
+    # ── IDOR Prevention ───────────────────────────────────────────
+    if user_id != current_user_id:
+        raise HTTPException(403, detail="Access denied")
+    try:
+        res = (
+            db.supabase.table("price_alerts")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .order("departure_date", desc=False)
+            .execute()
+        )
+
+        raw = res.data or []
+
+        # Normalise to AlertRecord shape expected by frontend useAlerts hook
+        alerts = [
+            {
+                "id": a["id"],
+                "origin": a.get("origin_code", ""),
+                "destination": a.get("destination_code", ""),
+                "target_price": float(a.get("target_price", 0)),
+                "departure_date": str(a.get("departure_date", "")),
+                "created_at": str(a.get("created_at", "")),
+                "triggered": bool(a.get("triggered_count", 0)),
+                "current_price": a.get("last_price"),
+                "savings": (
+                    float(a.get("target_price", 0)) - float(a.get("last_price", 0))
+                    if a.get("last_price")
+                    else None
+                ),
+            }
+            for a in raw
+        ]
+
+        triggered = [a for a in alerts if a["triggered"]]
+
+        return {
+            "alerts": alerts,
+            "triggered": triggered,
+            "triggered_count": len(triggered),
+            "count": len(alerts),
+        }
+
+    except Exception as exc:
+        logger.error(f"Error fetching alerts for {user_id}: {exc}")
+        raise HTTPException(500, detail="Error fetching alerts")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# DELETE /alerts/{alert_id}
+# ══════════════════════════════════════════════════════════════════════
+
+@router.delete("/{alert_id}")
+async def delete_alert(alert_id: str, current_user_id: str = Depends(get_current_user)):
+    """Soft-delete a price alert."""
+    try:
+        check = (
+            db.supabase.table("price_alerts")
+            .select("id, user_id")
+            .eq("id", alert_id)
+            .execute()
+        )
+        if not check.data:
+            raise HTTPException(404, detail="Alert not found")
+        
+        # ── IDOR Prevention ───────────────────────────────────────────
+        if check.data[0].get("user_id") != current_user_id:
+            raise HTTPException(403, detail="Access denied")
+
+        db.supabase.table("price_alerts").update({"is_active": False}).eq(
+            "id", alert_id
+        ).execute()
+
+        return {"success": True, "message": "Alert deactivated"}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error deleting alert {alert_id}: {exc}")
+        raise HTTPException(500, detail="Error deleting alert")

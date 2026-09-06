@@ -1,0 +1,118 @@
+node_modules
+
+# Secrets. `.env` alone is a basename glob and does NOT cover .env.production,
+# .env.backup, or stray dumps like frontend/env.download — which was found
+# holding a live Supabase URL and anon JWT during the 2026-08 audit.
+.env*
+!.env*.example
+*.download
+env.download
+*.pem
+*.key
+!**/public/**/*.key
+
+dist
+build
+.next
+frontend/node_modules
+backend/node_modules
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+backend/ml/models/*.pkl
+# `backend/ml/models/*.pkl` does not match a subdirectory, and the quarantined
+# artifacts total ~57 MB, so the pattern is repeated for the quarantine path.
+# The three `.metadata.json` files there ARE tracked deliberately: their
+# feature-importance blocks are the evidence that price_change_3d and
+# price_change_1d carried 48% of the shipped 0d model's weight while being
+# defined as `target - target.shift(n)`.
+backend/ml/models/quarantine/*.pkl
+
+# Virtual environments
+venv/
+.venv/
+env/
+backend/venv/
+
+# Runtime artifacts and logs
+*.log
+firewall_audit.log
+.coverage
+htmlcov/
+*.egg-info/
+*.tsbuildinfo
+
+# `*.log` is a suffix glob and misses a transcript saved as .txt. Two `next build`
+# captures — frontend/build_log.txt and build_log_2.txt — were staged into the
+# initial commit as UTF-16LE-with-BOM, because PowerShell `>` redirection writes
+# UTF-16. Git classified both as binary. The same encoding is why five tracked
+# .py files did not parse before the 2026-08 fix pass, so the pattern is named
+# rather than left to the reader. What the build currently does is measured by
+# the frontend-build job in .github/workflows/ci.yaml, not by a saved log.
+build_log*.txt
+frontend/build_log*.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated validation reports. Four services used to write these to the
+# repository root, where all four files are tracked, so running the test suite
+# rewrote version-controlled content — a sweep on 2026-09-01 turned a committed
+# `historical_data_report.json` reading 1000 observations / PASS into 0 / FAIL.
+# Nothing reads them; see backend/utils/report_paths.py. The four root copies are
+# still tracked from the earlier commit and this line does not untrack them:
+#   git rm --cached historical_data_report.json drift_report.json \
+#       feature_validation_report.json production_readiness_report.json
+backend/reports/
+
+# Dataset exports. Generated data, not source — but the reason this line exists is
+# narrower: `test_dataset_exporter_and_quality_report` passed
+# `output_dir="backend/dataset/exports"`, the real export directory, so running
+# the suite wrote its one-row fixture here as `flight_price_dataset_v2.0.csv`
+# beside a manifest recording `total_rows: 1` and a `quality_report.json` saying
+# `validation_status: PASS`. All three were staged. `doctor.py` reads this path by
+# default, so the readiness tool graded a test fixture and called it Dataset v2.0.
+# The test writes to tmp_path now. The three files were deleted from the working
+# tree; they are still in the index from the earlier `git add`, and this line does
+# not untrack them:
+#   git rm --cached -r backend/dataset/exports
+backend/dataset/exports/
+
+# Evaluation run artifacts. `git ls-files backend/evals/results` returns 32 committed
+# report.md / summary.json files from sixteen runs on 2026-07-24, and every eval run
+# since has been adding more — so executing the eval suite modified version-controlled
+# content, and a `git add -A` before committing would have swept the current run's
+# output in with the code change. `EvaluationConfig.output_directory` and a second
+# hardcoded copy in environment.py both defaulted to the relative string
+# "backend/evals/results"; both now resolve from __file__ and honour EVAL_OUTPUT_DIR.
+# Anchoring stops the `backend/backend/` variant, this line stops the tracking, and it
+# does not untrack what is already in the index:
+#   git rm --cached -r backend/evals/results
+backend/evals/results/
+
+# Output of a CWD-relative default path, not a real directory. Two validation
+# reports were committed here because backend/ml/booking_curve_validator.py and
+# backend/services/validation_service.py both defaulted history_dir to the
+# relative string "backend/validation_reports", so a run launched from backend/
+# created backend/backend/. Both defaults are now anchored to __file__, so this
+# cannot be written again; the entry stays as a tripwire.
+backend/backend/
+
+# One-off probes, DDL scripts, and transport captures. This directory held fifty
+# files and every one of them was tracked, including ingest_mock_data.py — the
+# script that wrote the synthetic corpus the ML results turned out to be
+# measuring — and eight UTF-16LE PowerShell dumps the credential gate could not
+# read. Archived to .archive/backend-scratch-2026-09-02.tar.gz and
+# removed. Ignored now so the same directory cannot be re-tracked by `git add
+# -A`; anything here that a test or the app imports is not scratch and belongs in
+# backend/tools/ (see its __init__.py).
+backend/scratch/
+
+# Copies of everything this fix pass deleted, so "removed" never means
+# "unrecoverable" while the change is still under review. Not part of the
+# project; see .archive/README.md and delete it once you have committed.
+.archive/

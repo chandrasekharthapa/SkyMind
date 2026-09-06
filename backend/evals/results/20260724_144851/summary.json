@@ -1,0 +1,90 @@
+{
+  "dataset_version": "2.0.0",
+  "evaluation_version": "1.0.0",
+  "tier": "smoke",
+  "git_sha": "local_development",
+  "config_hash": "a3c7cb7d91",
+  "total_cases": 6,
+  "passed_cases": 3,
+  "overall_success_rate": 50.0,
+  "intent_accuracy": 50.0,
+  "entity_accuracy": 50.0,
+  "tool_f1_score": 0.7778,
+  "p95_latency_ms": 3403.04,
+  "total_evaluation_time_seconds": 15.433,
+  "evaluator_results": {
+    "intent_accuracy": {
+      "evaluator_name": "intent_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "passed": false,
+      "details": {
+        "total": 6,
+        "passed": 3,
+        "avg_score": 0.5
+      },
+      "feedback_key": "intent_accuracy"
+    },
+    "entity_accuracy": {
+      "evaluator_name": "entity_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "passed": false,
+      "details": {
+        "total": 6,
+        "passed": 3,
+        "avg_score": 0.5
+      },
+      "feedback_key": "entity_accuracy"
+    },
+    "tool_selection": {
+      "evaluator_name": "tool_selection",
+      "category": "deterministic",
+      "score": 0.7778,
+      "passed": false,
+      "details": {
+        "total": 6,
+        "passed": 4,
+        "avg_score": 0.7778
+      },
+      "feedback_key": "tool_precision_recall"
+    },
+    "latency": {
+      "evaluator_name": "latency",
+      "category": "deterministic",
+      "score": 1.0,
+      "passed": true,
+      "details": {
+        "p50_ms": 2407.79,
+        "p90_ms": 3403.04,
+        "p95_ms": 3403.04,
+        "p99_ms": 3403.04
+      },
+      "feedback_key": "latency_p95_ms"
+    },
+    "clarification": {
+      "evaluator_name": "clarification",
+      "category": "deterministic",
+      "score": 0.5,
+      "passed": false,
+      "details": {
+        "total": 6,
+        "passed": 3,
+        "avg_score": 0.5
+      },
+      "feedback_key": "clarification_accuracy"
+    },
+    "groundedness": {
+      "evaluator_name": "groundedness",
+      "category": "llm",
+      "score": 0.0,
+      "passed": false,
+      "details": {
+        "total": 6,
+        "passed": 0,
+        "avg_score": 0.0
+      },
+      "feedback_key": "groundedness_score"
+    }
+  }
+}

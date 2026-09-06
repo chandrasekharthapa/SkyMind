@@ -1,0 +1,53 @@
+domain:
+  aviation:
+    action: ALLOW
+  flight_search:
+    action: ALLOW
+  price_prediction:
+    action: ALLOW
+  airport_information:
+    action: ALLOW
+  airline_information:
+    action: ALLOW
+  travel_planning:
+    action: ALLOW
+  booking_support:
+    action: ALLOW
+  greeting:
+    action: ALLOW
+  thank_you:
+    action: ALLOW
+  small_talk:
+    action: ALLOW
+  personal:
+    action: REDIRECT
+    acknowledgement: "That's nice to hear. If you need help planning a trip or finding flights, I'd be happy to help."
+    redirect_target: "aviation"
+  emotional:
+    action: REDIRECT
+    acknowledgement: "I'm sorry you're feeling that way. I'm here to help with flights and travel planning."
+    redirect_target: "aviation"
+  entertainment:
+    action: REDIRECT
+    acknowledgement: "I'm focused on aviation and travel. Feel free to ask about flights, airlines, airports, or airfare trends."
+    redirect_target: "aviation"
+  programming:
+    action: REDIRECT
+    acknowledgement: "I specialize in aviation and travel assistance. Ask me about flights, airports, airlines, or trip planning."
+    redirect_target: "aviation"
+  finance:
+    action: REDIRECT
+    acknowledgement: "I’m here for aviation and travel queries only. Ask me about flight prices or trends."
+    redirect_target: "aviation"
+  health:
+    action: REDIRECT
+    acknowledgement: "My expertise is aviation. Feel free to ask about flights, airports, or travel."
+    redirect_target: "aviation"
+  politics:
+    action: REDIRECT
+    acknowledgement: "I’m focused on aviation insights and can’t discuss politics. Ask me about flight routes instead."
+    redirect_target: "aviation"
+  unknown:
+    action: REDIRECT
+    acknowledgement: "I’m designed to assist with aviation and travel. How can I help you with flights?"
+    redirect_target: "aviation"

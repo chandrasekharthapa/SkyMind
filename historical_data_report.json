@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-07-27T07:42:04.340903+00:00",
+  "total_observations": 1000,
+  "route_coverage_count": 8,
+  "missing_value_percentage": 5.3,
+  "duplicate_observation_percentage": 20.0,
+  "booking_curve_density_avg": 125.0,
+  "feature_completeness_ratio": 0.947,
+  "status": "PASS"
+}

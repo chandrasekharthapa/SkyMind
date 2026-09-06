@@ -1,0 +1,234 @@
+name: CI
+
+# The repository previously had exactly one workflow (daily.yaml), which runs
+# the data pipeline on a schedule. Nothing typechecked the frontend, ran ESLint,
+# or executed the 146 backend test modules — while frontend/next.config.js
+# suppressed TypeScript and ESLint errors at build time with the comment
+# "CI handles them separately". This workflow is what makes that true.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Nothing that looks like a credential may be committed ──────────
+  secret-hygiene:
+    name: Secret hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No dotenv file may be tracked
+        run: |
+          set -euo pipefail
+          # Two rules, because the first one alone is not enough: the file this
+          # repo actually leaked was named `frontend/env.download`, which no
+          # `.env*` glob matches. So also reject a bare `env` basename with any
+          # extension. `next-env.d.ts` and `evals/environment.py` are real
+          # source files and must keep passing.
+          tracked="$(git ls-files \
+            | grep -E '(^|/)(\.env|env\.[A-Za-z0-9]+$)' \
+            | grep -vE '\.example$|\.d\.ts$' || true)"
+          if [ -n "$tracked" ]; then
+            echo "::error::Tracked dotenv file(s) found:"
+            echo "$tracked"
+            exit 1
+          fi
+          echo "OK: no tracked dotenv files (.env*.example is allowed)."
+
+      - name: No credential-shaped literals in tracked files
+        run: |
+          set -euo pipefail
+          # Reports filenames only; never prints the match itself.
+          #
+          # This was a `git ls-files | xargs grep -lEI` pipeline, and `grep -I`
+          # skips any file containing a NUL byte. When that was found, nine
+          # tracked files contained NUL bytes — eight UTF-16LE PowerShell
+          # captures plus a PDF — because PowerShell `>` redirection writes
+          # UTF-16, so the gate that exists to find a leaked JWT structurally
+          # could not read the nine files most likely to be an unreviewed dump
+          # of one. (None of them held a credential, which is luck, not a
+          # control.) The eight captures were archived and removed with the rest
+          # of `backend/scratch/`, leaving one such file — `backend/
+          # test_ticket.pdf` — but the hole is not a function of how many exist:
+          # any future binary, UTF-16 log, or archive would be unreadable again.
+          # Decoding every tracked file in Python removes the hole rather than
+          # widening the exclusion list.
+          python3 - <<'PY'
+          import re, subprocess, sys, pathlib
+
+          PATTERN = re.compile(
+              r'BEGIN [A-Z ]*PRIVATE KEY'
+              r'|eyJ[A-Za-z0-9_-]{40,}'
+              r'|postgres(ql)?://[^:@/\s]+:[^@\s]{8,}@'
+              r'|sk-[A-Za-z0-9]{32,}'
+              r'|nvapi-[A-Za-z0-9_-]{32,}'
+              r'|rzp_live_[A-Za-z0-9]{10,}'
+          )
+          # AUDIT*.md and docs/ quote the shapes they are about; *.example ships
+          # placeholders in the real key's format on purpose.
+          SKIP = re.compile(r'\.example$|^AUDIT|^docs/')
+
+          tracked = subprocess.run(['git', 'ls-files', '-z'],
+                                   capture_output=True, text=True,
+                                   check=True).stdout.split('\0')
+          hits, scanned = [], 0
+          for name in filter(None, tracked):
+              if SKIP.search(name):
+                  continue
+              try:
+                  raw = pathlib.Path(name).read_bytes()
+              except OSError:
+                  continue
+              scanned += 1
+              # utf-16 first: it consumes the BOM, which utf-8 would not.
+              for enc in ('utf-16', 'utf-8', 'latin-1'):
+                  try:
+                      text = raw.decode(enc)
+                  except (UnicodeDecodeError, UnicodeError):
+                      continue
+                  if PATTERN.search(text):
+                      hits.append(name)
+                  break
+          for name in hits:
+              print(f"::error::credential-shaped literal in {name}")
+          print(f"Scanned {scanned} tracked files, any encoding. "
+                f"{len(hits)} with credential-shaped literals.")
+          sys.exit(1 if hits else 0)
+          PY
+
+  # ── 2. Every tracked Python file must parse ───────────────────────────
+  # Five did not, before the 2026-08 fix pass: four had been written to disk
+  # JSON-escaped, and one was UTF-16LE with a BOM. Nothing caught it because
+  # all five are unimported, so no runtime path ever touched them.
+  python-syntax:
+    name: Python syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Compile every tracked .py file
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(git ls-files -z '*.py')
+          echo "Checking ${#files[@]} tracked Python files."
+          python - "${files[@]}" <<'PY'
+          import sys
+          bad = []
+          for path in sys.argv[1:]:
+              try:
+                  with open(path, 'rb') as fh:
+                      compile(fh.read(), path, 'exec')
+              except (SyntaxError, ValueError) as exc:
+                  bad.append(f"{path}: {type(exc).__name__}: {exc}")
+          for line in bad:
+              print(f"::error::{line}")
+          print(f"{len(sys.argv) - 1 - len(bad)}/{len(sys.argv) - 1} files parse.")
+          sys.exit(1 if bad else 0)
+          PY
+
+  # ── 3. The backend test suite ─────────────────────────────────────────
+  # 137 test modules in backend/tests/. This suite has never run in CI, so treat
+  # the first red run as a diagnosis rather than a regression. pytest and
+  # pytest-asyncio live in requirements-dev.txt; they were absent from
+  # requirements.txt entirely, so a clean checkout could not run the tests.
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run pytest
+        # No credentials are provided on purpose: a unit test that needs a live
+        # Supabase or provider key is a test that should be mocked. Anything
+        # that fails here for want of a secret is a finding, not a config gap.
+        env:
+          PYTHONWARNINGS: default
+        run: pytest
+
+  # ── 4. Frontend typecheck and production build ────────────────────────
+  # `tsc --noEmit` reported 37 errors before this pass and zero after it;
+  # next.config.js no longer suppresses TypeScript errors during the build.
+  frontend-build:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci || {
+            echo "::warning::package-lock.json is out of sync with package.json. \
+          Run 'npm install' in frontend/ and commit the refreshed lockfile."
+            npm install
+          }
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+
+  # ── 5. ESLint ─────────────────────────────────────────────────────────
+  # A separate job on purpose: there was no ESLint config and no eslint
+  # dependency in this repo at all, so `npm run lint` could not have run. Both
+  # are now present but have never been executed, and keeping lint out of
+  # frontend-build means a style finding cannot mask a type error.
+  frontend-lint:
+    name: Frontend lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: ESLint
+        run: npm run lint
+

@@ -1,0 +1,141 @@
+{
+  "dataset_version": "2.0.0",
+  "evaluation_version": "1.0.0",
+  "tier": "smoke",
+  "git_sha": "local_development",
+  "config_hash": "a3c7cb7d91",
+  "environment": {
+    "langsmith_installed": false,
+    "langsmith_api_key_configured": true,
+    "langsmith_status": "MISSING_PACKAGE",
+    "openai_api_key_configured": true,
+    "openai_quota_status": "CONFIGURED",
+    "planner_provider_status": "HEALTHY",
+    "evaluator_provider_status": "HEALTHY",
+    "warnings": [
+      "LangSmith SDK not installed; tracing disabled."
+    ]
+  },
+  "infrastructure": {
+    "planner": {
+      "planner_status": "FALLBACK",
+      "planner_source": "rule_based",
+      "planner_reason": "Quota limit or network timeout"
+    },
+    "judge_status": "ACTIVE"
+  },
+  "planner": {
+    "planner_status": "FALLBACK",
+    "planner_source": "rule_based",
+    "planner_reason": "Quota limit or network timeout"
+  },
+  "total_cases": 6,
+  "executed_evaluators_count": 5,
+  "skipped_evaluators_count": 1,
+  "passed_evaluators_count": 1,
+  "failed_evaluators_count": 4,
+  "overall_success_rate": 20.0,
+  "intent_accuracy": 50.0,
+  "entity_accuracy": 50.0,
+  "tool_f1_score": 0.7778,
+  "p95_latency_ms": 3260.5,
+  "total_evaluation_time_seconds": 14.977,
+  "evaluator_results": {
+    "intent_accuracy": {
+      "evaluator_name": "intent_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "intent_accuracy"
+    },
+    "entity_accuracy": {
+      "evaluator_name": "entity_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "entity_accuracy"
+    },
+    "tool_selection": {
+      "evaluator_name": "tool_selection",
+      "category": "deterministic",
+      "score": 0.7778,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 4,
+        "skipped": 0,
+        "avg_score": 0.7778
+      },
+      "feedback_key": "tool_precision_recall"
+    },
+    "latency": {
+      "evaluator_name": "latency",
+      "category": "deterministic",
+      "score": 1.0,
+      "status": "PASS",
+      "passed": true,
+      "reason": "",
+      "details": {
+        "p50_ms": 2378.28,
+        "p90_ms": 3260.5,
+        "p95_ms": 3260.5,
+        "p99_ms": 3260.5
+      },
+      "feedback_key": "latency_p95_ms"
+    },
+    "clarification": {
+      "evaluator_name": "clarification",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "clarification_accuracy"
+    },
+    "groundedness": {
+      "evaluator_name": "groundedness",
+      "category": "llm",
+      "score": null,
+      "status": "SKIPPED",
+      "passed": true,
+      "reason": "Planner fallback active; offline LLM evaluator skipped",
+      "details": {
+        "total": 6,
+        "skipped": 6,
+        "executed": 0
+      },
+      "feedback_key": "groundedness_score"
+    }
+  },
+  "warnings": [
+    "LangSmith SDK not installed; tracing disabled."
+  ]
+}

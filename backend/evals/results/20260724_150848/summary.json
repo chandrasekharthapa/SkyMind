@@ -1,0 +1,233 @@
+{
+  "dataset_version": "2.0.0",
+  "evaluation_version": "1.0.0",
+  "tier": "smoke",
+  "git_sha": "local_development",
+  "config_hash": "a3c7cb7d91",
+  "evaluation_result": "FAIL",
+  "benchmark_validity": "PARTIAL",
+  "environment": {
+    "overall_health": "PARTIAL",
+    "benchmark_validity": "PARTIAL",
+    "openai": {
+      "name": "OpenAI",
+      "configured": true,
+      "healthy": true,
+      "reachable": true,
+      "authenticated": true,
+      "quota_available": true,
+      "current_mode": "PRIMARY",
+      "reason": "API key configured"
+    },
+    "langsmith": {
+      "name": "LangSmith",
+      "configured": true,
+      "healthy": false,
+      "reachable": false,
+      "authenticated": false,
+      "quota_available": false,
+      "current_mode": "DISABLED",
+      "reason": "Missing 'langsmith' SDK package"
+    },
+    "filesystem": {
+      "name": "Filesystem",
+      "configured": true,
+      "healthy": true,
+      "reachable": true,
+      "authenticated": true,
+      "quota_available": true,
+      "current_mode": "ACTIVE",
+      "reason": "Results directory is writable"
+    },
+    "dataset": {
+      "name": "Dataset",
+      "configured": false,
+      "healthy": false,
+      "reachable": false,
+      "authenticated": false,
+      "quota_available": false,
+      "current_mode": "PRIMARY",
+      "reason": "Unchecked"
+    },
+    "warnings": [
+      "LangSmith SDK not installed; tracing disabled."
+    ]
+  },
+  "provider_health": {
+    "overall_health": "PARTIAL",
+    "benchmark_validity": "PARTIAL",
+    "openai": {
+      "name": "OpenAI",
+      "configured": true,
+      "healthy": true,
+      "reachable": true,
+      "authenticated": true,
+      "quota_available": true,
+      "current_mode": "PRIMARY",
+      "reason": "API key configured"
+    },
+    "langsmith": {
+      "name": "LangSmith",
+      "configured": true,
+      "healthy": false,
+      "reachable": false,
+      "authenticated": false,
+      "quota_available": false,
+      "current_mode": "DISABLED",
+      "reason": "Missing 'langsmith' SDK package"
+    },
+    "filesystem": {
+      "name": "Filesystem",
+      "configured": true,
+      "healthy": true,
+      "reachable": true,
+      "authenticated": true,
+      "quota_available": true,
+      "current_mode": "ACTIVE",
+      "reason": "Results directory is writable"
+    },
+    "dataset": {
+      "name": "Dataset",
+      "configured": false,
+      "healthy": false,
+      "reachable": false,
+      "authenticated": false,
+      "quota_available": false,
+      "current_mode": "PRIMARY",
+      "reason": "Unchecked"
+    },
+    "warnings": [
+      "LangSmith SDK not installed; tracing disabled."
+    ]
+  },
+  "infrastructure": {
+    "planner_mode": "FALLBACK",
+    "openai_mode": "FALLBACK",
+    "judge_status": "ACTIVE"
+  },
+  "planner": {
+    "planner_status": "FALLBACK",
+    "planner_source": "rule_based",
+    "planner_model": "rule_based_engine_v1",
+    "planner_version": "1.1.0",
+    "fallback_used": true,
+    "planner_reason": "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}"
+  },
+  "planner_provenance": {
+    "planner_status": "FALLBACK",
+    "planner_source": "rule_based",
+    "planner_model": "rule_based_engine_v1",
+    "planner_version": "1.1.0",
+    "fallback_used": true,
+    "planner_reason": "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}"
+  },
+  "total_cases": 6,
+  "executed_evaluators_count": 5,
+  "skipped_evaluators_count": 1,
+  "passed_evaluators_count": 0,
+  "failed_evaluators_count": 5,
+  "overall_success_rate": 0.0,
+  "intent_accuracy": 50.0,
+  "entity_accuracy": 50.0,
+  "tool_f1_score": 0.7778,
+  "p95_latency_ms": 3540.03,
+  "total_evaluation_time_seconds": 15.375,
+  "evaluator_results": {
+    "intent_accuracy": {
+      "evaluator_name": "intent_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "intent_accuracy"
+    },
+    "entity_accuracy": {
+      "evaluator_name": "entity_accuracy",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "entity_accuracy"
+    },
+    "tool_selection": {
+      "evaluator_name": "tool_selection",
+      "category": "deterministic",
+      "score": 0.7778,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 4,
+        "skipped": 0,
+        "avg_score": 0.7778
+      },
+      "feedback_key": "tool_precision_recall"
+    },
+    "latency": {
+      "evaluator_name": "latency",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "PASS",
+      "passed": false,
+      "reason": "",
+      "details": {
+        "p50_ms": 2397.99,
+        "p90_ms": 3540.03,
+        "p95_ms": 3540.03,
+        "p99_ms": 3540.03
+      },
+      "feedback_key": "latency_p95_ms"
+    },
+    "clarification": {
+      "evaluator_name": "clarification",
+      "category": "deterministic",
+      "score": 0.5,
+      "status": "FAIL",
+      "passed": false,
+      "reason": "Below target threshold",
+      "details": {
+        "total": 6,
+        "executed": 6,
+        "passed": 3,
+        "skipped": 0,
+        "avg_score": 0.5
+      },
+      "feedback_key": "clarification_accuracy"
+    },
+    "groundedness": {
+      "evaluator_name": "groundedness",
+      "category": "llm",
+      "score": null,
+      "status": "SKIPPED",
+      "passed": true,
+      "reason": "Planner fallback active; offline LLM evaluator skipped",
+      "details": {
+        "total": 6,
+        "skipped": 6,
+        "executed": 0
+      },
+      "feedback_key": "groundedness_score"
+    }
+  },
+  "warnings": [
+    "LangSmith SDK not installed; tracing disabled."
+  ]
+}

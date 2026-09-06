@@ -1,0 +1,19 @@
+{
+  "dataset_version": "2.0.0",
+  "created_at": "2026-07-24T00:00:00Z",
+  "description": "SkyMind Copilot Milestone A Golden Evaluation Benchmark Dataset v2.0",
+  "maintainer": "SkyMind AI Systems Engineering",
+  "total_records": 15,
+  "tiers": {
+    "smoke": 6,
+    "full": 15,
+    "nightly": 0,
+    "regression": 0
+  },
+  "notes": [
+    "total_records and the tier counts are the number of records golden.jsonl actually contains; DatasetLoader cross-checks total_records on every load and records a mismatch as a schema error, which invalidates the run.",
+    "The counts here were previously 120 / smoke 25 / nightly 120 / regression 20 against a corpus of 15. Nothing read this file, so those figures propagated into backend/evals/README.md as documentation.",
+    "'full' is 15 rather than 9 because DatasetLoader treats tier='full' as 'every record', not as 'records tagged full'.",
+    "'nightly' and 'regression' are advertised as --tier choices by run.py but no record carries either tag, so both tiers load zero records and the run reports FAIL/INVALID. Adversarial cases are marked with the per-record boolean 'regression' (2 records) rather than with a tier."
+  ]
+}

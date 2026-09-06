@@ -1,0 +1,232 @@
+{
+  "timestamp": "2026-07-22T08:03:22.883416+00:00",
+  "feature_set_version": "legacy",
+  "overall_status": "FAIL",
+  "readiness_score": 70,
+  "chronology": {
+    "status": "PASS",
+    "warnings": [],
+    "errors": [],
+    "metrics": {
+      "total_groups": 1329,
+      "out_of_order_groups": 0,
+      "chronological_integrity_pct": 100.0
+    }
+  },
+  "duplicates": {
+    "status": "PASS",
+    "warnings": [],
+    "errors": [],
+    "metrics": {
+      "raw_rows": 6649,
+      "retained_rows": 6649,
+      "duplicates_removed": 0,
+      "duplicate_pct": 0.0
+    }
+  },
+  "leakage": {
+    "status": "PASS",
+    "warnings": [],
+    "errors": [],
+    "metrics": {
+      "groups_tested": 5,
+      "leakage_detected": false
+    }
+  },
+  "health": {
+    "status": "PASS",
+    "warnings": [],
+    "errors": [],
+    "metrics": {
+      "total_curves": 1329,
+      "average_observations": 5.00300978179082,
+      "median_observations": 2.0,
+      "maximum_observations": 269,
+      "singleton_curves_pct": 12.56583897667419,
+      "pct_ge_2": 87.43416102332581,
+      "pct_ge_3": 8.20165537998495,
+      "pct_ge_7": 4.36418359668924,
+      "pct_ge_14": 2.9345372460496613,
+      "average_unique_recorded_dates": 1.0466516177577125,
+      "maximum_unique_recorded_dates": 4,
+      "shallow_routes_count": 1,
+      "shallow_routes": [
+        "DEL-HYD"
+      ],
+      "shallow_airlines_count": 3,
+      "shallow_airlines": [
+        "AI",
+        "UK",
+        "SG"
+      ]
+    }
+  },
+  "coverage": {
+    "status": "WARNING",
+    "warnings": [
+      "Feature 'days_until_dep' is 100% NaN.",
+      "Feature 'urgency' is 100% NaN.",
+      "Feature 'day_of_week' is 100% NaN.",
+      "Feature 'month' is 100% NaN.",
+      "Feature 'week_of_year' is 100% NaN.",
+      "Feature 'hour_of_day' is 100% NaN.",
+      "Feature 'is_peak_hour' is 100% NaN.",
+      "Feature 'seats_available' is 100% NaN.",
+      "Feature 'price_change_1d' is 100% NaN.",
+      "Feature 'price_change_3d' is 100% NaN.",
+      "Feature 'demand_score' is 100% NaN.",
+      "Feature 'seasonality_factor' is 100% NaN.",
+      "Feature 'price' is 100% NaN."
+    ],
+    "errors": [],
+    "metrics": {
+      "features": {
+        "days_until_dep": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "urgency": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "day_of_week": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "month": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "week_of_year": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "hour_of_day": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "is_peak_hour": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "seats_available": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "price_change_1d": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "price_change_3d": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "demand_score": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "seasonality_factor": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        },
+        "price": {
+          "nan_pct": 100.0,
+          "populated_pct": 0.0,
+          "mean": NaN,
+          "std": NaN,
+          "min": NaN,
+          "max": NaN,
+          "variance": NaN
+        }
+      }
+    }
+  },
+  "target_quality": {
+    "status": "FAIL",
+    "warnings": [],
+    "errors": [
+      "Target price coverage is too low: 0.0% (limit: 50.0%)."
+    ],
+    "metrics": {
+      "total_targets": 6649,
+      "populated_targets": 0,
+      "coverage_pct": 0.0,
+      "mean": NaN,
+      "median": NaN,
+      "std": NaN,
+      "min": NaN,
+      "max": NaN,
+      "negative_count": 0,
+      "duplicate_count": 6648,
+      "duplicate_pct": 99.98496014438261
+    }
+  },
+  "drift": {
+    "status": "PASS",
+    "warnings": [
+      "No historical reports found to compute feature drift."
+    ],
+    "errors": [],
+    "metrics": {}
+  }
+}

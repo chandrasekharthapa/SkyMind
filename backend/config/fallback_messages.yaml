@@ -1,0 +1,20 @@
+fallback:
+  classifier_failed:
+    message: >
+      I couldn't determine your request.
+      Could you rephrase your aviation question?
+  validator_failed:
+    message: >
+      I couldn't generate a response that met SkyMind's quality standards.
+      Please try asking differently.
+  tool_failed:
+    message: >
+      I couldn't retrieve live aviation information.
+      Please try again later.
+  unknown_intent:
+    message: >
+      SkyMind specializes in aviation.
+      Ask me about flights, airlines, airports or airfare trends.
+  internal_error:
+    message: >
+      Something went wrong while processing your request.

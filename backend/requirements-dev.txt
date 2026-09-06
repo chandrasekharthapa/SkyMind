@@ -1,0 +1,14 @@
+# SkyMind backend — development and test dependencies.
+#
+# These were missing entirely: backend/tests/ contains 146 test modules and 68
+# `@pytest.mark.asyncio` cases, but neither pytest nor pytest-asyncio appeared
+# in requirements.txt, so a clean checkout could not run the suite. That is
+# part of why nothing ever noticed the suite was ungated.
+#
+# Install alongside the runtime requirements:
+#   pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+-r requirements.txt
+
+pytest==8.2.2
+pytest-asyncio==0.23.7
