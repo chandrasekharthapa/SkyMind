@@ -7,9 +7,22 @@ class GoogleFlightsProvider extends BaseProvider {
         this.baseUrl = 'https://www.google.com/travel/flights';
     }
 
-    async searchFlights(from, to, departDate, returnDate = null, passengers = 1, cabinClass = "economy") {
+    async searchFlights(
+        from,
+        to,
+        departDate,
+        returnDate = null,
+        passengers = { adults: 1, children: 0, infants: 0 },
+        cabinClass = "economy"
+    ) {
         let browser, page;
-        
+        const counts = typeof passengers === 'number'
+            ? { adults: passengers, children: 0, infants: 0 }
+            : passengers;
+        const adults = counts.adults || 1;
+        const children = counts.children || 0;
+        const infants = counts.infants || 0;
+
         try {
             console.error('Launching browser for Google Flights...');
             const initRes = await this.initBrowser();
@@ -17,8 +30,10 @@ class GoogleFlightsProvider extends BaseProvider {
             page = initRes.page;
             
             let queryStr = `Flights to ${to} from ${from} on ${departDate}`;
-            if (passengers > 1) queryStr += ` for ${passengers} adults`;
-            if (cabinClass && cabinClass.toLowerCase() !== "economy") queryStr += ` in ${cabinClass} class`;
+            if (adults > 1) queryStr += ` for ${adults} adults`;
+            if (children > 0) queryStr += ` ${children} children`;
+            if (infants > 0) queryStr += ` ${infants} infants`;
+            if (cabinClass && cabinClass.toLowerCase() !== "economy") queryStr += ` in ${cabinClass.replace('_', ' ')} class`;
             if (returnDate) queryStr += ` through ${returnDate}`;
             else queryStr += ` oneway`;
             

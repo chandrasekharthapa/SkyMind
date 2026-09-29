@@ -4,34 +4,11 @@ import json
 import os
 import asyncio
 import anyio
+from mcp.shared.exceptions import McpError
+from mcp.types import INVALID_PARAMS
 from typing import Any, Dict, List, Optional
 
 from backend.domain.provenance import decode_currency
-
-try:
-    from backend.services.mcp_client import get_client
-except ImportError as _exc:
-    # Only a missing top-level `backend` justifies retrying under the bare name
-    # (the scripts in backend/ are run with cwd=backend/ and no repo root on
-    # sys.path). Any other ImportError — a genuinely absent dependency inside
-    # mcp_client — must propagate: retrying it here would both hide the real
-    # cause and bind a second copy of this module, splitting the _shared_client
-    # cache below across two singletons.
-    if (_exc.name or "").split(".")[0] != "backend":
-        raise
-    from services.mcp_client import get_client
-
-# Shared MCP client cache and lock for reuse
-_shared_client: Any = None
-_client_lock = asyncio.Lock()
-
-async def _get_shared_client() -> Any:
-    """Return a cached MCP client, creating it if necessary."""
-    global _shared_client
-    async with _client_lock:
-        if _shared_client is None:
-            _shared_client = await get_client()
-        return _shared_client
 
 logger = logging.getLogger(__name__)
 
@@ -133,47 +110,78 @@ class FlightDataService:
         logger.info(f"Invoking live MCP search: {origin}→{destination} on {target_date}")
         max_retries = int(os.getenv("MCP_MAX_RETRIES", "3"))
         backoff = float(os.getenv("MCP_RETRY_BACKOFF", "1.0"))
-        timeout = float(os.getenv("MCP_TIMEOUT", "30"))  # seconds
+        # Google Flights navigation itself allows up to 60 seconds and browser
+        # teardown may take another five. A 30-second outer deadline cancelled
+        # every legitimately slow scrape before the provider's own bound could
+        # fire. Keep the outer operation bounded, but above those inner bounds.
+        timeout = float(os.getenv("MCP_TIMEOUT", "90"))  # provider-call seconds
         attempt = 0
         last_error: Optional[str] = None
         last_kind: Optional[str] = None
 
         from backend.services.mcp_client import mcp_gateway
 
+        payload = {
+            "from": origin.upper().strip(),
+            "to": destination.upper().strip(),
+            "departDate": target_date,
+            "returnDate": return_date,
+            "adults": adults,
+            "children": children,
+            "infants": infants,
+            "cabin_class": cabin_class.lower(),
+            "max_results": max_results,
+        }
+
         while attempt < max_retries:
             parse_error: Optional[str] = None
             try:
                 if session is not None:
-                    # Use provided session
-                    payload = {
-                        "origin": origin.upper().strip(),
-                        "destination": destination.upper().strip(),
-                        "departure_date": target_date,
-                        "return_date": return_date,
-                        "adults": adults + children + infants,
-                        "cabin_class": cabin_class,
-                    }
+                    # Use provided session. Its lifecycle belongs to the caller;
+                    # only the tool invocation is included in this service's bound.
                     target_currency = currency.upper()
                     res = await asyncio.wait_for(
                         session.call_tool("search_flights", payload),
                         timeout=timeout,
                     )
                 else:
-                    # Use fresh gateway for each request
-                    async with mcp_gateway() as client:
-                        payload = {
-                            "origin": origin.upper().strip(),
-                            "destination": destination.upper().strip(),
-                            "departure_date": target_date,
-                            "return_date": return_date,
-                            "adults": adults + children + infants,
-                            "cabin_class": cabin_class,
-                        }
-                        target_currency = currency.upper()
-                        res = await asyncio.wait_for(
-                            client.call_tool("search_flights", payload),
-                            timeout=timeout,
+                    # Bound the complete fresh subprocess lifecycle: startup,
+                    # initialize, call, and teardown. Timing only call_tool leaves
+                    # a stuck initialize/exit outside MCP_TIMEOUT forever.
+                    async def call_fresh_gateway():
+                        async with mcp_gateway() as client:
+                            return await client.call_tool("search_flights", payload)
+
+                    target_currency = currency.upper()
+                    res = await asyncio.wait_for(
+                        call_fresh_gateway(), timeout=timeout
+                    )
+
+                if (
+                    (isinstance(res, dict) and (res.get("isError") or res.get("is_error")))
+                    or getattr(res, "isError", False)
+                    or getattr(res, "is_error", False)
+                ):
+                    content = res.get("content") if isinstance(res, dict) else getattr(res, "content", None)
+                    if isinstance(content, list) and content:
+                        provider_error = (
+                            content[0].get("text")
+                            if isinstance(content[0], dict)
+                            else getattr(content[0], "text", None)
                         )
+                    else:
+                        provider_error = None
+                    attempt += 1
+                    last_error = provider_error or "MCP provider reported an error"
+                    last_kind = "provider"
+                    logger.warning(
+                        f"Live MCP provider failed (attempt {attempt}/{max_retries}): "
+                        f"{last_error}"
+                    )
+                    if attempt < max_retries:
+                        await asyncio.sleep(backoff * (2 ** (attempt - 1)))
+                        continue
+                    break
 
                 if isinstance(res, dict):
                     if "flights" in res:
@@ -237,6 +245,7 @@ class FlightDataService:
                 if not flights:
                     logger.info(f"[ZERO MATCHES] No flights for {origin}-{destination} {target_date}")
                     return _result(status=STATUS_EMPTY, attempts=attempt + 1)
+                flights = flights[:max_results]
                 # Currency conversion. Applied only when a rate is configured; an
                 # unset rate leaves the fare in the currency the provider quoted and
                 # says so, rather than converting at a hardcoded 82.5.
@@ -298,6 +307,30 @@ class FlightDataService:
                     unconverted=unconverted or None,
                     undeclared_currency=undeclared or None,
                 )
+            except McpError as e:
+                # Schema/contract failures are deterministic. Retrying the exact
+                # same invalid request cannot succeed and only launches extra Node
+                # processes, so return one explicit input failure.
+                if getattr(getattr(e, "error", None), "code", None) == INVALID_PARAMS:
+                    attempt += 1
+                    message = getattr(getattr(e, "error", None), "message", str(e))
+                    logger.error("MCP rejected search parameters: %s", message)
+                    return _result(
+                        status=STATUS_ERROR,
+                        error=message,
+                        error_kind="input",
+                        attempts=attempt,
+                    )
+                attempt += 1
+                last_error, last_kind = str(e), "protocol"
+                logger.warning(
+                    "MCP protocol failure (attempt %d/%d): %s",
+                    attempt, max_retries, e,
+                )
+                if attempt >= max_retries:
+                    break
+                await asyncio.sleep(backoff * (2 ** (attempt - 1)))
+                continue
             except anyio.ClosedResourceError as e:
                 attempt += 1
                 last_error, last_kind = repr(e), "transport"

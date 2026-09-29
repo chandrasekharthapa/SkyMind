@@ -1,202 +1,253 @@
-"""Live search endpoint for real-time flight queries using the Google Flights MCP client.
-
-Returns a JSON payload with a list of flights directly from the provider.
-If the MCP server returns no results, falls back to authentic Supabase price
-history data. Zero synthetic data policy is strictly enforced — no fake
-times, airports, flight numbers, or seat counts are ever injected.
-"""
+"""Honest live Google Flights search with provenance-safe cache fallback."""
 
 import logging
-from fastapi import APIRouter
-from pydantic import BaseModel, field_validator
+from datetime import date
 from typing import Optional
 
-from backend.services.flight_data_service import flight_data_service
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 from backend.database.database import database as db
+from backend.domain.provenance import PROVENANCE_IS_FILTERS, decode_currency
+from backend.services.flight_data_service import (
+    STATUS_EMPTY,
+    STATUS_ERROR,
+    STATUS_OK,
+    flight_data_service,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 class LiveSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     origin: str
     destination: str
     departure_date: str
     return_date: Optional[str] = None
-    adults: Optional[int] = 1
-    children: Optional[int] = 0
-    infants: Optional[int] = 0
-    cabin_class: Optional[str] = "ECONOMY"
+    adults: int = Field(default=1, ge=1, le=9)
+    children: int = Field(default=0, ge=0, le=9)
+    infants: int = Field(default=0, ge=0, le=9)
+    cabin_class: str = "ECONOMY"
 
     @field_validator("origin", "destination")
     @classmethod
-    def normalize_airport(cls, v: str) -> str:
-        v = v.strip().upper()
-        if len(v) != 3:
+    def normalize_airport(cls, value: str) -> str:
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
             raise ValueError("Airport codes must be three-letter IATA codes.")
-        return v
+        return value
 
-    @field_validator("departure_date")
+    @field_validator("departure_date", "return_date")
     @classmethod
-    def validate_date(cls, v: str) -> str:
-        from datetime import datetime
-        datetime.strptime(v, "%Y-%m-%d")
-        return v
+    def validate_date(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return date.fromisoformat(value).isoformat()
+        except (TypeError, ValueError):
+            raise ValueError("Date must be a valid ISO calendar date (YYYY-MM-DD)") from None
+
+    @field_validator("cabin_class")
+    @classmethod
+    def validate_cabin(cls, value: str) -> str:
+        value = value.strip().upper()
+        allowed = {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}
+        if value not in allowed:
+            raise ValueError(f"cabin_class must be one of {sorted(allowed)}")
+        return value
+
+    @model_validator(mode="after")
+    def validate_search(self):
+        if self.origin == self.destination:
+            raise ValueError("Origin and destination cannot be the same")
+        if not 1 <= self.adults <= 9:
+            raise ValueError("adults must be from 1 to 9")
+        if not 0 <= self.children <= 9 or not 0 <= self.infants <= 9:
+            raise ValueError("children and infants must be from 0 to 9")
+        if self.infants > self.adults:
+            raise ValueError("Infants cannot exceed adults")
+        if self.adults + self.children + self.infants > 9:
+            raise ValueError("Total passengers cannot exceed 9")
+        if self.return_date and self.return_date < self.departure_date:
+            raise ValueError("return_date cannot precede departure_date")
+        return self
 
 
-def _build_flight_card(raw: dict, origin: str, destination: str) -> Optional[dict]:
-    """
-    Convert a raw MCP or DB record into a clean flight card.
-    Returns None if the record has no valid price.
-    NEVER fabricates any field. Returns None or omits the field if data is unavailable.
-    """
+def _build_flight_card(
+    raw: dict,
+    origin: str,
+    destination: str,
+    *,
+    provenance: str,
+) -> Optional[dict]:
+    """Map only values present in an authentic provider or cache record."""
     price_val = raw.get("price_inr") or raw.get("price")
-    if not price_val:
-        return None
     try:
         price = round(float(price_val), 2)
-        if price <= 0:
-            return None
     except (ValueError, TypeError):
         return None
+    if price <= 0:
+        return None
 
+    currency = decode_currency(raw.get("currency"))
     airline_code = raw.get("primary_airline") or raw.get("airline_code") or None
     airline_name = raw.get("airline_name") or raw.get("primary_airline_name") or None
-
-    # Flight number: only use if explicitly provided by the provider
     flight_number = raw.get("flight_number") or None
-    # Validate: reject values that look like airline names (no digits)
-    if flight_number and not any(c.isdigit() for c in flight_number):
+    if flight_number and not any(char.isdigit() for char in str(flight_number)):
         flight_number = None
 
-    # Legs / segments: use only what provider returned
-    legs_data = raw.get("legs", [])
+    legs_data = raw.get("legs") if isinstance(raw.get("legs"), list) else []
     if not legs_data:
-        # Build a single-segment leg only if real departure/arrival times are available
-        dep_time = raw.get("departure_time") or None
-        arr_time = raw.get("arrival_time") or None
-        stops = raw.get("stops")
-        duration_min = raw.get("duration_minutes") or raw.get("duration") or None
-
-        # Only build a segment if we have real schedule data
-        if dep_time and arr_time and airline_code:
+        departure = raw.get("departure_time")
+        arrival = raw.get("arrival_time")
+        if departure and arrival and airline_code:
             legs_data = [{
                 "flight_number": flight_number,
                 "airline_code": airline_code,
                 "airline": airline_name,
                 "origin": origin,
                 "destination": destination,
-                "departure_time": dep_time,
-                "arrival_time": arr_time,
-                "duration": duration_min,
-                "stops": stops if stops is not None else 0,
+                "departure_time": departure,
+                "arrival_time": arrival,
+                "duration": raw.get("duration_minutes") or raw.get("duration"),
+                "stops": raw.get("stops"),
             }]
 
-    # Seats: never fabricate
-    seats_val = raw.get("seats") or raw.get("seats_available") or None
-
-    card = {
+    return {
         "origin_code": origin,
         "destination_code": destination,
         "airline_code": airline_code,
         "airline_name": airline_name,
         "flight_number": flight_number,
         "price": price,
-        "seats_available": seats_val,
-        "provenance": raw.get("provenance", "REAL_PROVIDER"),
+        "currency": currency,
+        "seats_available": raw.get("seats") or raw.get("seats_available") or None,
+        "provenance": provenance,
         "legs": legs_data,
     }
-    return card
+
+
+def _cache_rows(origin: str, destination: str, departure_date: str) -> list[dict]:
+    query = (
+        db.supabase.table("price_history")
+        .select("*")
+        .eq("origin_code", origin)
+        .eq("destination_code", destination)
+        .eq("departure_date", departure_date)
+    )
+    for column, value in PROVENANCE_IS_FILTERS:
+        query = query.is_(column, value)
+    result = query.order("recorded_at", desc=True).limit(50).execute()
+    return result.data or []
+
+
+async def _search_leg(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    request: LiveSearchRequest,
+) -> dict:
+    result = await flight_data_service.search_flights(
+        origin=origin,
+        destination=destination,
+        target_date=departure_date,
+        return_date=None,
+        adults=request.adults,
+        children=request.children,
+        infants=request.infants,
+        cabin_class=request.cabin_class,
+        max_results=50,
+        currency="INR",
+    )
+    if not isinstance(result, dict) or result.get("status") not in {
+        STATUS_OK, STATUS_EMPTY, STATUS_ERROR
+    }:
+        return {
+            "data": [], "status": STATUS_ERROR, "error_kind": "contract",
+            "error": "flight transport returned an invalid result",
+        }
+    return result
 
 
 @router.post("/live-search")
 async def live_search(req: LiveSearchRequest) -> dict:
-    """Query the Google Flights MCP server in real time.
-
-    Falls back to Supabase historical cache if the live search returns
-    empty results. Enforces zero-synthetic-data policy throughout.
-    """
-    raw_out = []
-    raw_in = []
-
-    try:
-        res_out = await flight_data_service.search_flights(
-            origin=req.origin,
-            destination=req.destination,
-            target_date=req.departure_date,
-            return_date=None,
-            adults=req.adults,
-            children=req.children,
-            infants=req.infants,
-            cabin_class=req.cabin_class,
-            currency="INR"
+    """Return one-way offers; never manufacture a round-trip itinerary."""
+    if req.return_date:
+        # Reject before invoking the provider. Independently searching two legs
+        # and pairing rows by list index manufactured an itinerary Google never
+        # offered; an unsupported request must not incur a live scrape either.
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Round-trip live search is unavailable until provider-confirmed "
+                "round-trip itineraries can be returned without pairing independent legs."
+            ),
         )
-        raw_out = res_out.get("data", [])
 
-        if req.return_date:
-            res_in = await flight_data_service.search_flights(
-                origin=req.destination,
-                destination=req.origin,
-                target_date=req.return_date,
-                return_date=None,
-                adults=req.adults,
-                currency="INR"
-            )
-            raw_in = res_in.get("data", [])
+    outbound = await _search_leg(
+        req.origin, req.destination, req.departure_date, req
+    )
+    provider_status = outbound["status"]
 
-    except Exception as e:
-        logger.error(f"Live search transport error: {e!r}")
-        raw_out = []
-        raw_in = []
+    # Data accompanying an error status is not trusted. A failed transport may
+    # have accumulated a partial response, but presenting it as a successful live
+    # result would erase the failure distinction the transport contract provides.
+    provider_rows = outbound.get("data") if provider_status == STATUS_OK else []
+    if not isinstance(provider_rows, list):
+        provider_rows = []
 
-    # Fallback to Supabase price_history if live search returned nothing
-    if not raw_out:
-        logger.info("Live search returned empty. Falling back to DB cache.")
+    cards = [
+        card
+        for raw in provider_rows[:50]
+        if isinstance(raw, dict)
+        and (card := _build_flight_card(
+            raw, req.origin, req.destination,
+            provenance="LIVE_GOOGLE_FLIGHTS",
+        )) is not None
+    ]
+    data_source = "live_provider" if cards else None
+    cache_error = None
+
+    if not cards:
         try:
-            db_res = (
-                db.supabase.table("price_history")
-                .select("*")
-                .eq("origin_code", req.origin)
-                .eq("destination_code", req.destination)
-                .eq("is_live", True)
-                .order("recorded_at", desc=True)
-                .limit(50)
-                .execute()
+            cache_rows = _cache_rows(
+                req.origin, req.destination, req.departure_date
             )
-            for row in (db_res.data or []):
-                row["provenance"] = "VERIFIED_MARKET_SNAPSHOT"
-            raw_out = db_res.data or []
-        except Exception as db_err:
-            logger.error(f"Fallback database query failed: {db_err}")
-            raw_out = []
+            cards = [
+                card
+                for raw in cache_rows[:50]
+                if isinstance(raw, dict)
+                and (card := _build_flight_card(
+                    raw, req.origin, req.destination,
+                    provenance="AUTHENTIC_PRICE_HISTORY",
+                )) is not None
+            ]
+            if cards:
+                data_source = "cache"
+        except Exception as exc:
+            cache_error = type(exc).__name__
+            logger.error("Live-search cache query failed: %s", exc, exc_info=True)
 
-    flights = []
-
-    if req.return_date and raw_in:
-        # Round-trip: pair outbound + inbound flights
-        for i in range(min(len(raw_out), len(raw_in), 50)):
-            f_out = raw_out[i]
-            f_in = raw_in[i]
-
-            out_price = float(f_out.get("price_inr") or f_out.get("price") or 0)
-            in_price = float(f_in.get("price_inr") or f_in.get("price") or 0)
-            if out_price <= 0 or in_price <= 0:
-                continue
-
-            out_card = _build_flight_card(f_out, req.origin, req.destination)
-            in_card = _build_flight_card(f_in, req.destination, req.origin)
-            if not out_card or not in_card:
-                continue
-
-            combined = {**out_card}
-            combined["price"] = round(out_price + in_price, 2)
-            combined["return_legs"] = in_card.get("legs", [])
-            flights.append(combined)
+    if cards:
+        # Cache data can keep the endpoint useful during a provider outage, but it
+        # cannot turn that outage into an unqualified success.
+        status = "degraded" if provider_status == STATUS_ERROR else "ok"
+    elif provider_status == STATUS_ERROR:
+        # A successful cache query returning zero rows does not disprove the live
+        # transport failure. Preserve error rather than reporting a quiet market.
+        status = "error"
     else:
-        # One-way
-        for raw in raw_out[:50]:
-            card = _build_flight_card(raw, req.origin, req.destination)
-            if card:
-                flights.append(card)
+        status = "empty"
 
-    return {"flights": flights}
+    return {
+        "flights": cards,
+        "status": status,
+        "provider_status": provider_status,
+        "provider_error_kind": outbound.get("error_kind"),
+        "provider_attempts": outbound.get("attempts", 0),
+        "data_source": data_source,
+        "cache_error_kind": cache_error,
+    }

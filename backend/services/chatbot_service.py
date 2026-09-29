@@ -112,7 +112,6 @@ def _slim_tool_result(result: Dict[str, Any], max_flights: int = 5) -> Dict[str,
 
 # NVIDIA Llama Infrastructure
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 LLM_MODEL_ID = "meta/llama-3.1-70b-instruct"
 
 _SYSTEM_PROMPT_TEMPLATE = """You are SkyMind, a premium Aviation Intelligence Platform.
@@ -230,17 +229,24 @@ class ConversationContext:
         )
 
 
-from backend.services.llm_provider import get_llm_provider
 from backend.services.memory_manager import memory_manager
 
+
 class ChatbotService:
-    def __init__(self):
-        self.nvidia_client = AsyncOpenAI(
-            base_url=NVIDIA_BASE_URL,
-            api_key=NVIDIA_API_KEY,
-        )
-        self.llm_provider = get_llm_provider()
+    def __init__(self, nvidia_client: Optional[AsyncOpenAI] = None):
+        self.nvidia_client = nvidia_client
         self.sessions: Dict[str, ConversationContext] = {}
+
+    def _get_nvidia_client(self) -> AsyncOpenAI:
+        if self.nvidia_client is None:
+            api_key = os.getenv("NVIDIA_API_KEY", "").strip()
+            if not api_key:
+                raise RuntimeError("NVIDIA_API_KEY is not configured.")
+            self.nvidia_client = AsyncOpenAI(
+                base_url=NVIDIA_BASE_URL,
+                api_key=api_key,
+            )
+        return self.nvidia_client
 
     def get_session_context(self, session_id: str) -> ConversationContext:
         if session_id not in self.sessions:
@@ -443,7 +449,7 @@ class ChatbotService:
 
         try:
             llm_start = time.perf_counter()
-            response = await self.nvidia_client.chat.completions.create(
+            response = await self._get_nvidia_client().chat.completions.create(
                 model=LLM_MODEL_ID,
                 messages=formatted_messages,
                 tools=self.get_tool_definitions(),
@@ -585,7 +591,7 @@ class ChatbotService:
 
                 # Run final LLM generation step based on tool details
                 if tool_payloads:
-                    final_res = await self.nvidia_client.chat.completions.create(
+                    final_res = await self._get_nvidia_client().chat.completions.create(
                         model=LLM_MODEL_ID,
                         messages=formatted_messages,
                         tools=self.get_tool_definitions(),

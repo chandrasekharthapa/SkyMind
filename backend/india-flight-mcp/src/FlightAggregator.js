@@ -26,6 +26,11 @@ class FlightAggregator {
             try {
                 console.log(`Searching flights on ${provider.name}...`);
                 const flights = await provider.searchFlights(from, to, departDate, returnDate);
+                if (!Array.isArray(flights)) {
+                    throw new Error(flights && flights.error
+                        ? flights.error
+                        : `${provider.name} returned an invalid result`);
+                }
                 console.log(`Getting offers from ${provider.name}...`);
                 const offers = await provider.getOffers();
                 

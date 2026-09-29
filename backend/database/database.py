@@ -6,6 +6,7 @@ Strictly returns live data with no synthetic fallbacks.
 
 import os
 import logging
+from typing import Any, Callable, Optional
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -26,46 +27,103 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════════════
-# Supabase client
+# Lazy external clients
 # ══════════════════════════════════════════════════════════════════════
 
-_SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
-_SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
-if not _SUPABASE_URL or not _SUPABASE_KEY:
-    raise RuntimeError(
-        "Missing Supabase credentials (SUPABASE_URL / SUPABASE_SERVICE_KEY)"
-    )
+class DatabaseConfigurationError(RuntimeError):
+    """A database operation was attempted without usable configuration."""
 
-# Service client: Bypass RLS (for admin tasks)
-_supabase_service = create_client(_SUPABASE_URL, _SUPABASE_KEY)
 
-# Anon client: Respect RLS (for client-facing tasks if needed, though usually handled by server)
-_supabase_anon = None
-if _SUPABASE_ANON_KEY:
-    _supabase_anon = create_client(_SUPABASE_URL, _SUPABASE_ANON_KEY)
+def _is_configuration_error(exc: BaseException) -> bool:
+    return isinstance(exc, DatabaseConfigurationError)
 
-# ══════════════════════════════════════════════════════════════════════
-# SQLAlchemy engine (used for ML training queries)
-# ══════════════════════════════════════════════════════════════════════
 
-_DATABASE_URL = os.getenv("DATABASE_URL", "")
+class _LazyClientProxy:
+    """Resolve an external client on first real attribute access.
+
+    Keeping a stable proxy object makes module import credential-free and
+    preserves the established test seam of monkeypatching ``database.supabase``
+    methods without constructing a network client.
+    """
+
+    def __init__(self, factory: Callable[[], Any]):
+        object.__setattr__(self, "_factory", factory)
+        object.__setattr__(self, "_client", None)
+
+    def _get_client(self) -> Any:
+        client = object.__getattribute__(self, "_client")
+        if client is None:
+            client = object.__getattribute__(self, "_factory")()
+            object.__setattr__(self, "_client", client)
+        return client
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_client(), name)
+
+    def table(self, *args: Any, **kwargs: Any) -> Any:
+        """Forward table access while remaining directly monkeypatchable."""
+        return self._get_client().table(*args, **kwargs)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        # Tests patch public methods directly on the proxy. Do not force client
+        # creation merely to install that deterministic boundary.
+        object.__setattr__(self, name, value)
+
+
+def _create_supabase_client(key_env: str, label: str) -> Any:
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv(key_env, "").strip()
+    if not url or not key:
+        raise DatabaseConfigurationError(
+            f"Missing Supabase {label} credentials (SUPABASE_URL / {key_env})"
+        )
+    return create_client(url, key)
+
+
+def _create_service_client() -> Any:
+    return _create_supabase_client("SUPABASE_SERVICE_KEY", "service-role")
+
+
+def _create_anon_client() -> Any:
+    return _create_supabase_client("SUPABASE_ANON_KEY", "anonymous")
+
+
+# SQLAlchemy is also initialized at the operation boundary. ``create_engine``
+# can validate dialect/driver state during import even though no query is made.
 _engine = None
 _SessionLocal = None
 
-if _DATABASE_URL:
+
+def _get_session_factory() -> Optional[Any]:
+    global _engine, _SessionLocal
+    if _SessionLocal is not None:
+        return _SessionLocal
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+
     try:
         _engine = create_engine(
-            _DATABASE_URL,
+            database_url,
             pool_pre_ping=True,
             pool_recycle=300,
             connect_args={"sslmode": "require"},
         )
-        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+        _SessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=_engine
+        )
         logger.info("SQLAlchemy engine initialised.")
+        return _SessionLocal
     except Exception as exc:
-        logger.warning(f"SQLAlchemy init failed (non-fatal): {exc}")
+        logger.error(f"SQLAlchemy init failed: {exc}")
+        raise DatabaseConfigurationError(
+            "DATABASE_URL could not be initialized"
+        ) from exc
 
 
 # Synthetic training dataset generation removed (purged post-2025 refactoring)
@@ -76,9 +134,23 @@ if _DATABASE_URL:
 # ══════════════════════════════════════════════════════════════════════
 
 class Database:
-    def __init__(self):
-        self.supabase = _supabase_service
-        self.anon = _supabase_anon
+    def __init__(
+        self,
+        supabase_client: Optional[Any] = None,
+        anon_client: Optional[Any] = None,
+        session_factory: Optional[Any] = None,
+    ):
+        self.supabase = (
+            supabase_client
+            if supabase_client is not None
+            else _LazyClientProxy(_create_service_client)
+        )
+        self.anon = (
+            anon_client
+            if anon_client is not None
+            else _LazyClientProxy(_create_anon_client)
+        )
+        self._session_factory = session_factory
         # True when the last get_training_dataset() call returned an empty frame
         # because *reading* failed, rather than because the table is empty. The
         # two are not the same thing and callers were unable to tell them apart.
@@ -132,10 +204,28 @@ class Database:
         self.last_load_failed = False
 
         # Try SQLAlchemy first (faster for large datasets)
-        if _SessionLocal:
+        try:
+            session_factory = (
+                self._session_factory
+                if self._session_factory is not None
+                else _get_session_factory()
+            )
+        except Exception as exc:
+            if _is_configuration_error(exc):
+                self.last_load_failed = True
+                raise
+            logger.error(
+                f"SQLAlchemy training loader unavailable, falling back to Supabase: {exc}"
+            )
+            session_factory = None
+
+        if session_factory is not None:
             try:
-                return self._load_from_db()
+                return self._load_from_db(session_factory)
             except Exception as exc:
+                if _is_configuration_error(exc):
+                    self.last_load_failed = True
+                    raise
                 # Was logger.warning. This is the primary loader; if it fails
                 # because `is_synthetic` does not exist on this database, the
                 # Supabase path below fails for the same reason and the caller
@@ -148,11 +238,20 @@ class Database:
         except Exception as exc:
             logger.error(f"Supabase training load failed: {exc}")
             self.last_load_failed = True
+            if _is_configuration_error(exc):
+                raise
             return pd.DataFrame()
 
-    def _load_from_db(self) -> pd.DataFrame:
+    def _load_from_db(self, session_factory: Optional[Any] = None) -> pd.DataFrame:
         """Load training data via SQLAlchemy."""
-        session = _SessionLocal()
+        factory = session_factory
+        if factory is None:
+            factory = self._session_factory
+        if factory is None:
+            factory = _get_session_factory()
+        if factory is None:
+            raise DatabaseConfigurationError("DATABASE_URL is not configured")
+        session = factory()
         try:
             logger.info("Fetching training dataset from price_history (SQLAlchemy)...")
             result = session.execute(
@@ -404,6 +503,8 @@ class Database:
             return res.data or []
         except Exception as exc:
             logger.error(f"get_active_alerts error: {exc}")
+            if _is_configuration_error(exc):
+                raise
             return []
 
     # ── Flight search from DB cache ─────────────────────────────────
@@ -429,6 +530,8 @@ class Database:
             # so a swallowed error here reads to every caller as a successful
             # search that found nothing. Log it, as the sibling queries do.
             logger.error(f"search_flights({origin}->{destination}, {departure_date}) error: {exc}")
+            if _is_configuration_error(exc):
+                raise
             return []
 
     # ── Supabase Storage (Model Persistence) ────────────────────────
@@ -448,6 +551,8 @@ class Database:
             return True
         except Exception as exc:
             logger.error(f"Model upload failed: {exc}")
+            if _is_configuration_error(exc):
+                raise
             return False
 
     def download_model(self, local_path: str, remote_name: str = "global_model.pkl") -> bool:
@@ -460,6 +565,8 @@ class Database:
             logger.info(f"Model downloaded from Supabase Storage: {remote_name}")
             return True
         except Exception as exc:
+            if _is_configuration_error(exc):
+                raise
             logger.debug(f"Model download failed (this is expected on first run): {exc}")
             return False
 

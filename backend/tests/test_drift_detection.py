@@ -15,6 +15,7 @@ where `drift_report.json` is tracked; see `backend.utils.report_paths`.
 
 import os
 
+import pandas as pd
 import pytest
 
 from backend.services.drift_detection import drift_detection_service
@@ -34,6 +35,23 @@ def test_drift_detection_run(tmp_path):
         assert key in report, f"{key} missing from {sorted(report)}"
     assert report.get("report_written_to") == dest, (
         f"write outcome: {report.get('report_write_error')}")
+
+
+def test_failed_dataset_load_is_unmeasurable(monkeypatch, tmp_path):
+    """A database outage is not evidence of zero drift or stability."""
+    monkeypatch.setattr(
+        "backend.services.drift_detection.db.get_training_dataset",
+        lambda: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "backend.services.drift_detection.db.last_load_failed", True
+    )
+
+    report, _ = _analysis(tmp_path)
+
+    assert report["overall_drift_status"] == "UNMEASURABLE"
+    assert all(report[key] is None for key in SCORES)
+    assert "could not be read" in report["reason"]
 
 
 def test_a_published_score_is_a_fraction_and_a_missing_one_is_explained(tmp_path):

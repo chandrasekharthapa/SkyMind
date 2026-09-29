@@ -59,18 +59,19 @@ watchdog>=3.0.0
 openai>=1.14.0
 boto3>=1.34.0
 
+# Official Python MCP client used by services/mcp_client.py to launch the
+# checked-in JavaScript stdio server.
+mcp==2.2.0
+
 # --- Observability ---
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0
 
 # --- Quarantined during the 2026-08 audit -------------------
-# Both lines were unpinned and are imported nowhere in the
-# backend. `flights` in particular is a generic single-word
-# PyPI name with no version bound, so `pip install -r` would
-# resolve it to whatever currently owns that name — a
-# supply-chain risk for a package nothing uses. The Python
-# `fastmcp` is likewise unused; the MCP integration lives in
-# india-flight-mcp/ and is JavaScript. Re-enable with an
-# explicit pin if either is actually needed.
+# Both names below were unpinned and are imported nowhere in the backend.
+# `flights` in particular is a generic single-word PyPI name with no version
+# bound, so resolving it would be a supply-chain risk for a package nothing
+# uses. `fastmcp` is not the protocol client used here; the checked-in
+# JavaScript server is reached through the pinned official `mcp` package above.
 # flights
 # fastmcp

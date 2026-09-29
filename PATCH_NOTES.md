@@ -1,5 +1,7 @@
 # SkyMind — Patch Notes (April 2026)
 
+> **⚠️ Audit flag (2026-09-28):** Some operational claims below are not supported by the current code and are left in place only for history. Specifically: (a) L7 "**synthetic** fare population" contradicts the project's zero-synthetic-data policy — the ingestion path now stores only scraped values and invents nothing; (b) L9 "retrains every 24 hours" and L8 alert cron run **only** via the GitHub Actions workflow, and daily retraining will produce no model until the corpus carries `departure_time` labels; (c) L10/L26 cloud model auto-sync / "pull the latest model from the cloud" is not a demonstrated hot-swap — serving now fails-closed when no clean artifact loads. See `AUDIT.md`.
+
 ## 🚀 FEATURE: GitHub-Driven Automation Pipeline
 > **Issue**: Server downtime on Render (free tier) caused background jobs to miss alert checks and data ingestion cycles.
 

@@ -5,6 +5,24 @@
 [![XGBoost](https://img.shields.io/badge/ML-XGBoost_v2.4-red.svg)](https://xgboost.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> ## ⚠️ Documentation Audit — status as of 2026-09-28
+>
+> The marketing copy below is **aspirational and predates the code**. Several headline claims are **not currently supported by the code or data on disk** and are flagged here for honesty rather than rewritten. See [`AUDIT.md`](AUDIT.md), [`AUDIT-ADDENDUM.md`](AUDIT-ADDENDUM.md), and [`AUDIT-FIXES.md`](AUDIT-FIXES.md) for the full evidence trail.
+>
+> | Claim (line) | Status | What the code/data actually shows |
+> |---|---|---|
+> | "**>92% accuracy**" (L14) | ❌ Not supported now | "Accuracy" was defined as `100 − MAPE`, not a regression score. The three shipped models scored R² 0.425 / 0.932 / 0.707; the 0.932 came from **target leakage** (features derived from the label) and those artifacts are now **quarantined**. Under the corrected booking-curve join, the historical corpus yields **~0 labels**, so no model trains until fresh `departure_time`-carrying data is collected. |
+> | "**thousands of proprietary market signals**" (L14) | ❌ Overstated | The feature set is **16 features**; 5 of them had exactly 0.000 importance. |
+> | "**Decentralized Multi-Agent System**" / "four autonomous agents" (L8, L20–25) | ⚠️ Overstated | Implemented as ~130 lines of pure functions combined by a fixed weighted sum — not autonomous agents. |
+> | "**Proprietary Deterministic Market Simulation Engine**" with sigmoid/quadratic decay/seeded randomness (L8, L33–37) | ❌ Not in code | No such engine exists in the source tree (0 matches for sigmoid / inventory-pressure / quadratic decay / simulation engine). |
+> | "**Sub-100ms real-time inference**" (L31) | ❌ Unmeasured | No latency measurement exists in the repo for inference. |
+> | "hot-swap mechanism for daily model synchronization" (L31, diagram L66) | ⚠️ Unverified | Serving now fails-closed when no clean artifact is loadable; the "hot-swap" narrative is not demonstrated. |
+> | "100% system availability" (L34) | ❌ Marketing claim | No basis; nothing measures or guarantees availability. |
+> | Frontend: **Zustand** (L46), **Recharts** (L48/86), **React Query** (L85) | ⚠️ Mostly unused | Zustand and Recharts appear only in `package.json`, not in any component. React Query is wired via a provider only. |
+> | Setup: `python run.py` starts the backend (L115) | ❌ Wrong command | `run.py` is a **training script** (`model.train()` + upload). The API server is started with `uvicorn main:app --host 0.0.0.0 --port $PORT` (see `render.yaml`). |
+>
+> **What *is* real (and better than the README suggests):** genuine XGBoost training with active leakage defenses (chronological split + label embargo + leak audits that refuse to train on failure), fabrication removed across the ingestion/scraper layers (missing values stay `null`, not invented), honest fail-closed metric/serving paths, and a large test suite engineered to fail rather than pass vacuously.
+
 **SkyMind** is a high-fidelity, executive-class flight intelligence platform engineered for the 2026 aviation market. It bridges the gap between raw data and actionable booking intelligence by layering a **Decentralized Multi-Agent System** over a proprietary **Deterministic Market Simulation Engine**.
 
 ---

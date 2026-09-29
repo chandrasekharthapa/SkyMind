@@ -323,11 +323,59 @@ class FlightSearchService:
         children: int = 0,
         infants: int = 0,
         cabin_class: str = "ECONOMY",
-        max_results: int = 100,
+        max_results: int = 50,
         return_date: Optional[str] = None,
         sorting: str = "price"
     ) -> FlightSearchPresentation:
         """Execute flight search E2E flow."""
+        for name, value in (
+            ("origin_iata", origin_iata),
+            ("destination_iata", destination_iata),
+        ):
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a three-letter IATA code")
+            normalized = value.strip().upper()
+            if len(normalized) != 3 or not normalized.isalpha():
+                raise ValueError(f"{name} must be a three-letter IATA code")
+            if name == "origin_iata":
+                origin_iata = normalized
+            else:
+                destination_iata = normalized
+        if origin_iata == destination_iata:
+            raise ValueError("origin_iata and destination_iata must differ")
+
+        try:
+            departure = date.fromisoformat(departure_date)
+        except (TypeError, ValueError):
+            raise ValueError("departure_date must be a valid ISO calendar date") from None
+        departure_date = departure.isoformat()
+        if return_date is not None:
+            try:
+                returning = date.fromisoformat(return_date)
+            except (TypeError, ValueError):
+                raise ValueError("return_date must be a valid ISO calendar date") from None
+            if returning < departure:
+                raise ValueError("return_date cannot precede departure_date")
+            return_date = returning.isoformat()
+
+        if not isinstance(cabin_class, str):
+            raise ValueError("cabin_class must be a supported cabin")
+        cabin_class = cabin_class.strip().upper()
+        cabins = {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}
+        if cabin_class not in cabins:
+            raise ValueError(f"cabin_class must be one of {sorted(cabins)}")
+        if not isinstance(adults, int) or isinstance(adults, bool) or not 1 <= adults <= 9:
+            raise ValueError("adults must be an integer from 1 to 9")
+        for name, value in (("children", children), ("infants", infants)):
+            if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 9:
+                raise ValueError(f"{name} must be an integer from 0 to 9")
+        if infants > adults:
+            raise ValueError("infants cannot exceed adults")
+        if adults + children + infants > 9:
+            raise ValueError("total passengers cannot exceed 9")
+        if not isinstance(max_results, int) or isinstance(max_results, bool) or not 1 <= max_results <= 50:
+            raise ValueError("max_results must be an integer from 1 to 50")
+
         import uuid
         from backend.services.historical_data_service import historical_data_service
         from backend.services.booking_curve_definition import (

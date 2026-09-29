@@ -20,14 +20,28 @@ from backend.firewall import FirewallConfig, PolicyPlatform, PolicyLoader
 
 
 @pytest.fixture(autouse=True)
-def mock_tool_execution(monkeypatch):
-    """Mocks live tool execution for fast offline unit benchmarks."""
+def isolate_graph_dependencies(monkeypatch):
+    """Keep unit workflows deterministic and off hosted guardrails/transports."""
+    from backend.firewall.context import RequestContext
+    from backend.firewall.models import FirewallDecision
+    from backend.services.agent_graph import policy_platform
+
+    async def mock_evaluate(*args, **kwargs):
+        return RequestContext(
+            request_id="test-safe-request",
+            decision=FirewallDecision(
+                is_safe=True, violations=[], execution_time_ms=0.0
+            ),
+        )
+
     async def mock_execute(tool_name: str, tool_args: dict):
         return {
             "_tool_name": tool_name,
             "status": "success",
             "flights": [{"flight_number": "6E101", "primary_airline": "6E", "price": 4500.0}]
         }
+
+    monkeypatch.setattr(policy_platform, "evaluate_messages", mock_evaluate)
     monkeypatch.setattr("backend.services.agent_graph.execute_chatbot_tool", mock_execute)
 
 

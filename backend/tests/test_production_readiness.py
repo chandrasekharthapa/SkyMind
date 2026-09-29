@@ -5,6 +5,7 @@ import os
 
 import pytest
 
+from backend.database.database import DatabaseConfigurationError, database as db
 from backend.services.production_readiness import production_readiness_service
 
 # Every report `run_full_validation` is responsible for, its own last.
@@ -86,3 +87,38 @@ def test_a_failed_check_is_quoted_from_the_subsystem_that_failed(tmp_path):
     reason = (audit.get("failed_bounds") or [audit.get("reason")])[0]
     assert reason and reason in data_lines[0], (
         f"rollup says {data_lines[0]!r}, audit says {reason!r}")
+
+
+def test_dataset_configuration_failure_is_reported_without_aborting(
+    monkeypatch, tmp_path
+):
+    """One unavailable database boundary must not erase the rest of the report."""
+    monkeypatch.setattr(
+        db,
+        "get_training_dataset",
+        lambda: (_ for _ in ()).throw(
+            DatabaseConfigurationError("database configuration unavailable")
+        ),
+    )
+
+    report = production_readiness_service.run_full_validation(
+        report_dir=str(tmp_path)
+    )
+
+    feature = report["feature_validation"]
+    assert report["overall_status"] == "FAIL"
+    assert feature["valid"] is False
+    assert feature["status"] == "UNAVAILABLE"
+    assert feature["feature_completeness"] is None
+    assert "database configuration unavailable" in feature["reason"]
+    assert any(
+        line.startswith("Feature Validation:")
+        and "database configuration unavailable" in line
+        for line in report["failed_checks"]
+    )
+    assert os.path.exists(
+        os.path.join(str(tmp_path), "feature_validation_report.json")
+    )
+    assert os.path.exists(
+        os.path.join(str(tmp_path), "production_readiness_report.json")
+    )

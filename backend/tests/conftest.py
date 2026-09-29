@@ -37,3 +37,13 @@ def clear_market_snapshot_cache():
         market_snapshot_provider._pending_tasks.clear()
     except Exception:
         pass
+
+
+@pytest.fixture(autouse=True)
+def reset_firewall_client():
+    """Prevent one test's injected hosted-guardrail client leaking into another."""
+    from backend.firewall.client import NVIDIAClientProvider
+
+    NVIDIAClientProvider.reset_client()
+    yield
+    NVIDIAClientProvider.reset_client()

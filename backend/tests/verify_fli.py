@@ -1,27 +1,24 @@
-import asyncio
-import os
-import pytest
-from backend.services.mcp_client import mcp_gateway
-from backend.services.flight_data_service import flight_data_service
+"""Retired live MCP smoke test.
 
-@pytest.mark.asyncio
-async def test_real_fli_mcp_call():
-    """Attempt a real call to fli-mcp. If the executable is missing or the call fails,
-    the test will be skipped rather than cause a failure, ensuring CI stability.
-    """
-    # Ensure the fli-mcp executable exists
-    from services.mcp_client import _executable
-    if not os.path.isfile(_executable):
-        pytest.skip(f"fli-mcp executable not found at {_executable}")
-    async with mcp_gateway() as client:
-        # Use a benign request that should always succeed (e.g., a future date with a common route)
-        result = await flight_data_service.search_flights(
-            origin="DEL",
-            destination="BOM",
-            target_date="2099-01-01",
-            session=client,
-        )
-        # The result must be a dict with a 'data' key (which may be empty if no flights are available)
-        assert isinstance(result, dict)
-        assert "data" in result
-        # If data is empty, that's acceptable; the important part is that the call succeeded without raising.
+This module used to launch Puppeteer against Google Flights during ordinary test
+collection and then accepted any dictionary containing ``data`` as success. That
+made CI network-dependent and could report a tagged transport failure as green.
+The same boundary is now covered without a live search by ``test_mcp_interop``:
+it initializes and lists the checked-in stdio server, exercises the official SDK
+against local provider stubs, distinguishes empty data from provider failure, and
+checks cancellation cleanup.
+"""
+
+import pytest
+
+
+pytestmark = pytest.mark.skip(
+    reason=(
+        "live provider calls are intentionally excluded from automated tests; "
+        "use the local-stub MCP interoperability tests"
+    )
+)
+
+
+def test_live_provider_probe_is_not_part_of_ci():
+    """Keep the historical module importable while making its retirement explicit."""

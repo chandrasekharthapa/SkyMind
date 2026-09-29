@@ -26,17 +26,17 @@ returns `[]`. `BaseProvider.calculateBestPrice` does contain offer logic, but wi
 no offers to iterate it returns `bestPrice === basePrice`, so nothing SkyMind
 calls reaches it.
 
-## Entry points
+## Entry point
 
-| File | Transport | Used by SkyMind |
-| :--- | :--- | :--- |
-| `src/mcp/stdio_server.js` | JSON-RPC over stdin/stdout; one tool, `search_flights` | **Yes** — spawned as a child process by `backend/services/mcp_client.py` |
-| `src/mcp/server.js` | HTTP `POST /mcp/invoke`, `GET /mcp/discover`, port 3000 | No |
-| `src/server.js` | HTTP `POST /api/search-flights`, port 3000 | No |
+SkyMind and the package default both use
+`src/mcp/stdio_server.js`: JSON-RPC over stdin/stdout with one tool,
+`search_flights`. `backend/services/mcp_client.py` spawns that file directly,
+and the package's `main`, `bin`, `start`, and `dev` entries all resolve to it.
 
-`npm start` runs `src/mcp/server.js`, which the backend never contacts. The two
-HTTP servers go through `FlightAggregator`; the stdio server requires
-`GoogleFlightsProvider` directly.
+The two legacy HTTP files remain in the source tree for compatibility but are
+not package entry points and are not used by SkyMind:
+`src/mcp/server.js` (`POST /mcp/invoke`) and `src/server.js`
+(`POST /api/search-flights`).
 
 ## Missing values are null
 

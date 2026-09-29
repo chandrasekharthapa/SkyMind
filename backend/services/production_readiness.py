@@ -147,11 +147,35 @@ class ProductionReadinessService:
         data_audit = historical_data_audit_service.run_audit(
             destination=_dest("historical_data_report.json"))
 
-        # 2. Feature Validation (using training dataset features)
-        from backend.database.database import database as db
-        df_raw = db.get_training_dataset()
-        feature_val = feature_validation_service.validate_features_dataframe(
-            df_raw, destination=_dest("feature_validation_report.json"))
+        # 2. Feature Validation (using training dataset features). Configuration
+        # failure is a measured readiness failure, not a reason to abort the entire
+        # rollup before model, drift, and prediction checks can report their state.
+        from backend.database.database import (
+            DatabaseConfigurationError,
+            database as db,
+        )
+        try:
+            df_raw = db.get_training_dataset()
+        except DatabaseConfigurationError as exc:
+            feature_val = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "valid": False,
+                "status": "UNAVAILABLE",
+                "total_rows": 0,
+                "feature_count": 0,
+                "expected_feature_count": len(
+                    feature_validation_service.expected_features
+                ),
+                "missing_features": feature_validation_service.expected_features,
+                "feature_completeness": None,
+                "reason": f"Training dataset could not be read: {exc}",
+            }
+            write_report(
+                feature_val, _dest("feature_validation_report.json")
+            )
+        else:
+            feature_val = feature_validation_service.validate_features_dataframe(
+                df_raw, destination=_dest("feature_validation_report.json"))
 
         # 3. Model Readiness Check
         model_readiness = model_readiness_service.check_readiness()
@@ -219,7 +243,11 @@ class ProductionReadinessService:
                 warning_checks.append(f"Historical Data Audit: {detail}")
 
         if not feature_val.get("valid"):
-            failed_checks.append("Feature Validation: Missing required features or low completeness")
+            feature_detail = feature_val.get("reason")
+            failed_checks.append(
+                "Feature Validation: "
+                + (feature_detail or "Missing required features or low completeness")
+            )
 
         if not model_readiness.get("is_ready"):
             failed_checks.append(f"Model Readiness: {', '.join(model_readiness.get('reasons', []))}")

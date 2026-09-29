@@ -431,6 +431,12 @@ export async function searchFlights(
     }),
   });
 
+  const statuses = new Set(["ok", "empty", "degraded", "error"]);
+  const providerStatuses = new Set(["ok", "empty", "error"]);
+  if (!statuses.has(raw?.status) || !providerStatuses.has(raw?.provider_status)) {
+    throw new Error("Live flight search returned an invalid status contract");
+  }
+
   const mappedFlights: FlightOffer[] = (raw.flights || []).map((f: any, i: number) => {
     const itineraries: FlightItinerary[] = [];
 
@@ -455,7 +461,7 @@ export async function searchFlights(
           arrival_time: leg.arrival_time || null,
           duration: durStr,
           cabin: params.cabin_class ?? "ECONOMY",
-          stops: leg.stops ?? 0,
+          stops: leg.stops ?? null,
         };
       });
       const totalDurStr = totalDurMins > 0
@@ -486,7 +492,7 @@ export async function searchFlights(
           arrival_time: leg.arrival_time || null,
           duration: durStr,
           cabin: params.cabin_class ?? "ECONOMY",
-          stops: leg.stops ?? 0,
+          stops: leg.stops ?? null,
         };
       });
       const totalDurStr = totalDurMins > 0
@@ -504,7 +510,7 @@ export async function searchFlights(
       source: "live-search",
       price: {
         total: f.price,
-        currency: params.currency ?? "INR",
+        currency: f.currency ?? null,
       },
       itineraries: itineraries,
       primary_airline: f.airline_code || null,
@@ -519,7 +525,7 @@ export async function searchFlights(
       // state is displayed as a live provider fetch. Absent now reads as
       // unknown.
       provenance: f.provenance || "UNKNOWN",
-      seats_available: f.seats_available || null,
+      seats_available: f.seats_available ?? null,
     } as FlightOffer;
   });
 
@@ -528,7 +534,12 @@ export async function searchFlights(
     count: mappedFlights.length,
     origin_iata: origin,
     destination_iata: destination,
-    data_source: "LIVE_SEARCH",
+    data_source: raw.data_source ?? null,
+    status: raw.status,
+    provider_status: raw.provider_status,
+    provider_error_kind: raw.provider_error_kind ?? null,
+    provider_attempts: raw.provider_attempts ?? 0,
+    cache_error_kind: raw.cache_error_kind ?? null,
     search_params: { origin, destination, departure_date },
   };
 }

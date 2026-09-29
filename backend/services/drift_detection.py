@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
-from backend.database.database import database as db
+from backend.database.database import DatabaseConfigurationError, database as db
 from backend.services.booking_curve_definition import ordering_timestamps
 from backend.utils.report_paths import report_path, write_report
 
@@ -30,7 +30,32 @@ class DriftDetectionService:
         `destination` overrides where the report is written; it defaults to
         `REPORT_PATH`.
         """
-        df_raw = db.get_training_dataset()
+        try:
+            df_raw = db.get_training_dataset()
+        except DatabaseConfigurationError as exc:
+            logger.error("Drift analysis cannot read its dataset: %s", exc)
+            report = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "feature_drift_score": None,
+                "prediction_drift_score": None,
+                "market_drift_score": None,
+                "overall_drift_status": "UNMEASURABLE",
+                "reason": "Training dataset is unavailable because database configuration is incomplete",
+            }
+            self._save_report(report, destination)
+            return report
+
+        if getattr(db, "last_load_failed", False):
+            report = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "feature_drift_score": None,
+                "prediction_drift_score": None,
+                "market_drift_score": None,
+                "overall_drift_status": "UNMEASURABLE",
+                "reason": "Training dataset could not be read",
+            }
+            self._save_report(report, destination)
+            return report
 
         if df_raw is None or df_raw.empty or len(df_raw) < 20:
             report = {

@@ -36,3 +36,5 @@
   ├── Forecast Timeline Grid: cForecast.timeline
   └── ForecastDebugPanel: cForecast.diagnostics & raw payload
 ```
+
+> **⚠️ Audit flag (2026-09-28):** Step 1 of the prediction flow above names `LiveMarketService.get_snapshot()`. That symbol does not exist in the code — there is no `LiveMarketService` class and no `get_snapshot` method anywhere in the tree. The live-fare snapshot is actually retrieved by `PredictionService.predict()` calling **`MarketSnapshotProvider.get_market_snapshot(origin, destination, departure_date)`** (`backend/services/prediction_service.py:207`; class defined at `backend/services/market_snapshot_provider.py:62`, method at :77). The rest of this diagram matches the code. See `AUDIT.md`.

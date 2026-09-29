@@ -70,6 +70,10 @@ async def search_flights(
 
     if origin_iata == destination_iata:
         raise HTTPException(400, detail="Origin and destination cannot be the same")
+    if infants > adults:
+        raise HTTPException(422, detail="Infants cannot exceed adults")
+    if adults + children + infants > 9:
+        raise HTTPException(422, detail="Total passengers cannot exceed 9")
 
     # Delegate searching, caching, normalization, ML, and sorting to the orchestration service
     presentation = await flight_search_service.search(

@@ -99,7 +99,7 @@ export interface FlightSegment {
   arrival_time: string | null;
   duration: string | null;
   cabin: CabinClass;
-  stops: number;
+  stops: number | null;
   terminal_departure?: string | null;
   terminal_arrival?: string | null;
 }
@@ -314,12 +314,22 @@ export interface FlightSearchParams {
   currency?: string;
 }
 
+export type LiveSearchStatus = "ok" | "empty" | "degraded" | "error";
+export type ProviderSearchStatus = "ok" | "empty" | "error";
+
 export interface FlightSearchResponse {
   flights: FlightOffer[];
   count: number;
   origin_iata: string;
   destination_iata: string;
-  data_source: string;
+  /** Null when neither a live nor cached fare was returned. */
+  data_source: "live_provider" | "cache" | null;
+  /** Distinguishes a quiet market from provider failure and cached degradation. */
+  status: LiveSearchStatus;
+  provider_status: ProviderSearchStatus;
+  provider_error_kind: string | null;
+  provider_attempts: number;
+  cache_error_kind: string | null;
   search_params: {
     origin: string;
     destination: string;

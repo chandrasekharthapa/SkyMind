@@ -2,6 +2,8 @@
 
 **Date:** 2026-08-18 · **Scope:** full repository, read-only · **Method:** five parallel deep audits (claims, security, ML, architecture, frontend/CI), with every CRITICAL finding re-verified by hand against source and shipped artifacts.
 
+> **⚠️ Re-audit note (2026-09-28):** This is a point-in-time audit from 2026-08-18. A large fix pass has since landed in the working tree (uncommitted), and **many code-level findings below are already remediated** — verified 2026-09-28 against source: `requirements.txt` no longer contains NUL bytes; `render.yaml` boots via `uvicorn main:app`; CORS no longer pairs `*` with credentials; `.env`/secrets are git-ignored and untracked; the hardcoded fake metrics in `system_info_service.py` and the `92.4%`/`93.2%` frontend fallbacks are removed; ingestion-layer fabrications are removed (values stay `null`); leakage-carrying model artifacts are quarantined and the trainer now fails-closed. **Do not read the findings below as the current state of the code.** The findings that remain live as of 2026-09-28 are primarily *documentation* overstatements (see the audit banners added to `README.md`, `PATCH_NOTES.md`, and `docs/PROJECT_STATUS.md`) and the fact that the corrected booking-curve join leaves the historical corpus with ~0 trainable labels until fresh `departure_time`-carrying data is collected.
+
 ---
 
 ## Verdict

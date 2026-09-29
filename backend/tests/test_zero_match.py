@@ -1,24 +1,210 @@
 import pytest
-import asyncio
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from services.flight_data_service import flight_data_service
+from contextlib import asynccontextmanager
+
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData
+
+from backend.services import flight_data_service as flight_module
+from backend.services.flight_data_service import (
+    FlightDataService,
+    STATUS_EMPTY,
+    STATUS_ERROR,
+    STATUS_OK,
+)
+
+
+class _EmptyMcpSession:
+    def __init__(self, result=None):
+        self.calls = []
+        self.result = {"data": []} if result is None else result
+
+    async def call_tool(self, name, payload):
+        self.calls.append((name, payload))
+        return self.result
+
 
 @pytest.mark.asyncio
-async def test_zero_match_returns_empty(monkeypatch):
-    """Ensure that when the MCP tool returns no flights, the service returns an empty list.
-    This guards against synthetic data generation.
-    """
-    # Mock the MCP client call to return empty data
-    async def mock_search_flights(*args, **kwargs):
-        return {"data": []}
-    monkeypatch.setattr(flight_data_service, "search_flights", mock_search_flights)
+async def test_zero_match_returns_empty_without_synthetic_fallback():
+    """A provider's empty result remains an explicitly empty answer."""
+    session = _EmptyMcpSession()
 
-    result = await flight_data_service.search_flights(
+    result = await FlightDataService().search_flights(
         origin="AAA",
         destination="BBB",
         target_date="2099-01-01",
+        session=session,
     )
-    assert isinstance(result, dict)
-    assert result.get("data") == []
+
+    assert result["status"] == STATUS_EMPTY
+    assert result["data"] == []
+    assert session.calls == [(
+        "search_flights",
+        {
+            "from": "AAA",
+            "to": "BBB",
+            "departDate": "2099-01-01",
+            "returnDate": None,
+            "adults": 1,
+            "children": 0,
+            "infants": 0,
+            "cabin_class": "economy",
+            "max_results": 20,
+        },
+    )]
+
+
+@pytest.mark.asyncio
+async def test_default_provider_timeout_exceeds_browser_navigation(monkeypatch):
+    """The outer call budget must not pre-empt the provider's 60-second bound."""
+    observed = {}
+
+    async def slow_result():
+        return {"data": []}
+
+    class _Session:
+        def call_tool(self, name, payload):
+            return slow_result()
+
+    async def fake_wait_for(awaitable, timeout):
+        observed["timeout"] = timeout
+        return await awaitable
+
+    monkeypatch.delenv("MCP_TIMEOUT", raising=False)
+    monkeypatch.setattr(flight_module.asyncio, "wait_for", fake_wait_for)
+
+    result = await FlightDataService().search_flights(
+        "DEL", "BOM", "2099-01-01", session=_Session()
+    )
+
+    assert result["status"] == STATUS_EMPTY
+    assert observed["timeout"] == 90.0
+
+
+@pytest.mark.asyncio
+async def test_fresh_gateway_uses_canonical_search_schema(monkeypatch):
+    """The production-created MCP session must receive the advertised schema."""
+    session = _EmptyMcpSession()
+
+    @asynccontextmanager
+    async def fake_gateway():
+        yield session
+
+    from backend.services import mcp_client
+
+    monkeypatch.setattr(mcp_client, "mcp_gateway", fake_gateway)
+
+    result = await FlightDataService().search_flights(
+        origin=" del ",
+        destination="bom",
+        target_date="2099-01-01",
+        children=1,
+        infants=1,
+        return_date="2099-01-08",
+    )
+
+    assert result["status"] == STATUS_EMPTY
+    assert session.calls == [(
+        "search_flights",
+        {
+            "from": "DEL",
+            "to": "BOM",
+            "departDate": "2099-01-01",
+            "returnDate": "2099-01-08",
+            "adults": 1,
+            "children": 1,
+            "infants": 1,
+            "cabin_class": "economy",
+            "max_results": 20,
+        },
+    )]
+
+
+@pytest.mark.asyncio
+async def test_max_results_is_enforced_even_if_provider_over_returns():
+    session = _EmptyMcpSession({
+        "data": [
+            {"price": 1000 + i, "currency": "INR"}
+            for i in range(5)
+        ]
+    })
+
+    result = await FlightDataService().search_flights(
+        "DEL", "BOM", "2099-01-01", max_results=2, session=session
+    )
+
+    assert result["status"] == STATUS_OK
+    assert len(result["data"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_tool_error_is_not_reported_as_empty(monkeypatch):
+    monkeypatch.setenv("MCP_MAX_RETRIES", "1")
+    session = _EmptyMcpSession({
+        "isError": True,
+        "content": [{"type": "text", "text": "stub crawl failed"}],
+    })
+
+    result = await FlightDataService().search_flights(
+        "DEL", "BOM", "2099-01-01", session=session
+    )
+
+    assert result["status"] == STATUS_ERROR
+    assert result["error_kind"] == "provider"
+    assert "stub crawl failed" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_params_error_is_not_retried(monkeypatch):
+    monkeypatch.setenv("MCP_MAX_RETRIES", "3")
+
+    class _InvalidSession:
+        def __init__(self):
+            self.calls = 0
+
+        async def call_tool(self, name, payload):
+            self.calls += 1
+            raise McpError(ErrorData(code=-32602, message="invalid parameters"))
+
+    session = _InvalidSession()
+    result = await FlightDataService().search_flights(
+        "DEL", "BOM", "2099-01-01", session=session
+    )
+
+    assert result["status"] == STATUS_ERROR
+    assert result["error_kind"] == "input"
+    assert result["attempts"] == 1
+    assert session.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_fresh_timeout_wraps_gateway_lifecycle(monkeypatch):
+    events = []
+
+    @asynccontextmanager
+    async def fake_gateway():
+        events.append("enter")
+        try:
+            yield _EmptyMcpSession()
+        finally:
+            events.append("exit")
+
+    async def fake_wait_for(awaitable, timeout):
+        events.append(("wait_for", timeout))
+        result = await awaitable
+        events.append("wait_done")
+        return result
+
+    from backend.services import mcp_client
+
+    monkeypatch.delenv("MCP_TIMEOUT", raising=False)
+    monkeypatch.setattr(mcp_client, "mcp_gateway", fake_gateway)
+    monkeypatch.setattr(flight_module.asyncio, "wait_for", fake_wait_for)
+
+    result = await FlightDataService().search_flights(
+        "DEL", "BOM", "2099-01-01"
+    )
+
+    assert result["status"] == STATUS_EMPTY
+    assert events == [
+        ("wait_for", 90.0), "enter", "exit", "wait_done"
+    ]

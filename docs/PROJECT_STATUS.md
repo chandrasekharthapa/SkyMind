@@ -1,5 +1,7 @@
 # SkyMind Copilot — System Status & Module Matrix
 
+> **⚠️ Audit flag (2026-09-28):** This "all Complete" matrix overstates the current state. Notably: the "**23/23 Pytest … passing**" line (row: Evaluation Framework) is contradicted by two other docs and by reality — the tree holds ~140 test files / hundreds of tests, many gated as *skipped* when no trained model/DB is present, and there is no coverage measurement. "Live Market Provider … Google Flights **via SerpAPI** … **mock fallback engine**" is inaccurate: there is no SerpAPI client and no mock engine — the only provider is a Puppeteer/MCP Google Flights scraper. Treat "Complete" as "implemented", not "verified in production". See `AUDIT.md`.
+
 | Module | Status | Verification & Notes |
 | :--- | :--- | :--- |
 | **Canonical Forecast Engine** | **Complete** | Decoupled domain models, single-source savings, invariant validator, DTO mapper. |

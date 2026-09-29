@@ -40,13 +40,20 @@ class LLMProvider(ABC):
 
 
 class NVIDIAAdapter(LLMProvider):
-    """NVIDIA Llama Infrastructure Adapter (Default)."""
+    """NVIDIA Llama infrastructure adapter."""
 
-    def __init__(self):
+    def __init__(self, client: Optional[AsyncOpenAI] = None):
         self.base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-        self.api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("OPENAI_API_KEY") or "mock_nvidia_key"
+        self.api_key = os.getenv("NVIDIA_API_KEY", "").strip()
         self.model_id = os.getenv("NVIDIA_MODEL_ID", "meta/llama-3.1-70b-instruct")
-        self.client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.client = client
+
+    def _get_client(self) -> AsyncOpenAI:
+        if self.client is None:
+            if not self.api_key:
+                raise RuntimeError("NVIDIA_API_KEY is not configured.")
+            self.client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        return self.client
 
     async def generate_stream(
         self,
@@ -58,7 +65,7 @@ class NVIDIAAdapter(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        response = await self.client.chat.completions.create(**kwargs)
+        response = await self._get_client().chat.completions.create(**kwargs)
         async for chunk in response:
             if not chunk.choices:
                 continue
@@ -77,7 +84,7 @@ class NVIDIAAdapter(LLMProvider):
         response_schema: Type[BaseModel],
         **options: Any
     ) -> BaseModel:
-        response = await self.client.chat.completions.create(
+        response = await self._get_client().chat.completions.create(
             model=self.model_id,
             messages=messages,
             response_format={"type": "json_object"},
@@ -88,12 +95,19 @@ class NVIDIAAdapter(LLMProvider):
 
 
 class OpenAIAdapter(LLMProvider):
-    """Standard OpenAI Provider Adapter (e.g., gpt-4o-mini, gpt-4o)."""
+    """Standard OpenAI provider adapter (for example, gpt-4o-mini)."""
 
-    def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY") or "mock_openai_key"
+    def __init__(self, client: Optional[AsyncOpenAI] = None):
+        self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self.model_id = os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini")
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        self.client = client
+
+    def _get_client(self) -> AsyncOpenAI:
+        if self.client is None:
+            if not self.api_key:
+                raise RuntimeError("OPENAI_API_KEY is not configured.")
+            self.client = AsyncOpenAI(api_key=self.api_key)
+        return self.client
 
     async def generate_stream(
         self,
@@ -105,7 +119,7 @@ class OpenAIAdapter(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        response = await self.client.chat.completions.create(**kwargs)
+        response = await self._get_client().chat.completions.create(**kwargs)
         async for chunk in response:
             if not chunk.choices:
                 continue
@@ -124,7 +138,7 @@ class OpenAIAdapter(LLMProvider):
         response_schema: Type[BaseModel],
         **options: Any
     ) -> BaseModel:
-        response = await self.client.beta.chat.completions.parse(
+        response = await self._get_client().beta.chat.completions.parse(
             model=self.model_id,
             messages=messages,
             response_format=response_schema
@@ -145,8 +159,9 @@ class AnthropicAdapter(LLMProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         **options: Any
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        # Fallback stream wrapper using standard format
-        yield {"content": f"Anthropic adapter stream initialized ({self.model_id})."}
+        if False:  # Preserve the abstract async-generator protocol for callers.
+            yield {}
+        raise NotImplementedError("Anthropic streaming is not implemented.")
 
     async def generate_structured(
         self,
@@ -170,7 +185,9 @@ class GoogleAdapter(LLMProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         **options: Any
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        yield {"content": f"Google Gemini adapter stream initialized ({self.model_id})."}
+        if False:  # Preserve the abstract async-generator protocol for callers.
+            yield {}
+        raise NotImplementedError("Google Gemini streaming is not implemented.")
 
     async def generate_structured(
         self,
@@ -182,12 +199,19 @@ class GoogleAdapter(LLMProvider):
 
 
 class LocalAdapter(LLMProvider):
-    """Local Provider Adapter (e.g., Ollama or vLLM HTTP API)."""
+    """OpenAI-compatible local provider adapter (for example, Ollama)."""
 
-    def __init__(self):
+    def __init__(self, client: Optional[AsyncOpenAI] = None):
         self.base_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1")
         self.model_id = os.getenv("LOCAL_MODEL_ID", "llama3")
-        self.client = AsyncOpenAI(base_url=self.base_url, api_key="local")
+        self.client = client
+
+    def _get_client(self) -> AsyncOpenAI:
+        if self.client is None:
+            # Local OpenAI-compatible servers commonly require a non-empty but
+            # non-secret bearer value. It is created only when a call is made.
+            self.client = AsyncOpenAI(base_url=self.base_url, api_key="local")
+        return self.client
 
     async def generate_stream(
         self,
@@ -195,7 +219,7 @@ class LocalAdapter(LLMProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         **options: Any
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        response = await self.client.chat.completions.create(
+        response = await self._get_client().chat.completions.create(
             model=self.model_id,
             messages=messages,
             stream=True
@@ -210,7 +234,7 @@ class LocalAdapter(LLMProvider):
         response_schema: Type[BaseModel],
         **options: Any
     ) -> BaseModel:
-        response = await self.client.chat.completions.create(
+        response = await self._get_client().chat.completions.create(
             model=self.model_id,
             messages=messages,
             response_format={"type": "json_object"},
@@ -229,8 +253,14 @@ _PROVIDER_MAP = {
 
 
 def get_llm_provider(name: Optional[str] = None) -> LLMProvider:
-    """Factory function resolving configured LLMProvider adapter. Default: NVIDIAAdapter."""
-    provider_key = (name or os.getenv("LLM_PROVIDER", "nvidia")).lower()
-    adapter_cls = _PROVIDER_MAP.get(provider_key, NVIDIAAdapter)
-    logger.info(f"[LLMProvider] Instantiating LLM provider adapter: '{adapter_cls.__name__}'.")
+    """Resolve the configured adapter without opening a network client."""
+    provider_key = (name or os.getenv("LLM_PROVIDER", "nvidia")).strip().lower()
+    try:
+        adapter_cls = _PROVIDER_MAP[provider_key]
+    except KeyError as exc:
+        supported = ", ".join(sorted(_PROVIDER_MAP))
+        raise ValueError(
+            f"Unsupported LLM provider {provider_key!r}; choose one of: {supported}."
+        ) from exc
+    logger.info("[LLMProvider] Selected adapter %s.", adapter_cls.__name__)
     return adapter_cls()

@@ -3,6 +3,8 @@
 ## 1. Executive Summary
 SkyMind is an enterprise-grade flight fare forecasting and copilot platform. It combines real-time flight market search providers (Google Flights / Amadeus / Mock engines), dynamic feature engineering pipelines, machine learning inference (XGBoost / LightGBM models), and a mathematically reconciled Canonical Forecast Engine to deliver airfare predictions, booking window recommendations, and interactive AI copilot assistance.
 
+> **⚠️ Audit flag (2026-09-29):** The provider and model lists above name components that are not in the codebase. **Amadeus** and **Mock engines** were removed — `backend/config.py` states "Amadeus API settings removed — platform is fully self-contained," and `backend/services/flight_data_provider.py` records that `AmadeusProvider`/`SabreProvider`/`CachedProvider` were deleted; the only live provider is the Google Flights **MCP browser scraper**. **LightGBM** appears nowhere in the source (0 matches) — the only model library is **XGBoost** (`XGBRegressor`). Read the pillar as: one scraped provider, one model family. See `AUDIT.md`.
+
 ---
 
 ## 2. Layered System Architecture

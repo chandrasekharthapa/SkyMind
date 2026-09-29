@@ -55,6 +55,8 @@ SkyMind defines three distinct confidence metrics in the prediction payload:
 3. **Forecast Day `confidence`**: `horizon_confidence = model_validation_accuracy * (1.0 - (day * 0.02))`
    - *Meaning*: Model confidence decayed by temporal distance from today (0d = 95%, 7d = 81.7%).
 
+> **⚠️ Audit flag (2026-09-29):** The `95.0%` / `95%` figures in this section and in the §6 response example are **illustrative literals, not values the current code produces.** The multiplication structure is real (`confidence_policy.compute/quality_multiplier`, `overall_confidence = accuracy × quality_multiplier(snapshot_quality, is_live_market)`), but `model_validation_accuracy` is resolved by `confidence_policy.resolve_published_accuracy`, which returns the recorded **`100 − MAPE`** figure — **not a 95% default.** The old `model_accuracy=95.0` / `snapshot_quality=1.0` defaults were **removed**; when no training run recorded a metric the function returns **None** and the confidence fields are **null** (the caller must refuse, not substitute). In the current corpus state (~0 trainable labels ⇒ no model), published confidence therefore resolves to **null, not 95%**. Also: `snapshot_quality` can be **0.0** (dead snapshot) and **0.5** (stale), not only "0.5 to 1.0." See `AUDIT.md`.
+
 ---
 
 ## 4. Recommendation Logic & Thresholds

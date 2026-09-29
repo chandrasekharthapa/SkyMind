@@ -43,25 +43,31 @@ class BaseProvider {
         }
 
         const browser = await puppeteer.launch(launchOptions);
-
-        const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-        await page.setExtraHTTPHeaders({
-            'Accept-Language': 'en-US,en;q=0.9'
-        });
-        
-        // 2. Add proxy authentication if configured
-        if (process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-            await page.authenticate({
-                username: process.env.PROXY_USERNAME,
-                password: process.env.PROXY_PASSWORD
+        let page;
+        try {
+            page = await browser.newPage();
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+            await page.setExtraHTTPHeaders({
+                'Accept-Language': 'en-US,en;q=0.9'
             });
-        }
 
-        page.setDefaultTimeout(60000); // Increased timeout to 60s for slow loads
-        page.on('console', msg => console.error('Browser Console:', msg.text()));
-        
-        return { browser, page };
+            // 2. Add proxy authentication if configured
+            if (process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+                await page.authenticate({
+                    username: process.env.PROXY_USERNAME,
+                    password: process.env.PROXY_PASSWORD
+                });
+            }
+
+            page.setDefaultTimeout(60000); // Increased timeout to 60s for slow loads
+            page.on('console', msg => console.error('Browser Console:', msg.text()));
+            return { browser, page };
+        } catch (error) {
+            await browser.close().catch((closeError) => {
+                console.error('Failed to close browser after initialization error:', closeError);
+            });
+            throw error;
+        }
     }
 
     async takeScreenshot(page, name) {
@@ -78,8 +84,11 @@ class BaseProvider {
     async closeBrowser(browser, page) {
         if (!this.debug && browser) {
             console.error('Closing browser...');
-            await page?.waitForTimeout(5000);
-            await browser.close();
+            try {
+                await page?.waitForTimeout(5000);
+            } finally {
+                await browser.close();
+            }
         }
     }
 
@@ -88,7 +97,10 @@ class BaseProvider {
         if (page) {
             await this.takeScreenshot(page, `error-${Date.now()}`);
         }
-        return [];
+        // Preserve the distinction between an authentic zero-result search and
+        // a failed crawl. The stdio boundary turns this sentinel into an MCP
+        // tool error; only a genuinely successful empty scrape returns [].
+        return { error: error instanceof Error ? error.message : String(error) };
     }
 
     calculateBestPrice(basePrice, offers) {
@@ -130,7 +142,14 @@ class BaseProvider {
     }
 
     // Abstract methods that must be implemented by child classes
-    async searchFlights(from, to, departDate, returnDate = null) {
+    async searchFlights(
+        from,
+        to,
+        departDate,
+        returnDate = null,
+        passengers = { adults: 1, children: 0, infants: 0 },
+        cabinClass = 'economy'
+    ) {
         throw new Error('Method must be implemented');
     }
 

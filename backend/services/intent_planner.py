@@ -6,17 +6,13 @@ Returns strongly-typed PlanningResult models and emits structured JSON telemetry
 """
 
 import re
-import os
 import time
 import json
 import logging
-import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from opentelemetry import metrics, trace
-
-from backend.services.llm_provider import get_llm_provider, LLMProvider
 from backend.services.langsmith_tracer import langsmith_tracer
 from backend.services.openai_planner import openai_planner, PlanningResult
 
@@ -123,11 +119,13 @@ class IntentClassification(BaseModel):
 
 
 class IntentPlanner:
-    """Hybrid Intent Planner supporting OpenAI Planner with Rule-Based Fallback and Telemetry."""
+    """Hybrid Intent Planner with an OpenAI path and deterministic fallback."""
 
-    def __init__(self, provider: Optional[LLMProvider] = None):
-        self.planner_provider_name = os.getenv("INTENT_PLANNER_PROVIDER") or os.getenv("LLM_PROVIDER", "openai")
-        self.provider = provider or get_llm_provider(self.planner_provider_name)
+    def __init__(self):
+        # Planning uses `openai_planner` below. The former generic-provider
+        # instance was never read, but constructing it eagerly still created an
+        # external SDK client (and demanded credentials) during module import.
+        pass
 
     def rule_based_plan(self, query: str, context: Optional[Dict[str, Any]] = None) -> IntentClassification:
         """Deterministic rule-based fallback classification."""

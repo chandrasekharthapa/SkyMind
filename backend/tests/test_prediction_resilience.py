@@ -1,22 +1,25 @@
 import pytest
-import math
 import json
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.services.prediction_service import prediction_service
 from backend.domain.market_snapshot import MarketSnapshot
+from backend.tests.model_availability import requires_trained_model
 
 client = TestClient(app)
+FUTURE_DATE = (date.today() + timedelta(days=30)).isoformat()
 
 @pytest.mark.asyncio
 async def test_prediction_live_market_available():
     """Verify prediction succeeds when live market snapshot is available."""
+    requires_trained_model()
     res = await prediction_service.predict(
         origin="DEL",
         destination="BOM",
-        departure_date="2026-08-15"
+        departure_date=FUTURE_DATE
     )
     assert res["predicted_price"] > 0
     assert res["search_metadata"]["provider_status"] in ["ONLINE", "DEGRADED"]
@@ -25,6 +28,7 @@ async def test_prediction_live_market_available():
 @pytest.mark.asyncio
 async def test_prediction_live_market_unavailable_degraded_mode():
     """Verify prediction succeeds and enters DEGRADED mode when market snapshot is unavailable."""
+    requires_trained_model()
     # Create empty market snapshot where lowest_fare is NaN
     empty_snapshot = MarketSnapshot(
         lowest_fare=float("nan"),
@@ -53,7 +57,7 @@ async def test_prediction_live_market_unavailable_degraded_mode():
         res = await prediction_service.predict(
             origin="DEL",
             destination="BOM",
-            departure_date="2026-08-15"
+            departure_date=FUTURE_DATE
         )
         
         # Verify prediction succeeded without throwing 503
@@ -69,6 +73,7 @@ async def test_prediction_live_market_unavailable_degraded_mode():
 
 def test_prediction_http_endpoint_with_degraded_provider():
     """Test HTTP POST /api/v1/predict resolves cleanly when live market search is mocked out."""
+    requires_trained_model()
     empty_snapshot = MarketSnapshot(
         lowest_fare=float("nan"),
         highest_fare=float("nan"),
@@ -96,7 +101,7 @@ def test_prediction_http_endpoint_with_degraded_provider():
         response = client.post("/api/v1/predict", json={
             "origin": "DEL",
             "destination": "BOM",
-            "departure_date": "2026-08-15"
+            "departure_date": FUTURE_DATE
         })
         
         assert response.status_code == 200
@@ -115,10 +120,10 @@ def test_prediction_model_uninitialized_returns_503():
         response = client.post("/api/v1/predict", json={
             "origin": "DEL",
             "destination": "BOM",
-            "departure_date": "2026-08-15"
+            "departure_date": FUTURE_DATE
         })
         
         assert response.status_code == 503
         data = response.json()
         error_msg = data.get("error", {}).get("message") or data.get("detail", "")
-        assert "ML model estimator is uninitialized" in error_msg
+        assert "No forecast model has been trained yet" in error_msg

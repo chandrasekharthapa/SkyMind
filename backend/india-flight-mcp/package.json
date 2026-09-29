@@ -2,13 +2,13 @@
   "name": "@ravi-bytes/india-flight-mcp-server",
   "version": "1.0.0",
   "description": "MCP server for searching flights on Google Flights",
-  "main": "src/mcp/server.js",
+  "main": "src/mcp/stdio_server.js",
   "bin": {
     "india-flight-mcp-server": "./src/mcp/stdio_server.js"
   },
   "scripts": {
-    "start": "node src/mcp/server.js",
-    "dev": "nodemon src/mcp/server.js"
+    "start": "node src/mcp/stdio_server.js",
+    "dev": "nodemon src/mcp/stdio_server.js"
   },
   "keywords": [
     "mcp",

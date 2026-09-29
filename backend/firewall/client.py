@@ -17,6 +17,11 @@ class NVIDIAClientProvider:
         return cls._client
 
     @classmethod
-    def inject_client(cls, client: AsyncOpenAI):
-        """For dependency injection in unit tests."""
+    def inject_client(cls, client: AsyncOpenAI | None) -> None:
+        """Inject or clear the managed client (primarily for tests)."""
         cls._client = client
+
+    @classmethod
+    def reset_client(cls) -> None:
+        """Clear process-global client state between independent operations."""
+        cls._client = None

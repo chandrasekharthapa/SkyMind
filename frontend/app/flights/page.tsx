@@ -6,8 +6,14 @@ import NavBar from "@/components/layout/NavBar";
 import FlightSearchForm from "@/components/flights/FlightSearchForm";
 import { searchFlights, predictPrice, formatDuration, resolveCityToIATA } from "@/lib/api";
 import AirlineLogo from "@/components/flights/AirlineLogo";
-import type { FlightOffer, CabinClass, PredictionResult } from "@/types";
-import { formatCurrency, formatFare, formatConfidence, formatDate } from "@/lib/formatters";
+import type {
+  FlightOffer,
+  FlightSearchParams,
+  FlightSearchResponse,
+  CabinClass,
+  PredictionResult,
+} from "@/types";
+import { formatCurrency, formatFare, formatConfidence } from "@/lib/formatters";
 import { format, addDays } from "date-fns";
 
 const REC_LABEL: Record<string, string> = {
@@ -27,13 +33,14 @@ function FlightsContent() {
   const params = useSearchParams();
   const defaultDate = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
-  const [searchParams, setSearchParams] = useState({
+  const [searchParams, setSearchParams] = useState<FlightSearchParams>({
     origin:         params.get("origin") || "DEL",
     destination:    params.get("destination") || "BOM",
     departure_date: params.get("departure_date") || defaultDate,
-    return_date:    params.get("return_date") || "",
+    return_date:    params.get("return_date") || undefined,
     adults:         Number(params.get("adults") || 1),
     children:       Number(params.get("children") || 0),
+    infants:        Number(params.get("infants") || 0),
     cabin_class:    (params.get("cabin_class") as CabinClass) || "ECONOMY",
   });
 
@@ -42,7 +49,7 @@ function FlightsContent() {
   const [error, setError] = useState("");
   const [sort, setSort] = useState("Price");
   const [searched, setSearched] = useState(false);
-  const [dataSource, setDataSource] = useState("");
+  const [searchResult, setSearchResult] = useState<FlightSearchResponse | null>(null);
   const [timeFilter, setTimeFilter] = useState<string>("ALL");
 
   // Route prediction state
@@ -61,19 +68,22 @@ function FlightsContent() {
     return arr;
   };
 
-  const doSearch = async (f: any) => {
+  const doSearch = async (f: FlightSearchParams) => {
     setSearchParams(f);
     const org = resolveCityToIATA(f.origin);
     const dst = resolveCityToIATA(f.destination);
-    
-    if (org === dst) { 
-      setError("Origin and destination cannot be the same."); 
-      return; 
+
+    if (org === dst) {
+      setError("Origin and destination cannot be the same.");
+      setFlights([]);
+      setSearchResult(null);
+      return;
     }
-    
-    setLoading(true); 
-    setError(""); 
+
+    setLoading(true);
+    setError("");
     setSearched(true);
+    setSearchResult(null);
     setRoutePrediction(null);
     setPredError(false);
     setPredLoading(true);
@@ -103,11 +113,22 @@ function FlightsContent() {
         infants: f.infants ?? 0,
         cabin_class: f.cabin_class as CabinClass,
       });
-      setFlights(sortFlights(res.flights || [], sort));
-      setDataSource((res as any).data_source || "");
-    } catch (e: any) {
-      setError(e.message || "Search failed.");
+      setFlights(sortFlights(res.flights, sort));
+      setSearchResult(res);
+      if (res.status === "error") {
+        const cacheNote = res.cache_error_kind
+          ? ` The cached-data lookup also failed (${res.cache_error_kind}).`
+          : "";
+        setError(
+          `The live flight provider could not complete this search` +
+          `${res.provider_error_kind ? ` (${res.provider_error_kind})` : ""}.` +
+          cacheNote
+        );
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Search failed.");
       setFlights([]);
+      setSearchResult(null);
     } finally {
       setLoading(false);
     }
@@ -146,7 +167,6 @@ function FlightsContent() {
     ? "INR"
     : (flights[0]?.price?.currency ?? null);
   const predictedPrice = routePrediction?.predicted_price ?? null;
-  const optBooking = routePrediction?.optimal_booking;
   const confPct = routePrediction ? formatConfidence(routePrediction.confidence) : null;
   const recDecision = routePrediction?.recommendation?.decision ?? "MONITOR";
   const recLabel = REC_LABEL[recDecision] ?? "MONITOR";
@@ -292,6 +312,30 @@ function FlightsContent() {
           ))}
         </div>
 
+        {/* Search Result Status */}
+        {!loading && searchResult?.status === "degraded" && (
+          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "#FCD34D", background: "#FFFBEB" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#92400E", marginBottom: 4 }}>
+              CACHED RESULTS — LIVE PROVIDER UNAVAILABLE
+            </div>
+            <div style={{ fontSize: "13px", color: "#78350F" }}>
+              These fares are authentic observations from an earlier collection, not a live quote for this search.
+              {searchResult.provider_error_kind ? ` Provider failure: ${searchResult.provider_error_kind}.` : ""}
+            </div>
+          </div>
+        )}
+
+        {!loading && searchResult?.status === "empty" && (
+          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "#CBD5E1", background: "#F8FAFC" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+              SEARCH COMPLETED — NO FARES RETURNED
+            </div>
+            <div style={{ fontSize: "13px", color: "#475569" }}>
+              The provider completed the search, but neither it nor the exact-route cache returned a usable fare.
+            </div>
+          </div>
+        )}
+
         {/* Error State */}
         {error && (
           <div className="card" style={{ padding: 32, textAlign: "center", borderColor: "#FCA5A5", background: "#FFF8F8" }}>
@@ -313,7 +357,7 @@ function FlightsContent() {
         )}
 
         {/* Empty State */}
-        {!loading && searched && filteredFlights.length === 0 && !error && (
+        {!loading && searched && filteredFlights.length === 0 && !error && searchResult?.status !== "empty" && (
           <div className="card" style={{ padding: 48, textAlign: "center" }}>
             <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: 8 }}>No flights found</h3>
             <p className="metadata" style={{ marginBottom: 20 }}>No available flights match your selected search criteria for this route.</p>
@@ -328,7 +372,7 @@ function FlightsContent() {
             const segments = itin?.segments ?? [];
             const seg = segments[0];
             const lastSeg = segments[segments.length - 1];
-            const stops = seg?.stops != null ? seg.stops : Math.max(0, segments.length - 1);
+            const stops = seg?.stops ?? null;
             
             const dep = seg?.departure_time ? new Date(seg.departure_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Schedule Unavailable";
             const arr = lastSeg?.arrival_time ? new Date(lastSeg.arrival_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Schedule Unavailable";
@@ -342,7 +386,6 @@ function FlightsContent() {
             const flNumStr = rawFlNum || null;
             
             const price = f.price.total;
-            const isBest = i === 0 && timeFilter === "ALL";
             const isExpanded = expandedCardId === f.id;
             
             // Value badges logic
@@ -377,20 +420,15 @@ function FlightsContent() {
                   <span style={{
                     fontSize: "11px",
                     fontWeight: 600,
-                    background: f.provenance === "REAL_PROVIDER" ? "#EFF6FF" : "#F3F4F6",
-                    color: f.provenance === "REAL_PROVIDER" ? "#1D4ED8" : "#4B5563",
+                    background: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#EFF6FF" : "#F3F4F6",
+                    color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#1D4ED8" : "#4B5563",
                     padding: "2px 8px",
                     borderRadius: 4
                   }}>
-                    {/* This badge used to read "LIVE · GOOGLE FLIGHTS" or, for
-                        everything else, "VERIFIED MARKET DATA" — a verification
-                        claim for a row that is simply a cached price_history
-                        observation, and a provider name this page never receives.
-                        Say which of the three the row actually is. */}
-                    {f.provenance === "REAL_PROVIDER"
-                      ? "LIVE PROVIDER"
-                      : f.provenance === "VERIFIED_MARKET_SNAPSHOT"
-                        ? "CACHED SNAPSHOT"
+                    {f.provenance === "LIVE_GOOGLE_FLIGHTS"
+                      ? "LIVE GOOGLE FLIGHTS"
+                      : f.provenance === "AUTHENTIC_PRICE_HISTORY"
+                        ? "CACHED OBSERVATION"
                         : "SOURCE UNKNOWN"}
                   </span>
                 </div>
@@ -540,23 +578,27 @@ function FlightsContent() {
                         <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>ROUTE & STOPS</div>
                         <div style={{ fontSize: "13px", fontWeight: 600, color: "#0F172A" }}>{seg?.origin} → {lastSeg?.destination}</div>
                         <div style={{ fontSize: "12px", color: "#64748B" }}>
-                          {stops === 0 ? "Non-stop direct flight" : `${stops} stop${stops > 1 ? "s" : ""}`}
+                          {stops == null
+                            ? "Stops unavailable"
+                            : stops === 0
+                              ? "Non-stop direct flight"
+                              : `${stops} stop${stops > 1 ? "s" : ""}`}
                         </div>
                       </div>
                       <div>
                         <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>DATA SOURCE & PROVENANCE</div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: f.provenance === "REAL_PROVIDER" ? "#16a34a" : "#2563EB" }}>
-                          {f.provenance === "REAL_PROVIDER"
-                            ? "Live provider fetch"
-                            : f.provenance === "VERIFIED_MARKET_SNAPSHOT"
-                              ? "Cached market snapshot"
+                        <div style={{ fontSize: "13px", fontWeight: 600, color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#16a34a" : "#2563EB" }}>
+                          {f.provenance === "LIVE_GOOGLE_FLIGHTS"
+                            ? "Live Google Flights fetch"
+                            : f.provenance === "AUTHENTIC_PRICE_HISTORY"
+                              ? "Cached authentic price observation"
                               : "Source not stated"}
                         </div>
                         <div style={{ fontSize: "12px", color: "#64748B" }}>
-                          {f.provenance === "REAL_PROVIDER"
-                            ? "Fetched for this search via the MCP scraper"
-                            : f.provenance === "VERIFIED_MARKET_SNAPSHOT"
-                              ? "Recorded by an earlier scrape, not re-checked just now"
+                          {f.provenance === "LIVE_GOOGLE_FLIGHTS"
+                            ? "Fetched for this search through the Google Flights provider"
+                            : f.provenance === "AUTHENTIC_PRICE_HISTORY"
+                              ? "Recorded by an earlier live collection, not re-checked just now"
                               : "The backend did not report where this fare came from"}
                         </div>
                       </div>
