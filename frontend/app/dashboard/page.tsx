@@ -143,7 +143,7 @@ export default function DashboardPage() {
                       <PlaneIcon />
                     </div>
                     <div style={{ fontSize: "1.5rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>No active itineraries</div>
-                    <div style={{ fontSize: "14px", color: "var(--grey4)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven't booked any flights yet. Use our AI to find the perfect fare.</div>
+                    <div style={{ fontSize: "14px", color: "var(--grey4)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven&apos;t booked any flights yet. Use our AI to find the perfect fare.</div>
                     <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "14px 40px" }}>Search Flights</Link>
                   </div>
                 ) : (

@@ -214,7 +214,7 @@ export default function AuthPage() {
         )}
 
         <div className="auth-footer">
-          By signing in, you agree to SkyMind's <br />
+          By signing in, you agree to SkyMind&apos;s <br />
           <Link href="/terms">Terms of Service</Link> & <Link href="/privacy">Privacy Policy</Link>.
         </div>
       </div>

@@ -30,3 +30,13 @@ coverage
 # OS
 .DS_Store
 Thumbs.db
+
+# Captured live-page artifacts from manual scraper runs. These are multi-MB
+# saved Google Flights pages/screenshots kept only as local debugging samples;
+# nothing in the repo imports them. They must not be tracked: the served page
+# embeds Google's own client-side API key (AIza...) and large base64 data-URIs,
+# which trip secret scanners (real finding: google_flights_test.html). Keep such
+# samples local.
+google_flights_test.html
+google_flights_test.png
+*.captured.html

@@ -1,7 +1,8 @@
 import pytest
 from contextlib import asynccontextmanager
 
-from mcp.shared.exceptions import McpError
+# mcp SDK v2 renamed McpError -> MCPError (mcp==2.2.0); alias to the old name.
+from mcp.shared.exceptions import MCPError as McpError
 from mcp.types import ErrorData
 
 from backend.services import flight_data_service as flight_module

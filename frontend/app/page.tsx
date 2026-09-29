@@ -122,7 +122,7 @@ export default function HomePage() {
 
               {/* Subtitle */}
               <p style={{ fontFamily: "var(--fb)", fontSize: "clamp(0.95rem, 2vw, 1.15rem)", color: "rgba(255,255,255,0.6)", lineHeight: 1.65, maxWidth: 420, marginBottom: 40 }}>
-                India's first XGBoost-powered flight intelligence platform. Know when prices will rise — before they do.
+                India&apos;s first XGBoost-powered flight intelligence platform. Know when prices will rise — before they do.
               </p>
 
               {/* CTAs */}

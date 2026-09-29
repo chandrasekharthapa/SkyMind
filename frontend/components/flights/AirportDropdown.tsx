@@ -162,7 +162,7 @@ export default function AirportDropdown({ label, value, displayValue, onChange, 
             
             {!loading && query.length >= 2 && results.length === 0 && (
               <div style={{ padding: 32, textAlign: "center", color: "var(--grey3)", fontSize: "13px" }}>
-                No airports found for "{query}"
+                No airports found for &quot;{query}&quot;
               </div>
             )}
             

@@ -4,7 +4,10 @@ import json
 import os
 import asyncio
 import anyio
-from mcp.shared.exceptions import McpError
+# mcp SDK v2 (requirements pins mcp==2.2.0) renamed the exception class
+# McpError -> MCPError in mcp.shared.exceptions with no backward-compatible
+# alias; bind the new class to the name this module and its callers already use.
+from mcp.shared.exceptions import MCPError as McpError
 from mcp.types import INVALID_PARAMS
 from typing import Any, Dict, List, Optional
 

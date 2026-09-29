@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from mcp import ClientSession
-from mcp.shared.exceptions import McpError
+# mcp SDK v2 renamed McpError -> MCPError (mcp==2.2.0); alias to the old name.
+from mcp.shared.exceptions import MCPError as McpError
 from mcp.client.stdio import stdio_client
 from backend.services import mcp_client
 from backend.services.mcp_client import mcp_gateway

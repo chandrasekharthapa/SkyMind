@@ -324,7 +324,7 @@ export default function FlightSearchForm({ initialData, onSearch, mode = "search
             <div className="options-row">
               <div style={{ flex: 1 }}>
                 <PassengerSelector
-                  adults={state.adults} children={state.children} infants={state.infants}
+                  adults={state.adults} childCount={state.children} infants={state.infants}
                   onChange={(a, c, i) => dispatch({ type: 'SET_PASSENGERS', adults: a, children: c, infants: i })}
                 />
               </div>

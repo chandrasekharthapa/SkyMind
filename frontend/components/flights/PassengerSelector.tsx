@@ -16,12 +16,12 @@ const ChevronDown = () => (
 
 interface PassengerSelectorProps {
   adults: number;
-  children: number;
+  childCount: number;
   infants: number;
   onChange: (a: number, c: number, i: number) => void;
 }
 
-export default function PassengerSelector({ adults, children, infants, onChange }: PassengerSelectorProps) {
+export default function PassengerSelector({ adults, childCount, infants, onChange }: PassengerSelectorProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -33,13 +33,13 @@ export default function PassengerSelector({ adults, children, infants, onChange 
     return () => document.removeEventListener("mousedown", fn);
   }, []);
 
-  const total = adults + children + infants;
+  const total = adults + childCount + infants;
   const canAdd = total < 9;
 
   const update = (type: "a" | "c" | "i", inc: number) => {
-    let nextA = adults, nextC = children, nextI = infants;
+    let nextA = adults, nextC = childCount, nextI = infants;
     if (type === "a") nextA = Math.max(1, Math.min(9, adults + inc));
-    if (type === "c") nextC = Math.max(0, Math.min(9, children + inc));
+    if (type === "c") nextC = Math.max(0, Math.min(9, childCount + inc));
     if (type === "i") nextI = Math.max(0, Math.min(nextA, infants + inc)); // Infant cannot exceed adults
 
     // Re-validate infant ratio if adults decreased
@@ -63,7 +63,7 @@ export default function PassengerSelector({ adults, children, infants, onChange 
         <span style={{ color: "var(--red)" }}><UserIcon /></span>
         <div style={{ flex: 1, fontWeight: 600 }}>
           {adults} Adult{adults > 1 ? "s" : ""}
-          {children > 0 ? `, ${children} Child${children > 1 ? "ren" : ""}` : ""}
+          {childCount > 0 ? `, ${childCount} Child${childCount > 1 ? "ren" : ""}` : ""}
           {infants > 0 ? `, ${infants} Infant${infants > 1 ? "s" : ""}` : ""}
         </div>
         <ChevronDown />
@@ -76,7 +76,7 @@ export default function PassengerSelector({ adults, children, infants, onChange 
         }}>
           {[
             { id: "a", label: "Adults", sub: "Ages 12+", val: adults, min: 1 },
-            { id: "c", label: "Children", sub: "Ages 2-11", val: children, min: 0 },
+            { id: "c", label: "Children", sub: "Ages 2-11", val: childCount, min: 0 },
             { id: "i", label: "Infants", sub: "Under 2 (on lap)", val: infants, min: 0 },
           ].map((row) => (
             <div key={row.id} className="ui-flex-between" style={{ marginBottom: row.id === "i" ? 0 : 20 }}>
