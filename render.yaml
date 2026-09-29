@@ -1,0 +1,76 @@
+# SkyMind — Render Blueprint.
+#
+# IMPORTANT: Render only auto-discovers a Blueprint `render.yaml` at the
+# REPOSITORY ROOT. The previous copy lived at `backend/render.yaml`, where
+# Render never found it, so the service ran on manual dashboard settings
+# instead (latest Python + a bare `uvicorn main:app`).
+#
+# The backend is a namespace package imported absolutely as `backend.*`
+# (see pytest.ini: `pythonpath = .`, no `backend/__init__.py`). It therefore
+# MUST be launched from the repo root as `backend.main:app` — never from
+# inside `backend/` as `main:app`, which hides the top-level `backend`
+# package and raises `ModuleNotFoundError: No module named 'backend'`.
+services:
+  - type: web
+    name: skymind-backend
+    runtime: python
+    # No rootDir: build and start both run from the repository root so the
+    # repo root is on sys.path and `import backend.*` resolves.
+    buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --lifespan on
+    envVars:
+      # Pin the interpreter the app was built and tested against. numpy 1.26.4
+      # / pandas 2.2.2 have no wheels for 3.14, and the checked-in runtime.txt
+      # was being ignored. Render honours PYTHON_VERSION and `.python-version`.
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+      # ── Supabase ───────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Payment ────────────────────────────────────────
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+      # ── Notifications ──────────────────────────────────
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: SkyMind Flights
+      - key: EMAIL_REPLY_TO
+        sync: false
+      - key: FAST2SMS_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        value: "whatsapp:+14155238886"
+
+      # ── CORS ───────────────────────────────────────────
+      - key: CORS_ORIGINS
+        sync: false
+
+      # ── Security ───────────────────────────────────────
+      - key: SECRET_KEY
+        sync: false
+
+      # ── Redis ──────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false
+
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
