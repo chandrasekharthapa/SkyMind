@@ -3,7 +3,21 @@ from contextlib import asynccontextmanager
 
 # mcp SDK v2 renamed McpError -> MCPError (mcp==2.2.0); alias to the old name.
 from mcp.shared.exceptions import MCPError as McpError
-from mcp.types import ErrorData
+from mcp.types import INVALID_PARAMS, ErrorData
+
+
+def _invalid_params_error(message: str = "invalid parameters") -> McpError:
+    """Build an INVALID_PARAMS error across mcp SDK v1 and v2.
+
+    v2 flattened the constructor to ``MCPError(code, message)``; v1 took a
+    single ``ErrorData``. Try the v2 shape first and fall back, so the raise
+    itself never becomes the ``TypeError`` the service would then misreport as
+    an "unexpected" failure instead of an "input" one.
+    """
+    try:
+        return McpError(INVALID_PARAMS, message)
+    except TypeError:
+        return McpError(ErrorData(code=INVALID_PARAMS, message=message))
 
 from backend.services import flight_data_service as flight_module
 from backend.services.flight_data_service import (
@@ -164,7 +178,7 @@ async def test_invalid_params_error_is_not_retried(monkeypatch):
 
         async def call_tool(self, name, payload):
             self.calls += 1
-            raise McpError(ErrorData(code=-32602, message="invalid parameters"))
+            raise _invalid_params_error()
 
     session = _InvalidSession()
     result = await FlightDataService().search_flights(

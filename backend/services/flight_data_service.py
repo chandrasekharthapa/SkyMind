@@ -314,9 +314,22 @@ class FlightDataService:
                 # Schema/contract failures are deterministic. Retrying the exact
                 # same invalid request cannot succeed and only launches extra Node
                 # processes, so return one explicit input failure.
-                if getattr(getattr(e, "error", None), "code", None) == INVALID_PARAMS:
+                # mcp SDK v1 wrapped the JSON-RPC error in `.error` (an
+                # ErrorData); v2 flattened `code`/`message` onto the exception
+                # itself. Read whichever this SDK exposes so an invalid-params
+                # rejection is still recognised as a deterministic input failure
+                # rather than a protocol error that gets retried.
+                err_data = getattr(e, "error", None)
+                err_code = getattr(err_data, "code", None)
+                if err_code is None:
+                    err_code = getattr(e, "code", None)
+                if err_code == INVALID_PARAMS:
                     attempt += 1
-                    message = getattr(getattr(e, "error", None), "message", str(e))
+                    message = (
+                        getattr(err_data, "message", None)
+                        or getattr(e, "message", None)
+                        or str(e)
+                    )
                     logger.error("MCP rejected search parameters: %s", message)
                     return _result(
                         status=STATUS_ERROR,

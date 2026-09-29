@@ -12,6 +12,35 @@ from mcp.shared.exceptions import MCPError as McpError
 from mcp.client.stdio import stdio_client
 from backend.services import mcp_client
 from backend.services.mcp_client import mcp_gateway
+from mcp.types import INVALID_PARAMS
+
+
+def _error_code(err):
+    """Read a JSON-RPC error code from an MCPError across mcp SDK v1 and v2.
+
+    v1 wrapped the code in ``.error`` (an ErrorData); v2 flattened ``.code``
+    onto the exception itself.
+    """
+    code = getattr(getattr(err, "error", None), "code", None)
+    if code is None:
+        code = getattr(err, "code", None)
+    return code
+
+
+def _find_mcp_error(exc):
+    """Return the first MCPError in ``exc``, unwrapping ExceptionGroups.
+
+    mcp v2 drives the client session from an anyio task group, so an error
+    raised as the ``async with`` scopes unwind can surface as an
+    (Base)ExceptionGroup rather than the bare MCPError that v1 raised.
+    """
+    if isinstance(exc, McpError):
+        return exc
+    for sub in getattr(exc, "exceptions", ()) or ():
+        found = _find_mcp_error(sub)
+        if found is not None:
+            return found
+    return None
 
 
 SECRET_ENV_NAMES = (
@@ -296,7 +325,7 @@ async def _call_stub_provider(tmp_path, provider_body, arguments):
 
 @pytest.mark.asyncio
 async def test_sdk_surfaces_invalid_params_as_mcp_error(tmp_path):
-    with pytest.raises(McpError) as caught:
+    with pytest.raises(BaseException) as caught:
         await _call_stub_provider(
             tmp_path,
             "module.exports = class StubProvider {};",
@@ -308,7 +337,9 @@ async def test_sdk_surfaces_invalid_params_as_mcp_error(tmp_path):
             },
         )
 
-    assert caught.value.error.code == -32602
+    mcp_error = _find_mcp_error(caught.value)
+    assert mcp_error is not None, f"no MCPError surfaced: {caught.value!r}"
+    assert _error_code(mcp_error) == INVALID_PARAMS
 
 
 @pytest.mark.asyncio
@@ -338,7 +369,7 @@ module.exports = class StubProvider {{
 
     result = await _call_stub_provider(tmp_path, provider_body, arguments)
 
-    assert result.isError is False
+    assert result.is_error is False
     assert json.loads(result.content[0].text) == []
     assert json.loads(capture.read_text(encoding="utf-8")) == [
         "DEL", "BOM", "2099-01-01", "2099-01-08",
@@ -355,7 +386,7 @@ async def test_malformed_provider_result_is_a_tool_error(tmp_path):
         {"from": "DEL", "to": "BOM", "departDate": "2099-01-01"},
     )
 
-    assert result.isError is True
+    assert result.is_error is True
     assert "invalid result" in result.content[0].text
 
 
@@ -372,5 +403,5 @@ module.exports = class StubProvider {
         {"from": "DEL", "to": "BOM", "departDate": "2099-01-01"},
     )
 
-    assert result.isError is True
+    assert result.is_error is True
     assert "stub crawl failed" in result.content[0].text
