@@ -7,7 +7,7 @@ Returns READY or NOT_READY with detailed reasons.
 
 import logging
 from typing import Any, Dict, List
-from backend.database.database import database as db
+from backend.database.database import DatabaseConfigurationError, database as db
 from backend.services.model_registry import model_registry
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,15 @@ class ModelReadinessService:
         """Perform a complete model readiness evaluation."""
         reasons = []
 
-        # 1. Fetch training dataset
-        df_raw = db.get_training_dataset()
+        # 1. Fetch training dataset. A database that is not configured is a
+        # readiness failure to report, not an exception to raise out of the
+        # probe. This is the same reasoning the load() guard below applies to a
+        # missing model artifact.
+        try:
+            df_raw = db.get_training_dataset()
+        except DatabaseConfigurationError as exc:
+            df_raw = None
+            reasons.append(f"Training dataset unavailable: {exc}")
         total_obs = len(df_raw) if df_raw is not None else 0
 
         if total_obs < self.min_observations_threshold:

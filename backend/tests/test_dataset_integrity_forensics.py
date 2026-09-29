@@ -11,16 +11,21 @@ import pytest
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 
-from backend.database.database import database as db
+from backend.database.database import database as db, DatabaseConfigurationError
 from backend.services.training_dataset_builder import training_dataset_builder
 
 
 def test_database_zero_null_routes():
     """Verify that price_history dataset contains 0 NULL route values."""
-    if not db.supabase:
-        pytest.skip("Supabase client unavailable")
+    # `db.supabase` is a lazy client proxy that stays truthy until a real call is
+    # made, so the old `if not db.supabase` guard never fired: with no credentials
+    # (as in CI) this test errored on the read instead of skipping. Probe the real
+    # thing. A configuration error is the honest "unavailable" signal.
+    try:
+        df = db.get_training_dataset()
+    except DatabaseConfigurationError as exc:
+        pytest.skip(f"Supabase unavailable: {exc}")
 
-    df = db.get_training_dataset()
     if df.empty:
         pytest.skip("Training dataset is empty")
 

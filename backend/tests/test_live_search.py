@@ -252,7 +252,7 @@ def test_round_trip_is_refused_before_provider_or_cache_call(monkeypatch):
     [
         ({"origin": "DE1"}, "Airport codes"),
         ({"destination": "DEL"}, "Origin and destination"),
-        ({"departure_date": "2099-02-30"}, "valid date"),
+        ({"departure_date": "2099-02-30"}, "valid ISO calendar date"),
         ({"return_date": "2099-07-08"}, "return_date"),
         ({"adults": 0}, "greater than or equal to 1"),
         ({"infants": 2}, "Infants cannot exceed adults"),

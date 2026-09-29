@@ -31,7 +31,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from backend.database.database import database as db
+from backend.database.database import DatabaseConfigurationError, database as db
 from backend.services.booking_curve_definition import (
     BOOKING_CURVE_KEYS,
     FALLBACK_TIMESTAMP_KEY,
@@ -65,7 +65,17 @@ class HistoricalDataAuditService:
         `REPORT_PATH`. Tests pass a temporary directory so that a run cannot
         rewrite a tracked file.
         """
-        df_raw = db.get_training_dataset()
+        try:
+            df_raw = db.get_training_dataset()
+            empty_reason = "Database returned no records"
+        except DatabaseConfigurationError as exc:
+            # A misconfigured database is not an empty one, and must not surface
+            # as a crash. run_full_validation already catches this same error for
+            # its feature-validation step, and the audit's contract is to report
+            # the state of the corpus. The reason names the configuration cause so
+            # an unreadable database is not mistaken for an empty one.
+            df_raw = None
+            empty_reason = f"Database not configured: {exc}"
 
         if df_raw is None or df_raw.empty:
             report = {
@@ -80,7 +90,7 @@ class HistoricalDataAuditService:
                 "feature_completeness_ratio": 0.0,
                 "status": "FAIL",
                 "failed_bounds": ["total_observations >= 1"],
-                "reason": "Database returned no records"
+                "reason": empty_reason
             }
             write_report(report, destination or REPORT_PATH)
             return report
