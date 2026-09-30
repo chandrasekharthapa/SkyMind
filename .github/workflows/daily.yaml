@@ -8,6 +8,10 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    # A stalled step used to run to GitHub's 6-hour job ceiling (see the Puppeteer
+    # Chromium download in the install step below). Bound the whole job so a hang
+    # fails fast instead of burning hours of Actions minutes every night.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repo
@@ -17,11 +21,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          # Cache the npm registry downloads for the MCP server, keyed on its lockfile.
+          cache: 'npm'
+          cache-dependency-path: backend/india-flight-mcp/package-lock.json
+
+      # `npm install` pulls puppeteer@^21, whose postinstall downloads a ~170 MB
+      # Chromium into ~/.cache/puppeteer. Cache it so only the first run (or a
+      # dependency change) pays for the download; combined with the step timeout
+      # below, a stalled download can no longer hang the job for hours.
+      - name: Cache Puppeteer browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('backend/india-flight-mcp/package-lock.json') }}
+          restore-keys: |
+            puppeteer-${{ runner.os }}-
 
       - name: Install local MCP server dependencies
-        run: |
-          cd backend/india-flight-mcp
-          npm install
+        # Fail fast if the Chromium download stalls, rather than hanging to the
+        # job ceiling. A normal install (with the cache warm) is well under a minute.
+        timeout-minutes: 10
+        working-directory: backend/india-flight-mcp
+        # `npm ci` is deterministic against the committed lockfile and faster than
+        # `npm install`; it also fails cleanly if the lockfile drifts from package.json.
+        run: npm ci
 
       - name: Setup Python
         uses: actions/setup-python@v5
