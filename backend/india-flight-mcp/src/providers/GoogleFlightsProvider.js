@@ -37,7 +37,17 @@ class GoogleFlightsProvider extends BaseProvider {
             if (returnDate) queryStr += ` through ${returnDate}`;
             else queryStr += ` oneway`;
             
-            const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(queryStr)}`;
+            // Ask Google for rupees explicitly. Without `curr`/`gl`/`hl`, Google
+            // quotes in the currency it infers from the caller's IP: on a US-hosted
+            // runner (GitHub Actions) every fare came back in USD, and the ingest
+            // currency screen then refused 100% of observations as foreign currency
+            // ("Refused 50 of 50 ... Currencies seen: {'USD': 50}"). Requesting the
+            // unit at the source keeps the fare AUTHENTIC — the alternative, an
+            // FX_USD_INR rate, reintroduces the unsourced constant that `_fx_rate`
+            // was written to eliminate. If Google ignores these and still quotes
+            // USD, the screen refuses the batch exactly as before: this can cost
+            // rows, it can never store a wrong number.
+            const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(queryStr)}&curr=INR&gl=IN&hl=en-IN`;
 
             console.error(`Navigating to ` + url);
             await page.goto(url, {

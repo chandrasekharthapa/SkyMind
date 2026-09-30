@@ -47,8 +47,13 @@ class BaseProvider {
         try {
             page = await browser.newPage();
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+            // en-IN, not en-US. Google infers the pricing locale from the
+            // Accept-Language header as well as the IP, and a US locale on a
+            // US-hosted runner produced USD fares that the ingest currency screen
+            // refused wholesale. This pairs with the explicit curr=INR&gl=IN&hl=en-IN
+            // on the search URL in GoogleFlightsProvider.
             await page.setExtraHTTPHeaders({
-                'Accept-Language': 'en-US,en;q=0.9'
+                'Accept-Language': 'en-IN,en-GB;q=0.9,en;q=0.8'
             });
 
             // 2. Add proxy authentication if configured
