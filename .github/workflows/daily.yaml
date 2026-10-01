@@ -16,7 +16,7 @@ jobs:
     # check, no retrain, and no exit status anyone could act on.
     #
     # The ingestion budget is now set below (45 min) and this ceiling sits above it:
-    #   setup, cold Chromium download           ~8 min
+    #   setup and installs                      ~3 min
     #   ingestion budget                        45 min
     #   overshoot: the budget is checked between searches, and one search against
     #   a failing provider can take ~15 min (3 outer x 3 inner retries at 90 s)
@@ -35,39 +35,34 @@ jobs:
           cache: 'npm'
           cache-dependency-path: backend/india-flight-mcp/package-lock.json
 
-      # `npm install` pulls puppeteer@^21, whose postinstall downloads a ~170 MB
-      # Chromium into ~/.cache/puppeteer. Cache it so only the first run (or a
-      # dependency change) pays for the download.
-      #
-      # Restore and save are separate steps on purpose. The combined `actions/cache`
-      # saves in its post-job hook, which GitHub skips when the job is cancelled —
-      # and every run was being cancelled at the job timeout, so the cache was never
-      # written and every run paid the ~5-minute download again. Saving right after
-      # the install makes the cache independent of how the rest of the job ends.
-      - name: Restore Puppeteer browser
-        id: puppeteer-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('backend/india-flight-mcp/package-lock.json') }}
-          restore-keys: |
-            puppeteer-${{ runner.os }}-
+      # Use the runner's preinstalled Google Chrome instead of Puppeteer's own
+      # Chromium. `npm ci` used to download a ~170 MB Chromium in puppeteer's
+      # postinstall; that download went from ~5 minutes to past the 10-minute step
+      # limit (runs #164 and #165 both died there), and a cache for it could never
+      # be warmed because no run got far enough to save it. GitHub's ubuntu images
+      # ship Google Chrome, so there is nothing to download or cache.
+      # BaseProvider.js launches PUPPETEER_EXECUTABLE_PATH when it is set, and
+      # mcp_client.py passes that variable through to the Node child.
+      - name: Locate Google Chrome
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::Google Chrome is not installed on this runner image; the scraper has no browser."
+            exit 1
+          fi
+          "$CHROME" --version
+          echo "PUPPETEER_EXECUTABLE_PATH=$CHROME" >> "$GITHUB_ENV"
 
       - name: Install local MCP server dependencies
-        # Fail fast if the Chromium download stalls, rather than hanging to the
-        # job ceiling. A normal install (with the cache warm) is well under a minute.
+        # A normal install without the browser download takes well under a minute;
+        # the bound keeps a stalled registry fetch from eating the job.
         timeout-minutes: 10
         working-directory: backend/india-flight-mcp
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
         # `npm ci` is deterministic against the committed lockfile and faster than
         # `npm install`; it also fails cleanly if the lockfile drifts from package.json.
         run: npm ci
-
-      - name: Save Puppeteer browser
-        if: steps.puppeteer-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('backend/india-flight-mcp/package-lock.json') }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
