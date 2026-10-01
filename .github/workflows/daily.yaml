@@ -8,10 +8,20 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
-    # A stalled step used to run to GitHub's 6-hour job ceiling (see the Puppeteer
-    # Chromium download in the install step below). Bound the whole job so a hang
-    # fails fast instead of burning hours of Actions minutes every night.
-    timeout-minutes: 25
+    # A stalled step used to run to GitHub's 6-hour job ceiling, so the job is
+    # bounded. 25 minutes was below what the pipeline needs, though: the catalogue is
+    # ~55 routes x 13 departure buckets = ~715 scrapes, each a fresh Chromium, while
+    # the collector's own budget (SCHEDULER_MAX_RUN_MINUTES) defaulted to 240. Every
+    # run since the bound was added was killed mid-ingestion — no summary, no alert
+    # check, no retrain, and no exit status anyone could act on.
+    #
+    # The ingestion budget is now set below (45 min) and this ceiling sits above it:
+    #   setup, cold Chromium download           ~8 min
+    #   ingestion budget                        45 min
+    #   overshoot: the budget is checked between searches, and one search against
+    #   a failing provider can take ~15 min (3 outer x 3 inner retries at 90 s)
+    #   alerts + retrain + model upload         remainder
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repo
@@ -27,10 +37,16 @@ jobs:
 
       # `npm install` pulls puppeteer@^21, whose postinstall downloads a ~170 MB
       # Chromium into ~/.cache/puppeteer. Cache it so only the first run (or a
-      # dependency change) pays for the download; combined with the step timeout
-      # below, a stalled download can no longer hang the job for hours.
-      - name: Cache Puppeteer browser
-        uses: actions/cache@v4
+      # dependency change) pays for the download.
+      #
+      # Restore and save are separate steps on purpose. The combined `actions/cache`
+      # saves in its post-job hook, which GitHub skips when the job is cancelled —
+      # and every run was being cancelled at the job timeout, so the cache was never
+      # written and every run paid the ~5-minute download again. Saving right after
+      # the install makes the cache independent of how the rest of the job ends.
+      - name: Restore Puppeteer browser
+        id: puppeteer-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/puppeteer
           key: puppeteer-${{ runner.os }}-${{ hashFiles('backend/india-flight-mcp/package-lock.json') }}
@@ -46,10 +62,19 @@ jobs:
         # `npm install`; it also fails cleanly if the lockfile drifts from package.json.
         run: npm ci
 
+      - name: Save Puppeteer browser
+        if: steps.puppeteer-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('backend/india-flight-mcp/package-lock.json') }}
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
@@ -71,4 +96,11 @@ jobs:
           # the same file as two distinct module objects, each with its own
           # database singleton, cached predictor and circuit-breaker state.
           PYTHONPATH: ${{ github.workspace }}
+          # The collector's wall-clock budget. Unset, it is 240 minutes — written for
+          # the in-process scheduler on Render, and far past this job's ceiling. When
+          # the budget runs out the collector stops cleanly, logs how many searches it
+          # skipped, and the run goes on to alerts and retraining. Routes are collected
+          # in priority order with all departure buckets per route, so a partial run
+          # yields complete booking curves for the top routes, the same ones each day.
+          SCHEDULER_MAX_RUN_MINUTES: '45'
         run: python backend/run_pipeline.py
