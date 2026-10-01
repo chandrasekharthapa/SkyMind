@@ -12,6 +12,12 @@ load_dotenv()
 # the flight scraper neither needs nor should receive.
 _PROVIDER_ENV_VARS = (
     "PUPPETEER_EXECUTABLE_PATH",
+    # Where Puppeteer looks for the browser `npm ci` downloaded. On Render the
+    # build writes Chrome inside the project (the home-directory default does not
+    # survive into the running service), and without this variable the child
+    # fell back to /opt/render/.cache/puppeteer and failed every search with
+    # "Could not find Chrome" even though the build had installed it.
+    "PUPPETEER_CACHE_DIR",
     "PUPPETEER_HEADLESS",
     "PROXY_SERVER",
     "PROXY_USERNAME",

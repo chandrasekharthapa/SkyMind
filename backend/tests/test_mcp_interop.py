@@ -95,6 +95,18 @@ def test_child_environment_is_allowlisted_and_built_at_call_time(monkeypatch):
     assert set(second_env).issubset(set(mcp_client._PROVIDER_ENV_VARS))
 
 
+def test_child_environment_carries_puppeteer_browser_location(monkeypatch):
+    # Both ways of pointing Puppeteer at a browser must reach the Node child. The
+    # cache directory was missing from the allowlist, so on Render the child looked
+    # in the default ~/.cache/puppeteer and never found the Chrome the build had
+    # installed under PUPPETEER_CACHE_DIR.
+    monkeypatch.setenv("PUPPETEER_CACHE_DIR", "/srv/app/.cache/puppeteer")
+    monkeypatch.setenv("PUPPETEER_EXECUTABLE_PATH", "/usr/bin/google-chrome")
+    env = mcp_client._server_parameters().env or {}
+    assert env["PUPPETEER_CACHE_DIR"] == "/srv/app/.cache/puppeteer"
+    assert env["PUPPETEER_EXECUTABLE_PATH"] == "/usr/bin/google-chrome"
+
+
 @pytest.mark.asyncio
 async def test_gateway_closes_transport_when_call_is_cancelled(monkeypatch):
     """Cancellation must unwind both SDK and child-transport contexts."""
