@@ -227,8 +227,10 @@ def judge_answer(question: str, reference: str, answer: str, timeout: float = 60
         model = os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini")
     else:
         base, key = "https://integrate.api.nvidia.com/v1", os.getenv("NVIDIA_API_KEY", "")
-        # A different model from the one being graded where possible.
-        model = os.getenv("EVAL_JUDGE_MODEL", "meta/llama-3.3-70b-instruct")
+        # A different model from the one being graded (the chatbot runs
+        # nvidia/nemotron-3-super-120b-a12b). gpt-oss-20b is Apache-2.0 and was
+        # reachable and accurate on the free tier in the 2026-10-01 comparison.
+        model = os.getenv("EVAL_JUDGE_MODEL", "openai/gpt-oss-20b")
     if not key:
         raise RuntimeError(f"no API key for judge provider {provider!r}")
     resp = httpx.post(

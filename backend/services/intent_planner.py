@@ -218,7 +218,7 @@ class IntentPlanner:
             # 1. Try OpenAI Planning Service
             try:
                 with tracer.start_as_current_span("OpenAI Planner"):
-                    res = await openai_planner.plan(query, context, timeout_seconds=3.0)
+                    res = await openai_planner.plan(query, context)
 
                 latency_sec = (time.perf_counter() - t0)
                 planner_latency_hist.record(latency_sec)

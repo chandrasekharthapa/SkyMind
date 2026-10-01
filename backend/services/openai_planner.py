@@ -15,7 +15,13 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID") or os.getenv("PLANNER_MODEL", "gpt-4o-mini")
+from backend.services.llm_clients import resolve, parse_json_object
+
+# Provider, model and timeout come from PLANNER_PROVIDER / PLANNER_MODEL /
+# PLANNER_TIMEOUT_SECONDS (see llm_clients). These names are kept for callers
+# that read them.
+_TARGET = resolve("PLANNER")
+OPENAI_MODEL_ID = _TARGET.model if _TARGET else None
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 AVAILABLE_TOOLS = [
@@ -71,29 +77,33 @@ class OpenAIPlanner:
     """OpenAI-powered planning service."""
 
     def __init__(self):
-        self.api_key = OPENAI_API_KEY
-        self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
+        self.target = _TARGET
+        self.client = _TARGET.client if _TARGET else None
 
-    async def plan(self, query: str, context: Optional[Dict[str, Any]] = None, timeout_seconds: float = 3.0) -> PlanningResult:
-        """Invokes OpenAI model to parse query intent and tool execution plan."""
+    async def plan(self, query: str, context: Optional[Dict[str, Any]] = None, timeout_seconds: Optional[float] = None) -> PlanningResult:
+        """Invokes the planner model to parse query intent and tool execution plan."""
         t0 = time.perf_counter()
         if not self.client:
-            raise ValueError("OPENAI_API_KEY is not configured.")
+            raise ValueError("LLM planner is off (PLANNER_PROVIDER) or has no API key.")
+        timeout_seconds = timeout_seconds or self.target.timeout
 
         prompt_input = (
             f"User Query: {query}\n"
             f"Search Context State: {json.dumps(context or {})}"
         )
 
+        kwargs: Dict[str, Any] = {}
+        if self.target.supports_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         response = await self.client.chat.completions.create(
-            model=OPENAI_MODEL_ID,
+            model=self.target.model,
             temperature=0.0,
-            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": _SYSTEM_PLANNER_PROMPT},
                 {"role": "user", "content": prompt_input}
             ],
-            timeout=timeout_seconds
+            timeout=timeout_seconds,
+            **kwargs,
         )
 
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -102,10 +112,10 @@ class OpenAIPlanner:
         if not content:
             raise ValueError("OpenAI returned empty completion content.")
 
-        parsed = json.loads(content)
+        parsed = parse_json_object(content)
         parsed["fallback_used"] = False
-        parsed["provider_used"] = "openai"
-        parsed["planner_source"] = "openai"
+        parsed["provider_used"] = self.target.provider
+        parsed["planner_source"] = self.target.provider
         parsed["planner_latency_ms"] = latency_ms
         parsed["planner_success"] = True
         parsed["planner_error"] = None

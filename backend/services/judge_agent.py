@@ -27,7 +27,13 @@ judge_decisions_counter = meter.create_counter(name="chat_judge_decisions_total"
 judge_repairs_counter = meter.create_counter(name="chat_judge_repairs_total", description="Judge response repairs count")
 judge_failures_counter = meter.create_counter(name="chat_judge_failures_total", description="Judge execution failures count")
 
-OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID") or os.getenv("JUDGE_MODEL", "gpt-4o-mini")
+from backend.services.llm_clients import resolve, parse_json_object
+
+# Provider, model and timeout come from JUDGE_PROVIDER / JUDGE_MODEL /
+# JUDGE_TIMEOUT_SECONDS (see llm_clients). Without an OpenAI key the judge now
+# runs on NVIDIA's hosted open models instead of never running at all.
+_TARGET = resolve("JUDGE")
+OPENAI_MODEL_ID = _TARGET.model if _TARGET else "none"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 JUDGE_ENABLED = os.getenv("JUDGE_ENABLED", "true").lower() not in ("false", "0")
 JUDGE_SAMPLING_RATE = float(os.getenv("JUDGE_SAMPLING_RATE", "0.05"))
@@ -92,8 +98,8 @@ class JudgeAgent:
     """OpenAI-powered Quality Assurance Judge Agent."""
 
     def __init__(self):
-        self.api_key = OPENAI_API_KEY
-        self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
+        self.target = _TARGET
+        self.client = _TARGET.client if _TARGET else None
         self.enabled = JUDGE_ENABLED
 
     def should_trigger(
@@ -136,7 +142,7 @@ class JudgeAgent:
         t0 = time.perf_counter()
 
         if not self.client:
-            logger.warning("[JudgeAgent] Skipping evaluation: OPENAI_API_KEY not configured.")
+            logger.warning("[JudgeAgent] Skipping evaluation: no judge model configured (JUDGE_PROVIDER / API key).")
             return JudgeResult(decision="PASS", judge_trigger_reason="no_api_key", judge_success=False)
 
         prompt_input = (
@@ -151,22 +157,25 @@ class JudgeAgent:
             span.set_attribute("trigger_reason", trigger_reason)
             try:
                 with tracer.start_as_current_span("Judge Evaluation"):
+                    kwargs: Dict[str, Any] = {}
+                    if self.target.supports_json_mode:
+                        kwargs["response_format"] = {"type": "json_object"}
                     response = await self.client.chat.completions.create(
-                        model=OPENAI_MODEL_ID,
+                        model=self.target.model,
                         temperature=0.0,
-                        response_format={"type": "json_object"},
                         messages=[
                             {"role": "system", "content": _SYSTEM_JUDGE_PROMPT},
                             {"role": "user", "content": prompt_input}
                         ],
-                        timeout=timeout_seconds
+                        timeout=max(timeout_seconds, self.target.timeout),
+                        **kwargs,
                     )
 
                 latency_ms = round((time.perf_counter() - t0) * 1000, 2)
                 judge_latency_hist.record(latency_ms / 1000.0)
 
                 content = response.choices[0].message.content or "{}"
-                parsed = json.loads(content)
+                parsed = parse_json_object(content)
 
                 parsed["judge_latency_ms"] = latency_ms
                 parsed["judge_model"] = OPENAI_MODEL_ID

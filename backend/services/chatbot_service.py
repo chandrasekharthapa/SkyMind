@@ -116,7 +116,12 @@ def _slim_tool_result(result: Dict[str, Any], max_flights: int = 5) -> Dict[str,
 # NVIDIA Llama Infrastructure
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 # Overridable so a retired or renamed hosted model is a settings change, not a deploy.
-LLM_MODEL_ID = os.getenv("CHAT_MODEL_ID", "meta/llama-3.1-70b-instruct")
+# meta/llama-3.1-70b-instruct was retired by NVIDIA on 2026-08-26 ("410 Gone"), and
+# every chat answer failed from then until this change. Nemotron 3 Super won the
+# 2026-10-01 comparison of the models available on the free NVIDIA tier: 9/9 on
+# tool calling, answering from tool results without inventing fares, and general
+# knowledge, at a 4.1 s median (scratch/compare_open_models.py).
+LLM_MODEL_ID = os.getenv("CHAT_MODEL_ID", "nvidia/nemotron-3-super-120b-a12b")
 
 # How many rounds of tool calls one turn may make before the model must answer.
 # The old flow made exactly one: it ran the first batch of tools, then asked for
