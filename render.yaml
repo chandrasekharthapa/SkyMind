@@ -16,7 +16,16 @@ services:
     runtime: python
     # No rootDir: build and start both run from the repository root so the
     # repo root is on sys.path and `import backend.*` resolves.
-    buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt
+    #
+    # The live search shells out to the Node scraper in backend/india-flight-mcp,
+    # so the build must install its packages too. It used to install only the
+    # Python side, and every /live-search failed with "Cannot find module
+    # 'puppeteer-extra'". `npm ci` also downloads Puppeteer's Chromium; see
+    # PUPPETEER_CACHE_DIR below for where it has to land.
+    buildCommand: >-
+      pip install --upgrade pip &&
+      pip install -r backend/requirements.txt &&
+      cd backend/india-flight-mcp && npm ci
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --lifespan on
     envVars:
       # Pin the interpreter the app was built and tested against. numpy 1.26.4
@@ -24,6 +33,16 @@ services:
       # was being ignored. Render honours PYTHON_VERSION and `.python-version`.
       - key: PYTHON_VERSION
         value: 3.11.9
+
+      # ── Scraper browser ────────────────────────────────
+      # Puppeteer puts its Chromium in ~/.cache/puppeteer by default, and Render
+      # does not carry the home directory from the build into the running
+      # service — only the checked-out project. Point the cache inside the
+      # project so the browser downloaded at build time exists at runtime.
+      # Render applies env vars to both the build and the service, so `npm ci`
+      # writes here and puppeteer.launch() reads from here.
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/backend/india-flight-mcp/.cache/puppeteer
 
       # ── Supabase ───────────────────────────────────────
       - key: SUPABASE_URL

@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Puppeteer's browser download when PUPPETEER_CACHE_DIR points here (Render).
+.cache/
+
 # Environment variables
 .env
 
