@@ -155,8 +155,28 @@ def _normalize(text: str) -> str:
     """Lower-cased, with every Unicode space as a plain space and every dash as
     "-". gpt-oss writes "7\u202fkg" (narrow no-break space) and "cabin\u2011baggage"
     (non-breaking hyphen); a reader sees "7 kg", and so must the checks."""
-    text = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in text)
+    text = "".join(
+        " " if unicodedata.category(ch) == "Zs" else ch
+        for ch in text
+        if ch != "\u00ad"  # soft hyphen: invisible unless the word breaks
+    )
     return text.translate(_HYPHENS).lower()
+
+
+# A clarifying reply often asks without a question mark: "To look this up I'll
+# need: 1. your origin 2. your date". That is still asking.
+_REQUEST_MARKERS = (
+    "i'll need", "i will need", "i need", "i’ll need", "please share", "please tell",
+    "please provide", "please let me know", "let me know", "could you", "can you tell",
+    "which city", "which date", "what date", "where are you flying from",
+)
+
+
+def _asks(text: str) -> bool:
+    if "?" in text:
+        return True
+    lowered = _normalize(text)
+    return any(marker in lowered for marker in _REQUEST_MARKERS)
 
 
 def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
@@ -195,7 +215,8 @@ def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
         _check(result, "must_not_match", m is None, f"matched {m.group(0)!r}" if m else "")
 
     if exp.get("asks_question"):
-        _check(result, "asks_question", "?" in text, "" if "?" in text else "no question asked")
+        asked = _asks(text)
+        _check(result, "asks_question", asked, "" if asked else "no question asked")
 
     if exp.get("refuses_if_answer") and result.message_type != "notice":
         refused = any(m in lowered for m in REFUSAL_MARKERS)

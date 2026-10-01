@@ -151,3 +151,19 @@ def test_mentions_ignore_unicode_spacing_and_case(text):
 def test_must_not_contain_sees_through_non_breaking_hyphens():
     case = _case(must_not_contain=["check-in closes"])
     assert e2e.score(case, _result("Check\u2011in closes 45 minutes before.")).passed is False
+
+
+def test_soft_hyphens_are_invisible_to_the_checks():
+    case = _case(must_mention_any=[["boarding pass"]])
+    assert e2e.score(case, _result("Print your board\u00ading pass.")).passed is True
+
+
+@pytest.mark.parametrize("text, asked", [
+    ("Where are you flying from?", True),
+    ("To look up flights to Goa, I\u2019ll need a few more details:\n1. Origin\n2. Date", True),
+    ("Please share your travel date.", True),
+    ("Flights to Goa are cheapest in July.", False),
+])
+def test_asks_question_accepts_requests_without_a_question_mark(text, asked):
+    case = _case(asks_question=True)
+    assert e2e.score(case, _result(text)).passed is asked
