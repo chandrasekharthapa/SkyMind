@@ -19,43 +19,46 @@ from .models import (
 
 # Keyword tables for each domain. All entries are lower-case.
 _KEYWORD_MAP: Dict[DomainEnum, List[str]] = {
+    # Strong aviation words: unambiguous on their own, and they win over an
+    # off-topic keyword in the same message ("I'm sad my flight got cancelled").
+    # Everyday travel words live in _WEAK_AVIATION_KEYWORDS below.
     DomainEnum.AVIATION: [
         "flight", "aviation", "airline", "airport", "baggage", "runway",
-        "aircraft", "regulation", "flight schedule", "flight analytics",
+        "aircraft", "flight schedule", "flight analytics",
         "flight price", "price prediction", "airfare", "boarding",
         "departure", "arrival", "terminal", "check-in", "layover",
-        "connecting flight", "ticket", "travel", "destination",
+        "connecting flight", 
         "turbulence", "pilot", "cabin", "jet", "airplane", "fly", "flying",
-        "book", "booking", "trend", "trends", "route", "routes",
+        
         # The words people actually use to ask about fares. None of these were
         # here, so "Delhi to Mumbai price on Friday" or "cheapest fare to Goa"
         # matched nothing, fell through to UNKNOWN, and were redirected with
         # "I'm designed to assist with aviation and travel" — the product's core
         # question refused by its own scope filter.
-        "fare", "fares", "price", "prices", "pricing", "cheap", "cheapest",
-        "cost", "costs", "expensive", "deal", "deals", "trip", "trips",
-        "holiday", "vacation", "itinerary", "one way", "one-way", "oneway",
-        "round trip", "return trip", "nonstop", "non-stop", "direct",
-        "stopover", "economy", "business class", "first class", "premium economy",
-        "refund", "cancellation", "reschedule", "pnr", "seat", "seats",
-        "forecast", "predict", "prediction", "depart", "leave", "arrive",
+        "fare", "fares", 
+        
+        "itinerary", "one way", "one-way", "oneway",
+        "round trip", "return trip", "nonstop", "non-stop", 
+        "stopover", "business class", "first class", "premium economy",
+        "pnr", 
+        
         "indigo", "air india", "vistara", "spicejet", "akasa", "airasia",
         "go first", "alliance air", "star air",
         # General air-travel questions the assistant answers from knowledge:
         # "why do my ears pop on takeoff?", "can I carry a power bank?", "what
         # ID do I need for a domestic flight?". None of these words were here,
         # so the questions were redirected as off-topic.
-        "plane", "planes", "takeoff", "take-off", "take off", "landing", "cockpit",
-        "crew", "air hostess", "flight attendant", "jet lag", "jetlag", "visa",
-        "passport", "security check", "immigration", "customs", "lounge",
-        "duty free", "duty-free", "carry-on", "carry on", "cabin bag", "hand bag",
-        "check-in bag", "liquids", "power bank", "boarding pass", "web check",
-        "digi yatra", "digiyatra", "dgca", "atc", "air traffic", "altitude",
+        "plane", "planes", "takeoff", "take-off", "take off", "cockpit",
+        "air hostess", "flight attendant", "jet lag", "jetlag", "visa",
+        "passport", "security check", "immigration", "lounge",
+        "duty free", "duty-free", "carry-on", "carry on", "cabin bag", 
+        "check-in bag", "power bank", "boarding pass", "web check",
+        "digi yatra", "digiyatra", "dgca", "air traffic", "altitude",
         "autopilot", "boeing", "airbus", "a320", "a321", "737", "787",
-        "emergency exit", "window seat", "aisle", "legroom", "upgrade",
-        "frequent flyer", "air miles", "delay", "delayed", "cancelled", "canceled",
-        "missed connection", "connection", "transit", "excess baggage",
-        "infant", "unaccompanied minor", "wheelchair", "pet travel", "in-flight",
+        "emergency exit", "window seat", "aisle", "legroom", 
+        "frequent flyer", "air miles", "cancelled", "canceled",
+        "missed connection", "excess baggage",
+        "unaccompanied minor", "pet travel", "in-flight",
         "inflight", "economy class", "red-eye", "codeshare", "tarmac",
     ],
     DomainEnum.PERSONAL: [
@@ -93,6 +96,20 @@ _KEYWORD_MAP: Dict[DomainEnum, List[str]] = {
         "minister", "politician", "trump", "biden", "obama", "politics",
     ],
 }
+
+# Weak aviation words: travel-flavoured but also everyday words ("price",
+# "cheap", "trip", "ticket", "delay"). They make a message aviation only when
+# nothing off-topic is present. As strong words they let "what's the bitcoin
+# price?" or "movie ticket prices" win over the finance/entertainment redirect.
+_WEAK_AVIATION_KEYWORDS: List[str] = [
+    "price", "prices", "pricing", "cheap", "cheapest", "cost", "costs", "expensive",
+    "deal", "deals", "trip", "trips", "holiday", "vacation", "direct", "seat", "seats",
+    "forecast", "predict", "prediction", "depart", "leave", "arrive", "delay",
+    "delayed", "connection", "transit", "upgrade", "crew", "landing", "customs",
+    "trend", "trends", "book", "booking", "ticket", "destination", "route", "routes",
+    "regulation", "refund", "cancellation", "reschedule", "travel", "economy",
+    "hand bag", "liquids", "infant", "wheelchair", "atc",
+]
 
 # Scope determination based on domain
 _SCOPE_FOR_DOMAIN: Dict[DomainEnum, ScopeEnum] = {
@@ -166,8 +183,10 @@ def _mentions_airport(text: str) -> bool:
     return any(re.search(r"\b" + re.escape(city) + r"\b", lowered) for city in _CITY_NAMES)
 
 
-def _is_aviation(text: str) -> bool:
-    return _match_keywords(text, _KEYWORD_MAP[DomainEnum.AVIATION]) or _mentions_airport(text)
+def _is_aviation(text: str, include_weak: bool = True) -> bool:
+    if _match_keywords(text, _KEYWORD_MAP[DomainEnum.AVIATION]) or _mentions_airport(text):
+        return True
+    return include_weak and _match_keywords(text, _WEAK_AVIATION_KEYWORDS)
 
 
 # Greeting keywords — these are ALLOWED through to the LLM.
@@ -205,7 +224,7 @@ def classify_message(text: str) -> DomainClassification:
         if _match_whole_words(text, keywords):
             # Special case: if both aviation AND off-topic keywords are
             # present, aviation wins (e.g. "I'm sad my flight got cancelled")
-            if _is_aviation(text):
+            if _is_aviation(text, include_weak=False):
                 break  # Fall through to aviation check below
 
             scope = _SCOPE_FOR_DOMAIN.get(domain, ScopeEnum.HARD_OFF_TOPIC)
