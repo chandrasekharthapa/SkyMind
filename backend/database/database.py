@@ -295,17 +295,41 @@ class Database:
         reader has to check by eye across two hundred lines.
         """
         logger.info("Fetching training dataset from price_history (Supabase)...")
-        query = self.supabase.table("price_history").select("*")
-        for column, value in PROVENANCE_IS_FILTERS:
-            query = query.is_(column, value)
-        res = (
-            query
-            .gte("price", MIN_PLAUSIBLE_FARE)
-            .lte("price", MAX_PLAUSIBLE_FARE)
-            .limit(50000)
-            .execute()
-        )
-        rows = res.data or []
+
+        # Paged, not one `.limit(50000)` request. PostgREST caps every response at
+        # the project's max-rows setting (1000 on Supabase by default) whatever
+        # limit the client asks for, so the single request returned the first 1000
+        # rows and stopped — a run that had just stored 6,676 observations trained
+        # on 1,000 of them, in no particular order, and the 1d/3d/7d label joins
+        # were starved of the later observations they pair with. Pages are ordered
+        # by (recorded_at, id) so they neither overlap nor skip rows, matching the
+        # SQLAlchemy path's `ORDER BY recorded_at` and its 100,000-row ceiling.
+        page_size = 1000
+        max_rows = 100_000
+        rows: list = []
+        while len(rows) < max_rows:
+            query = self.supabase.table("price_history").select("*")
+            for column, value in PROVENANCE_IS_FILTERS:
+                query = query.is_(column, value)
+            start = len(rows)
+            res = (
+                query
+                .gte("price", MIN_PLAUSIBLE_FARE)
+                .lte("price", MAX_PLAUSIBLE_FARE)
+                .order("recorded_at")
+                .order("id")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            page = res.data or []
+            # Stop only on an empty page. A short page is not proof of the end: if
+            # the server's cap is ever below page_size, every page comes back short
+            # and treating that as the end would reintroduce the truncation. The
+            # next request starts after however many rows actually arrived.
+            if not page:
+                break
+            rows.extend(page)
+        rows = rows[:max_rows]
 
         if not rows:
             logger.warning("No live rows found in Supabase.")
