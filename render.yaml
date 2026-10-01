@@ -44,6 +44,15 @@ services:
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/src/backend/india-flight-mcp/.cache/puppeteer
 
+      # ── Chat models ────────────────────────────────────
+      # The chatbot tries Groq gpt-oss-120b, then Groq gpt-oss-20b, then NVIDIA
+      # Nemotron 3 Super (backend/services/llm_clients.py). Any provider without
+      # a key is skipped. CHAT_MODELS overrides the chain.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+
       # ── Supabase ───────────────────────────────────────
       - key: SUPABASE_URL
         sync: false

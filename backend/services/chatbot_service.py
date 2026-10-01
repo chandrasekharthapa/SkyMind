@@ -11,9 +11,10 @@ import asyncio
 import time
 from collections import OrderedDict
 from typing import List, Dict, Any, AsyncGenerator, Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, APIStatusError, APITimeoutError
 from opentelemetry import metrics, trace
 
+from backend.services.llm_clients import DEFAULT_CHAT_CHAIN, ChatTarget, chat_targets
 from backend.services.chatbot_tools import (
     TOOL_MAP, CONTEXT_FIELDS, accepted_params, execute_chatbot_tool,
 )
@@ -113,15 +114,23 @@ def _slim_tool_result(result: Dict[str, Any], max_flights: int = 5) -> Dict[str,
     return slimmed
 
 
-# NVIDIA Llama Infrastructure
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-# Overridable so a retired or renamed hosted model is a settings change, not a deploy.
-# meta/llama-3.1-70b-instruct was retired by NVIDIA on 2026-08-26 ("410 Gone"), and
-# every chat answer failed from then until this change. Nemotron 3 Super won the
-# 2026-10-01 comparison of the models available on the free NVIDIA tier: 9/9 on
-# tool calling, answering from tool results without inventing fares, and general
-# knowledge, at a 4.1 s median (scratch/compare_open_models.py).
-LLM_MODEL_ID = os.getenv("CHAT_MODEL_ID", "nvidia/nemotron-3-super-120b-a12b")
+# The chat model is a chain, tried in order — see llm_clients.chat_targets and
+# CHAT_MODELS. It was a single hard-wired NVIDIA model, meta/llama-3.1-70b-instruct,
+# which NVIDIA retired on 2026-08-26 ("410 Gone"); every chat answer failed from
+# then until 2026-10-01 and nothing noticed. A chain means one retired, overloaded
+# or rate-limited model degrades the service instead of ending it.
+# This name is kept for the evaluation logs that record which models served.
+LLM_MODEL_ID = (
+    os.getenv("CHAT_MODELS")
+    or (f"nvidia:{os.getenv('CHAT_MODEL_ID')}" if os.getenv("CHAT_MODEL_ID") else None)
+    or ",".join(f"{p}:{m}" for p, m in DEFAULT_CHAT_CHAIN)
+)
+
+# HTTP statuses after which the next model in the chain is tried: gone or not
+# found (a retired model), too large for the provider's token-per-minute budget
+# (Groq answers 413), rate-limited, and server-side failures.
+_FALLBACK_STATUSES = {404, 408, 409, 410, 413, 429, 500, 502, 503, 504}
 
 # How many rounds of tool calls one turn may make before the model must answer.
 # The old flow made exactly one: it ran the first batch of tools, then asked for
@@ -308,22 +317,56 @@ from backend.services.memory_manager import memory_manager
 
 class ChatbotService:
     def __init__(self, nvidia_client: Optional[AsyncOpenAI] = None):
+        # An injected client (tests) is the whole chain; otherwise the chain is
+        # built from the environment on first use.
         self.nvidia_client = nvidia_client
+        self._targets: Optional[List[ChatTarget]] = None
         self.sessions: "OrderedDict[str, ConversationContext]" = OrderedDict()
         # Fire-and-forget tasks must be referenced until they finish, or the
         # event loop may garbage-collect them mid-run.
         self._background: set = set()
 
-    def _get_nvidia_client(self) -> AsyncOpenAI:
-        if self.nvidia_client is None:
-            api_key = os.getenv("NVIDIA_API_KEY", "").strip()
-            if not api_key:
-                raise RuntimeError("NVIDIA_API_KEY is not configured.")
-            self.nvidia_client = AsyncOpenAI(
-                base_url=NVIDIA_BASE_URL,
-                api_key=api_key,
-            )
-        return self.nvidia_client
+    def _chat_targets(self) -> List[ChatTarget]:
+        if self.nvidia_client is not None:
+            model = os.getenv("CHAT_MODEL_ID") or DEFAULT_CHAT_CHAIN[-1][1]
+            return [ChatTarget(provider="injected", model=model, client=self.nvidia_client)]
+        if self._targets is None:
+            self._targets = chat_targets()
+        if not self._targets:
+            raise RuntimeError("No chat model configured: set GROQ_API_KEY and/or NVIDIA_API_KEY (or CHAT_MODELS).")
+        return self._targets
+
+    @staticmethod
+    def _should_fall_back(exc: Exception) -> bool:
+        if isinstance(exc, (APITimeoutError, APIConnectionError)):
+            return True
+        if isinstance(exc, APIStatusError):
+            if exc.status_code in _FALLBACK_STATUSES:
+                return True
+            # Groq rejects a malformed tool call from the model with a 400
+            # "tool_use_failed"; another model may well produce a valid one.
+            return exc.status_code == 400 and "tool_use_failed" in str(exc)
+        return False
+
+    async def _complete(self, **kwargs: Any) -> Any:
+        """One chat completion, from the first model in the chain that answers."""
+        targets = self._chat_targets()
+        last_error: Optional[Exception] = None
+        for i, target in enumerate(targets):
+            try:
+                response = await target.client.chat.completions.create(model=target.model, **kwargs)
+                if i:
+                    logger.info(f"[ChatbotService] Answered by fallback model {target.label}")
+                return response
+            except Exception as e:
+                if not self._should_fall_back(e) or i == len(targets) - 1:
+                    raise
+                last_error = e
+                logger.warning(
+                    f"[ChatbotService] {target.label} unavailable ({type(e).__name__}: "
+                    f"{str(e)[:160]}); trying {targets[i + 1].label}"
+                )
+        raise last_error or RuntimeError("no chat model answered")
 
     def get_session_context(self, session_id: str) -> ConversationContext:
         if session_id in self.sessions:
@@ -641,18 +684,17 @@ class ChatbotService:
                 duration_seconds=planner_result.planner_latency_ms / 1000.0,
             )
 
-            client = self._get_nvidia_client()
             tool_payloads: List[Dict[str, Any]] = []
             tools_called = False
             final_text = ""
             for round_no in range(MAX_TOOL_ROUNDS + 1):
                 # The last round withholds the tools, so the model has to answer.
                 offer_tools = round_no < MAX_TOOL_ROUNDS
-                kwargs: Dict[str, Any] = {"model": LLM_MODEL_ID, "messages": formatted_messages}
+                kwargs: Dict[str, Any] = {"messages": formatted_messages}
                 if offer_tools:
                     kwargs["tools"] = self.get_tool_definitions()
                 llm_t0 = time.perf_counter()
-                response = await client.chat.completions.create(**kwargs)
+                response = await self._complete(**kwargs)
                 llm_latency_hist.record(time.perf_counter() - llm_t0)
 
                 message = response.choices[0].message
