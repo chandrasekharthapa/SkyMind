@@ -3,6 +3,7 @@ import logging
 import json
 import os
 import asyncio
+import threading
 import anyio
 # mcp SDK v2 (requirements pins mcp==2.2.0) renamed the exception class
 # McpError -> MCPError in mcp.shared.exceptions with no backward-compatible
@@ -12,6 +13,27 @@ from mcp.types import INVALID_PARAMS
 from typing import Any, Dict, List, Optional
 
 from backend.domain.provenance import decode_currency
+
+# How many scrapes may run at once in this process. Each one is a fresh Node child
+# driving a full Chrome, a few hundred MB apiece. On Render's 512 MB instance two
+# overlapping /live-search requests (the UI issues them together) plus their retries
+# put several Chromes up at once; the instance exceeded its memory limit and was
+# restarted, and the scrapes that survived were starved of CPU past MCP_TIMEOUT.
+# One at a time by default: a second search waits for the first instead of
+# starting a second browser.
+#
+# A threading semaphore, not an asyncio one: the scheduler runs collection in its
+# own event loop (`run_in_new_loop`), and an asyncio.Semaphore is bound to the loop
+# that first uses it. It is only ever taken non-blocking from async code, so
+# waiting never blocks an event loop and a cancelled waiter holds nothing.
+_SCRAPE_SLOTS = threading.BoundedSemaphore(
+    max(1, int(os.getenv("MCP_MAX_CONCURRENT_SCRAPES", "1")))
+)
+
+
+async def _acquire_scrape_slot() -> None:
+    while not _SCRAPE_SLOTS.acquire(blocking=False):
+        await asyncio.sleep(0.25)
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +178,16 @@ class FlightDataService:
                             return await client.call_tool("search_flights", payload)
 
                     target_currency = currency.upper()
-                    res = await asyncio.wait_for(
-                        call_fresh_gateway(), timeout=timeout
-                    )
+                    # Waiting for a slot is bounded by the same per-attempt timeout;
+                    # if the queue does not clear in time this attempt times out
+                    # like a slow scrape would, through the handler below.
+                    await asyncio.wait_for(_acquire_scrape_slot(), timeout=timeout)
+                    try:
+                        res = await asyncio.wait_for(
+                            call_fresh_gateway(), timeout=timeout
+                        )
+                    finally:
+                        _SCRAPE_SLOTS.release()
 
                 if (
                     (isinstance(res, dict) and (res.get("isError") or res.get("is_error")))

@@ -14,7 +14,12 @@ class BaseProvider {
         const args = [
             '--start-maximized',
             '--disable-notifications',
-            '--no-sandbox'
+            '--no-sandbox',
+            // Containers give /dev/shm 64 MB, which Chrome's renderer outgrows
+            // on a page this heavy and then stalls or crashes; write to /tmp.
+            '--disable-dev-shm-usage',
+            // No GPU in a container or on a CI runner; don't probe for one.
+            '--disable-gpu'
         ];
 
         // 1. Add proxy server if configured
@@ -64,6 +69,23 @@ class BaseProvider {
                 });
             }
 
+            // Images, fonts and media are most of the bytes on a Google Flights
+            // page and none of the data: every field is read from card innerText.
+            // Downloading and decoding them is what made a scrape outlast the
+            // 90 s MCP_TIMEOUT on Render's fractional-CPU instance (a ~9 s scrape
+            // on a GitHub runner took >90 s there). Stylesheets are deliberately
+            // still loaded: innerText follows rendered layout, and the parser
+            // splits cards on the line breaks that layout produces.
+            await page.setRequestInterception(true);
+            page.on('request', (request) => {
+                const type = request.resourceType();
+                if (type === 'image' || type === 'font' || type === 'media') {
+                    request.abort().catch(() => {});
+                } else {
+                    request.continue().catch(() => {});
+                }
+            });
+
             page.setDefaultTimeout(60000); // Increased timeout to 60s for slow loads
             page.on('console', msg => console.error('Browser Console:', msg.text()));
             return { browser, page };
@@ -89,11 +111,12 @@ class BaseProvider {
     async closeBrowser(browser, page) {
         if (!this.debug && browser) {
             console.error('Closing browser...');
-            try {
-                await page?.waitForTimeout(5000);
-            } finally {
-                await browser.close();
-            }
+            // There was a fixed 5-second wait here before close(). It ran in the
+            // providers' `finally`, so it delayed every result by 5 s — about half
+            // of each scrape on CI — and bought nothing: extraction has finished
+            // and the result is already in hand when this runs. Debug mode, which
+            // keeps the browser open for inspection, skips this method entirely.
+            await browser.close();
         }
     }
 
