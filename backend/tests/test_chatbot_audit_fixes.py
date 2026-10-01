@@ -83,6 +83,52 @@ def test_unexpected_shapes_do_not_raise():
     assert ChatResponseValidator.validate_llm_response("₹5,000", odd)
 
 
+# ── General aviation knowledge ─────────────────────────────────────────
+
+@pytest.mark.parametrize("answer", [
+    "Cabin baggage on Indian domestic flights is typically one bag up to 7 kg; check with your airline.",
+    "Jets usually cruise at around 35,000 feet, and an A320 seats about 180 passengers.",
+    "Arrive at least 2 hours before departure; terminal and gate details are on your boarding pass.",
+    "A layover is a stop between flights; under 24 hours it is usually not counted as a stopover.",
+])
+def test_knowledge_answers_without_tools_pass(answer):
+    # Baggage/terminal/gate are the subject of these questions, and 35,000 or 180
+    # are facts, not fares. All of these used to be thrown out.
+    assert ChatResponseValidator.validate_llm_response(answer, [])
+
+
+@pytest.mark.parametrize("answer", [
+    "Excess baggage usually costs around ₹550 per kg.",
+    "A Delhi–Mumbai ticket is about Rs. 4,500.",
+    "Expect to pay 3000 INR for a seat change.",
+])
+def test_knowledge_answers_may_not_quote_rupees(answer):
+    assert not ChatResponseValidator.validate_llm_response(answer, [])
+
+
+@pytest.mark.parametrize("query", [
+    "Why do my ears pop on takeoff?",
+    "Can I carry a power bank in my cabin bag?",
+    "What ID do I need for a domestic flight?",
+    "What is a layover?",
+    "How early should I reach the airport?",
+    "What happens if my flight is delayed?",
+    "How does Digi Yatra work?",
+    "Do I need a passport to fly to Goa?",
+])
+def test_general_air_travel_questions_are_in_scope(query):
+    assert classify_message(query).domain == DomainEnum.AVIATION
+
+
+async def test_knowledge_answer_is_delivered_unchanged(quiet_service):
+    answer = ("Cabin baggage on Indian domestic flights is typically 7 kg in one bag. "
+              "Rules vary by airline and fare, so check with your airline.")
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_completion(content=answer))
+    text = await _run(ChatbotService(nvidia_client=client), [{"role": "user", "content": "how much cabin baggage can I carry?"}])
+    assert text == answer
+
+
 # ── Tool arguments ─────────────────────────────────────────────────────
 
 def test_unknown_and_context_keys_are_dropped_per_tool():

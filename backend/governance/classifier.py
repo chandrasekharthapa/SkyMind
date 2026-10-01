@@ -41,6 +41,22 @@ _KEYWORD_MAP: Dict[DomainEnum, List[str]] = {
         "forecast", "predict", "prediction", "depart", "leave", "arrive",
         "indigo", "air india", "vistara", "spicejet", "akasa", "airasia",
         "go first", "alliance air", "star air",
+        # General air-travel questions the assistant answers from knowledge:
+        # "why do my ears pop on takeoff?", "can I carry a power bank?", "what
+        # ID do I need for a domestic flight?". None of these words were here,
+        # so the questions were redirected as off-topic.
+        "plane", "planes", "takeoff", "take-off", "take off", "landing", "cockpit",
+        "crew", "air hostess", "flight attendant", "jet lag", "jetlag", "visa",
+        "passport", "security check", "immigration", "customs", "lounge",
+        "duty free", "duty-free", "carry-on", "carry on", "cabin bag", "hand bag",
+        "check-in bag", "liquids", "power bank", "boarding pass", "web check",
+        "digi yatra", "digiyatra", "dgca", "atc", "air traffic", "altitude",
+        "autopilot", "boeing", "airbus", "a320", "a321", "737", "787",
+        "emergency exit", "window seat", "aisle", "legroom", "upgrade",
+        "frequent flyer", "air miles", "delay", "delayed", "cancelled", "canceled",
+        "missed connection", "connection", "transit", "excess baggage",
+        "infant", "unaccompanied minor", "wheelchair", "pet travel", "in-flight",
+        "inflight", "economy class", "red-eye", "codeshare", "tarmac",
     ],
     DomainEnum.PERSONAL: [
         "girlfriend", "boyfriend", "relationship", "love", "love you",

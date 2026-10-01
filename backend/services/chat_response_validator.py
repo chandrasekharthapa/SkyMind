@@ -132,13 +132,36 @@ class ChatResponseValidator:
     def validate_llm_response(text: str, tool_results: List[Dict[str, Any]]) -> bool:
         """Verifies text content matches values inside tool_results.
 
-        Returns True if valid, False if it contains hallucinations. With no tool
-        results at all, any fare figure in the text is unverifiable and fails:
-        the assistant may only quote prices a tool returned.
+        Returns True if valid, False if it contains hallucinations.
+
+        Two kinds of answer are checked differently:
+
+        * A data answer (tools ran): every fare-like number — rupee-marked, or a
+          bare number >= 500 that is not a year — must match a tool figure, and
+          details the tools never return (baggage, terminal, gate, discount) must
+          not be asserted, since the model would be attributing them to the
+          specific flights it was shown.
+        * A knowledge answer (no tools): general aviation questions ("what is a
+          layover?", "how much cabin baggage can I carry?") are answered from the
+          model's knowledge, so the detail words are the subject, not a sign of
+          invention, and bare numbers are ordinary facts ("35,000 feet", "180
+          seats"). Only rupee-marked amounts are checked — and with no tool data
+          there is nothing to match them against, so any quoted price fails.
+          Previously both kinds were checked the same way, which threw out
+          correct answers to baggage or altitude questions.
         """
         valid_prices = ChatResponseValidator.collect_verified_prices(tool_results)
+        knowledge_answer = not [r for r in tool_results if isinstance(r, dict)]
 
-        for p in ChatResponseValidator.extract_prices(text):
+        if knowledge_answer:
+            amounts = [
+                float((m.group(1) or m.group(2) or "0").replace(",", ""))
+                for m in ChatResponseValidator._CURRENCY_AMOUNT.finditer(text)
+            ]
+        else:
+            amounts = ChatResponseValidator.extract_prices(text)
+
+        for p in amounts:
             rounded_p = round(p)
             # Allow minor rounding differences of +/- 5 units
             if not any(abs(rounded_p - vp) <= 5 for vp in valid_prices):
@@ -148,9 +171,10 @@ class ChatResponseValidator:
                 )
                 return False
 
-        word = ChatResponseValidator._asserts_unverified_detail(text)
-        if word:
-            logger.warning(f"Validation rejection: asserts unverified detail '{word}'")
-            return False
+        if not knowledge_answer:
+            word = ChatResponseValidator._asserts_unverified_detail(text)
+            if word:
+                logger.warning(f"Validation rejection: asserts unverified detail '{word}'")
+                return False
 
         return True
