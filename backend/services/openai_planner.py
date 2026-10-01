@@ -15,7 +15,7 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-from backend.services.llm_clients import resolve, parse_json_object
+from backend.services.llm_clients import resolve, parse_json_object, is_permanent_failure
 
 # Provider, model and timeout come from PLANNER_PROVIDER / PLANNER_MODEL /
 # PLANNER_TIMEOUT_SECONDS (see llm_clients). These names are kept for callers
@@ -95,16 +95,27 @@ class OpenAIPlanner:
         kwargs: Dict[str, Any] = {}
         if self.target.supports_json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        response = await self.client.chat.completions.create(
-            model=self.target.model,
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PLANNER_PROMPT},
-                {"role": "user", "content": prompt_input}
-            ],
-            timeout=timeout_seconds,
-            **kwargs,
-        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.target.model,
+                temperature=0.0,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PLANNER_PROMPT},
+                    {"role": "user", "content": prompt_input}
+                ],
+                timeout=timeout_seconds,
+                **kwargs,
+            )
+        except Exception as e:
+            if is_permanent_failure(e):
+                # No credits, a rejected key or a removed model will fail the same
+                # way on every turn; stop paying a round-trip for it.
+                logger.error(
+                    f"[Planner] {self.target.provider}:{self.target.model} cannot answer "
+                    f"({type(e).__name__}: {str(e)[:160]}). LLM planner off until restart; "
+                    f"the rule-based planner carries on.")
+                self.client = None
+            raise
 
         latency_ms = round((time.perf_counter() - t0) * 1000, 2)
 

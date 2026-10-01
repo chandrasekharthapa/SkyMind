@@ -10,7 +10,7 @@ class ContentSafetyGuardrail(BaseGuardrail):
         client = NVIDIAClientProvider.get_client(self.config)
         
         response = await client.chat.completions.create(
-            model="nvidia/llama-3.1-nemoguard-8b-content-safety",
+            model=self.config.content_model,
             messages=[{"role": "user", "content": prompt}]
         )
         

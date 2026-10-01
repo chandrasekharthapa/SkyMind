@@ -20,7 +20,8 @@ def config():
         retry_backoff=0.1,
         concurrency_limit=2,
         fail_open=False,
-        nvidia_api_key="test-key"
+        nvidia_api_key="test-key",
+        groq_api_key="",
     )
 
 @pytest.fixture

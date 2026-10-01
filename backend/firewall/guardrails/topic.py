@@ -10,7 +10,7 @@ class TopicGuardrail(BaseGuardrail):
         client = NVIDIAClientProvider.get_client(self.config)
         
         response = await client.chat.completions.create(
-            model="nvidia/llama-3.1-nemoguard-8b-topic-control",
+            model=self.config.topic_model,
             messages=[
                 # This was "Indian aviation markets, flight pricing analysis, and
                 # real-world route metadata forecasting" — narrow enough that

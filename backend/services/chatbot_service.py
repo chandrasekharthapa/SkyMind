@@ -127,10 +127,12 @@ LLM_MODEL_ID = (
     or ",".join(f"{p}:{m}" for p, m in DEFAULT_CHAT_CHAIN)
 )
 
-# HTTP statuses after which the next model in the chain is tried: gone or not
-# found (a retired model), too large for the provider's token-per-minute budget
-# (Groq answers 413), rate-limited, and server-side failures.
-_FALLBACK_STATUSES = {404, 408, 409, 410, 413, 429, 500, 502, 503, 504}
+# HTTP statuses after which the next model in the chain is tried: a key the
+# provider rejects (401/403 — one bad key must not take chat down while another
+# provider's works), gone or not found (a retired model), too large for the
+# provider's token-per-minute budget (Groq answers 413), rate-limited, and
+# server-side failures.
+_FALLBACK_STATUSES = {401, 403, 404, 408, 409, 410, 413, 429, 500, 502, 503, 504}
 
 # How many rounds of tool calls one turn may make before the model must answer.
 # The old flow made exactly one: it ran the first batch of tools, then asked for

@@ -27,7 +27,7 @@ judge_decisions_counter = meter.create_counter(name="chat_judge_decisions_total"
 judge_repairs_counter = meter.create_counter(name="chat_judge_repairs_total", description="Judge response repairs count")
 judge_failures_counter = meter.create_counter(name="chat_judge_failures_total", description="Judge execution failures count")
 
-from backend.services.llm_clients import resolve, parse_json_object
+from backend.services.llm_clients import resolve, parse_json_object, is_permanent_failure
 
 # Provider, model and timeout come from JUDGE_PROVIDER / JUDGE_MODEL /
 # JUDGE_TIMEOUT_SECONDS (see llm_clients). Without an OpenAI key the judge now
@@ -208,6 +208,9 @@ class JudgeAgent:
                 judge_failures_counter.add(1)
                 latency_ms = round((time.perf_counter() - t0) * 1000, 2)
                 logger.warning(f"[JudgeAgent] Judge evaluation error ({e}). Returning fallback PASS.")
+                if is_permanent_failure(e):
+                    logger.error("[JudgeAgent] That error will not clear by itself; judge off until restart.")
+                    self.client = None
                 return JudgeResult(
                     decision="PASS",
                     confidence=0.5,

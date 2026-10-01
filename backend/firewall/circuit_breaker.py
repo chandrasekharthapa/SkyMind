@@ -37,6 +37,10 @@ class CircuitBreaker:
         if self.state == CircuitState.CLOSED and self.failure_count >= self.failure_threshold:
             logger.error(f"Circuit breaker tripped! Transitioning to OPEN state.")
             self.state = CircuitState.OPEN
+        elif self.state == CircuitState.HALF_OPEN:
+            # The trial call failed: the service is still down, so go back to
+            # failing fast rather than letting every request through.
+            self.state = CircuitState.OPEN
             
     def can_execute(self) -> bool:
         """Determines if a call should be allowed to execute."""

@@ -87,7 +87,13 @@ class BaseProvider {
             });
 
             page.setDefaultTimeout(60000); // Increased timeout to 60s for slow loads
-            page.on('console', msg => console.error('Browser Console:', msg.text()));
+            page.on('console', (msg) => {
+                const text = msg.text();
+                // Every image, font and media request aborted above is reported
+                // by the page as a failed load. Those are ours, not errors.
+                if (text.startsWith('Failed to load resource: net::ERR_FAILED')) return;
+                console.error('Browser Console:', text);
+            });
             return { browser, page };
         } catch (error) {
             await browser.close().catch((closeError) => {

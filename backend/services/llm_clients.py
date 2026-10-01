@@ -1,22 +1,23 @@
 """Model endpoints for the chatbot's helper agents (planner and judge).
 
 Both used to be hard-wired to OpenAI's gpt-4o-mini. The OpenAI account behind
-this project has been out of quota since at least July 2026 (the eval report of
-2026-07-27 records `insufficient_quota`), so in production the planner always
-fell back to its rule-based mode and the judge never ran. These helpers let each
-role use OpenAI, NVIDIA's hosted open models (the same endpoint and key as the
-chat model), or nothing.
+this project has been out of quota since at least July 2026, and while
+OPENAI_API_KEY stayed set on Render every chat turn spent ~5 s on a planner call
+that could only fail (the SDK retried the 429 twice before giving up). These
+helpers let each role use Groq, OpenAI, NVIDIA's hosted open models, or nothing.
 
-    PLANNER_PROVIDER / JUDGE_PROVIDER = openai | nvidia | none
+    PLANNER_PROVIDER / JUDGE_PROVIDER = groq | openai | nvidia | none
     PLANNER_MODEL    / JUDGE_MODEL    = model id for that provider
     PLANNER_TIMEOUT_SECONDS / JUDGE_TIMEOUT_SECONDS
 
-Defaults keep the old behaviour where it still works: OpenAI when an
-OPENAI_API_KEY is set. Without one, the judge uses NVIDIA (it runs rarely, so a
-slower open model is affordable) and the planner is off — it is advisory, the
-chat model chooses its own tools, and an extra model round-trip on every turn
-costs more latency than the planner's hint is worth. The rule-based planner
-still runs either way.
+Defaults, when *_PROVIDER is unset: Groq if GROQ_API_KEY is set (sub-second, so
+the planner's hint is cheap), else OpenAI if OPENAI_API_KEY is set, else the
+judge uses NVIDIA and the planner is off. The rule-based planner runs either way.
+
+Helper calls make no SDK retries: the planner has a 3 s budget and the judge is
+optional, so a failure should cost one round-trip, not three. A failure that
+cannot fix itself (no credits, bad key, model gone — see is_permanent_failure)
+switches the helper off for the rest of the process.
 """
 
 import json
@@ -77,10 +78,19 @@ def resolve(role: str) -> Optional[LLMTarget]:
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     nvidia_key = os.getenv("NVIDIA_API_KEY", "").strip()
 
-    default = "openai" if openai_key else ("nvidia" if role == "JUDGE" and nvidia_key else "none")
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+
+    if groq_key:
+        default = "groq"
+    elif openai_key:
+        default = "openai"
+    elif role == "JUDGE" and nvidia_key:
+        default = "nvidia"
+    else:
+        default = "none"
     provider = os.getenv(f"{role}_PROVIDER", default).strip().lower()
 
-    client = _client_for(provider)
+    client = _client_for(provider, max_retries=0)
     if client is None:
         return None
 
@@ -107,6 +117,16 @@ def _client_for(provider: str, timeout: Optional[float] = None, max_retries: int
     if timeout is not None:
         kwargs["timeout"] = timeout
     return AsyncOpenAI(**kwargs)
+
+
+def is_permanent_failure(exc: Exception) -> bool:
+    """True for errors that retrying will not fix: an account with no credits,
+    a rejected key, or a model the provider has removed."""
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403, 404, 410):
+        return True
+    text = str(exc)
+    return status == 429 and ("insufficient_quota" in text or "credit_balance_exhausted" in text)
 
 
 @dataclass
@@ -138,8 +158,8 @@ def chat_targets() -> List[ChatTarget]:
 
     CHAT_MODELS overrides the chain: comma-separated provider:model entries, e.g.
     "groq:openai/gpt-oss-120b,nvidia:nvidia/nemotron-3-super-120b-a12b".
-    CHAT_MODEL_ID alone (the earlier single-model setting) still works and means
-    that one NVIDIA model.
+    CHAT_MODEL_ID alone (the earlier single-model setting) puts that NVIDIA model
+    first, ahead of the default chain.
     """
     spec = os.getenv("CHAT_MODELS", "").strip()
     if spec:
@@ -149,7 +169,12 @@ def chat_targets() -> List[ChatTarget]:
             if provider and model:
                 chain.append((provider.lower(), model))
     elif os.getenv("CHAT_MODEL_ID", "").strip():
-        chain = [("nvidia", os.getenv("CHAT_MODEL_ID").strip())]
+        # The earlier single-model setting. It goes first, but the default chain
+        # still backs it up: on Render it was left pointing at
+        # meta/llama-3.1-70b-instruct after NVIDIA retired that model, and with
+        # it as the only entry every chat turn failed.
+        legacy = ("nvidia", os.getenv("CHAT_MODEL_ID").strip())
+        chain = [legacy] + [entry for entry in DEFAULT_CHAT_CHAIN if entry != legacy]
     else:
         chain = DEFAULT_CHAT_CHAIN
 
@@ -163,6 +188,8 @@ def chat_targets() -> List[ChatTarget]:
             logger.info(f"[llm_clients] Skipping chat model {provider}:{model}: no API key for {provider}.")
             continue
         targets.append(ChatTarget(provider=provider, model=model, client=client))
+    if not targets:
+        logger.error("[llm_clients] No chat model is usable: set GROQ_API_KEY or NVIDIA_API_KEY.")
     return targets
 
 

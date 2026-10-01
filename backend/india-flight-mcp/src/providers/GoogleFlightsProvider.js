@@ -1,6 +1,45 @@
 const BaseProvider = require('./BaseProvider');
 const { parseStops, parseDurationLine } = require('./cardParsing');
 
+function envMs(name, fallback) {
+    const value = Number.parseInt(process.env[name] || '', 10);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+// The same test the extraction below applies to a card: an <li> showing a fare
+// and a duration.
+function countFareCards() {
+    let n = 0;
+    for (const item of document.querySelectorAll('li')) {
+        const text = item.innerText || '';
+        if ((text.includes('₹') || text.includes('$')) && text.includes('hr')) n++;
+    }
+    return n;
+}
+
+// Waits until fare cards appear, then until their number stops growing (Google
+// renders results in batches). If none appear in time it returns anyway and
+// the extraction reports zero cards, which the caller already treats as "no
+// results" — better than throwing away a page that may be half-rendered.
+async function waitForFareCards(page) {
+    const appearTimeout = envMs('GFLIGHTS_RESULTS_TIMEOUT_MS', 30000);
+    try {
+        await page.waitForFunction(countFareCards, { timeout: appearTimeout, polling: 500 });
+    } catch (error) {
+        console.error(`No fare cards appeared within ${appearTimeout} ms; extracting whatever rendered.`);
+        return;
+    }
+    const settleDeadline = Date.now() + envMs('GFLIGHTS_SETTLE_MAX_MS', 8000);
+    let last = -1;
+    let stableFor = 0;
+    while (Date.now() < settleDeadline && stableFor < 3) {
+        const count = await page.evaluate(countFareCards);
+        stableFor = count === last ? stableFor + 1 : 0;
+        last = count;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+}
+
 class GoogleFlightsProvider extends BaseProvider {
     constructor() {
         super();
@@ -51,10 +90,18 @@ class GoogleFlightsProvider extends BaseProvider {
             const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(queryStr)}&curr=INR&gl=IN&hl=en-IN`;
 
             console.error(`Navigating to ` + url);
+            // Wait for the fare cards themselves, not for the network to go quiet.
+            // `networkidle2` needs 500 ms with at most two open connections, and
+            // Google Flights keeps polling in the background: on Render's
+            // fractional CPU the page never got there and every search died with
+            // "Navigation timeout of 60000 ms exceeded" even though the results
+            // had rendered. `domcontentloaded` returns as soon as the HTML is in;
+            // waitForFareCards then waits for what the parser actually reads.
             await page.goto(url, {
-                waitUntil: 'networkidle2',
-                timeout: 60000
+                waitUntil: 'domcontentloaded',
+                timeout: envMs('GFLIGHTS_NAV_TIMEOUT_MS', 40000)
             });
+            await waitForFareCards(page);
             
             console.error('Extracting flight information...');
             const flightsData = await page.evaluate(() => {
