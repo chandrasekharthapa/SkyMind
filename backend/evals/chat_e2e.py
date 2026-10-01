@@ -45,6 +45,7 @@ import secrets
 import statistics
 import sys
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,6 +148,17 @@ def _check(result: CaseResult, name: str, ok: bool, detail: str = "") -> None:
     result.checks.append({"check": name, "ok": bool(ok), "detail": detail})
 
 
+_HYPHENS = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), "-")
+
+
+def _normalize(text: str) -> str:
+    """Lower-cased, with every Unicode space as a plain space and every dash as
+    "-". gpt-oss writes "7\u202fkg" (narrow no-break space) and "cabin\u2011baggage"
+    (non-breaking hyphen); a reader sees "7 kg", and so must the checks."""
+    text = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in text)
+    return text.translate(_HYPHENS).lower()
+
+
 def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
     """Apply the case's expectations to a reply. Pure: no network."""
     if result.error is not None:
@@ -155,7 +167,7 @@ def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
 
     exp = case["expect"]
     text = result.text or ""
-    lowered = text.lower()
+    lowered = _normalize(text)
 
     _check(result, "http_200", result.status_code == 200, f"status {result.status_code}")
     _check(result, "non_empty", bool(text.strip()), "empty reply" if not text.strip() else "")
@@ -170,13 +182,13 @@ def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
                    f"expected {exp['type']}, got {result.message_type}")
 
     for group in exp.get("must_mention_any", []):
-        hit = next((term for term in group if term.lower() in lowered), None)
+        hit = next((term for term in group if _normalize(term) in lowered), None)
         _check(result, "mentions", hit is not None,
                f"found {hit!r}" if hit else f"none of {group}")
 
     for term in exp.get("must_not_contain", []):
-        _check(result, "must_not_contain", term.lower() not in lowered,
-               f"contains {term!r}" if term.lower() in lowered else "")
+        _check(result, "must_not_contain", _normalize(term) not in lowered,
+               f"contains {term!r}" if _normalize(term) in lowered else "")
 
     for pattern in exp.get("must_not_match", []):
         m = re.search(pattern, text, re.IGNORECASE)

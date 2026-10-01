@@ -136,3 +136,18 @@ def test_rate_limited_case_backs_off_then_reports_unscored(monkeypatch):
     with httpx.Client(transport=transport) as client:
         r = e2e.run_case(client, "http://test", e2e.load_cases(ids=["greeting_hi"])[0], timeout=5)
     assert r.error and "429" in r.error
+
+
+@pytest.mark.parametrize("text", [
+    "Usually one bag of 7\u202fkg.",          # narrow no-break space, as gpt-oss writes it
+    "Usually one bag of 7\u00a0kg.",          # no-break space
+    "Usually one bag of 7 KG.",
+])
+def test_mentions_ignore_unicode_spacing_and_case(text):
+    case = _case(must_mention_any=[["7 kg"]])
+    assert e2e.score(case, _result(text)).passed is True
+
+
+def test_must_not_contain_sees_through_non_breaking_hyphens():
+    case = _case(must_not_contain=["check-in closes"])
+    assert e2e.score(case, _result("Check\u2011in closes 45 minutes before.")).passed is False
