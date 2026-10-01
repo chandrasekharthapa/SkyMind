@@ -31,8 +31,18 @@ _SCRAPE_SLOTS = threading.BoundedSemaphore(
 )
 
 
-async def _acquire_scrape_slot() -> None:
+async def _acquire_scrape_slot(timeout: float) -> None:
+    """Wait up to `timeout` seconds for a scrape slot.
+
+    Raises asyncio.TimeoutError on expiry, so a queue that does not clear is
+    handled exactly like a slow scrape. The deadline is kept here rather than by
+    wrapping this in a second asyncio.wait_for: the call site's single wait_for
+    is the bound on the gateway's whole lifecycle, and is tested as such.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout
     while not _SCRAPE_SLOTS.acquire(blocking=False):
+        if asyncio.get_running_loop().time() >= deadline:
+            raise asyncio.TimeoutError(f"no scrape slot free within {timeout}s")
         await asyncio.sleep(0.25)
 
 logger = logging.getLogger(__name__)
@@ -181,7 +191,7 @@ class FlightDataService:
                     # Waiting for a slot is bounded by the same per-attempt timeout;
                     # if the queue does not clear in time this attempt times out
                     # like a slow scrape would, through the handler below.
-                    await asyncio.wait_for(_acquire_scrape_slot(), timeout=timeout)
+                    await _acquire_scrape_slot(timeout)
                     try:
                         res = await asyncio.wait_for(
                             call_fresh_gateway(), timeout=timeout
