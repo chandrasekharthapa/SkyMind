@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/mcp/stdio_server.js",
+    "test": "node --test",
     "dev": "nodemon src/mcp/stdio_server.js"
   },
   "keywords": [

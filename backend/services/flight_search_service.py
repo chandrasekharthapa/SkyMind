@@ -548,8 +548,20 @@ class FlightSearchService:
                         carrier = flight.get("primary_airline") or flight.get("airline_code") or "UNKNOWN"
                         fl_num = flight.get("flight_number")  # None if absent, zero synthetic defaults
                         
+                        # The scraper reports duration as `duration_minutes` (an
+                        # int); this read `duration`, a key it never sends, so the
+                        # column was NULL on every scraped row. Stored as ISO-8601
+                        # (PT2H15M), the form the normaliser and the column's other
+                        # writers use. An explicit `duration` still wins.
                         duration = flight.get("duration")
+                        if duration is None:
+                            mins = flight.get("duration_minutes")
+                            if isinstance(mins, (int, float)) and not isinstance(mins, bool) and mins > 0:
+                                h, m = divmod(int(mins), 60)
+                                duration = f"PT{h}H{m}M" if h else f"PT{m}M"
                         stops = flight.get("stops")
+                        if isinstance(stops, bool) or not isinstance(stops, int) or stops < 0:
+                            stops = None
                         terminal = flight.get("terminal")
                         
                         seats = flight.get("seats")
@@ -585,6 +597,7 @@ class FlightSearchService:
                             seats_available=seats,
                             flight_number=fl_num,
                             departure_time=dep_time_raw,
+                            arrival_time=flight.get("arrival_time"),
                             cabin_class=cabin_class,
                             # What the provider quoted, not what we hope it quoted.
                             # This argument was simply not passed, and the parameter

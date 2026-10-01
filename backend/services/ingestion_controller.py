@@ -50,6 +50,7 @@ class MarketDataController:
         flight_number: Optional[str] = None,
         departure_time: Optional[str] = None,
         cabin_class: str = "ECONOMY",
+        arrival_time: Optional[str] = None,
         currency: Optional[str] = None,
         is_holiday: Optional[bool] = None,
         recorded_at: Optional[str] = None,
@@ -133,6 +134,13 @@ class MarketDataController:
         departure_time = MarketDataController.normalize_departure_time(
             departure_time, departure_date
         )
+        # The scraper has always read the arrival time; nothing passed it on. Same
+        # normalisation as departure: the scraper already moves an overnight
+        # arrival to the next calendar day, and a bare clock time is anchored to
+        # the departure date.
+        arrival_time = MarketDataController.normalize_departure_time(
+            arrival_time, departure_date
+        )
 
         # `currency` defaulted to the literal "INR", and the one production caller
         # has never passed it — so every row this function has ever produced claimed
@@ -173,6 +181,7 @@ class MarketDataController:
             "airline_code": airline_code.upper().strip(),
             "flight_number": flight_number,
             "departure_time": departure_time,
+            "arrival_time": arrival_time,
             "cabin_class": cabin_class,
             "price": float(price),
             "currency": currency,
@@ -235,6 +244,7 @@ class MarketDataController:
             "is_live", "data_source", "is_synthetic", "training_weight", "urgency",
             "provider", "search_id", "snapshot_id", "collector_version", "booking_date",
             "duration", "stops", "terminal", "route", "departure_time",
+            "arrival_time",
         }
         return {k: v for k, v in payload.items() if k in db_keys and v is not None}
 

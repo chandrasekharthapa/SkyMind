@@ -5,6 +5,7 @@ Performs no searching, forecasting, or machine learning operations.
 """
 
 import logging
+import re
 from typing import Dict, Any, List
 from backend.database.database import database as db
 
@@ -90,11 +91,7 @@ class HistoricalDataService:
                 dedup["groups_disagreeing_on_price"], dedup["max_price_spread"],
                 dedup["kept"], dedup["submitted"],
             )
-        try:
-            resp = db.supabase.table("price_history").insert(records).execute()
-        except Exception as err:
-            logger.error(f"[HistoricalDataService] Failed to insert observation rows: {err}")
-            raise err
+        resp = self._insert_dropping_unknown_columns(records)
 
         returned = getattr(resp, "data", None)
         if isinstance(returned, list):
@@ -113,6 +110,36 @@ class HistoricalDataService:
             "returned no row representation; treating the persisted count as unknown."
         )
         return -1
+
+    _MISSING_COLUMN = re.compile(r"Could not find the '([A-Za-z0-9_]+)' column")
+
+    def _insert_dropping_unknown_columns(self, records: List[Dict[str, Any]], max_drops: int = 3):
+        """Insert, and if PostgREST rejects a column the table does not have
+        (PGRST204), drop that column from every row and try again.
+
+        PostgREST refuses the whole batch over one unknown key. When a new field
+        is deployed before its migration has run, that turned into "no rows
+        stored at all" — the daily collection would silently lose a day. The
+        missing column is logged at ERROR every time, so the migration still gets
+        noticed, but the observations are kept.
+        """
+        dropped: List[str] = []
+        while True:
+            try:
+                return db.supabase.table("price_history").insert(records).execute()
+            except Exception as err:
+                match = self._MISSING_COLUMN.search(str(err))
+                if not match or len(dropped) >= max_drops:
+                    logger.error(f"[HistoricalDataService] Failed to insert observation rows: {err}")
+                    raise err
+                column = match.group(1)
+                dropped.append(column)
+                logger.error(
+                    f"[HistoricalDataService] price_history has no '{column}' column; storing these "
+                    f"{len(records)} row(s) without it. Run the pending migration in "
+                    "backend/database/migrations/ to keep this field."
+                )
+                records = [{k: v for k, v in r.items() if k != column} for r in records]
 
     def insert_snapshot_metadata(self, metadata: Dict[str, Any]) -> None:
         """Stores scheduled execution metadata metrics."""

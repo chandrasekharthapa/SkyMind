@@ -1,4 +1,5 @@
 const BaseProvider = require('./BaseProvider');
+const { parseStops, parseDurationLine } = require('./cardParsing');
 
 class GoogleFlightsProvider extends BaseProvider {
     constructor() {
@@ -167,28 +168,12 @@ class GoogleFlightsProvider extends BaseProvider {
                         }
                     }
 
-                    // Find stops
-                    // `stops` used to initialise to 0, so a card whose text carried
-                    // no stops line was reported as a nonstop flight. Absence is
-                    // now null; the Python side treats it as unknown.
-                    let stops = null;
-                    for (const l of lines) {
-                        if (l.toLowerCase().includes('stop')) {
-                            const m = l.match(/(\d+)\s*stop/i);
-                            if (m) stops = parseInt(m[1]);
-                            else if (l.toLowerCase().includes('nonstop')) stops = 0;
-                            break;
-                        }
-                    }
-
-                    // The duration is the line containing "hr"
-                    let duration = null;
-                    for (const l of lines) {
-                        if (l.includes('hr')) {
-                            duration = l;
-                            break;
-                        }
-                    }
+                    // Stops and duration: see cardParsing.js. `stops` used to
+                    // initialise to 0, so a card with no stops line was reported as
+                    // non-stop; absence is null. And the zero-stop check matched only
+                    // the US "Nonstop", not the "Non-stop" an en-IN page shows.
+                    const stops = parseStops(lines);
+                    const duration = parseDurationLine(lines);
                     
                     // Flight number: Google Flights does not publish one on this
                     // page, so there is nothing to extract and this is null by
