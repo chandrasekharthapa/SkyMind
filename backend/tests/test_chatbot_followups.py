@@ -6,6 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# A departure date that is always in the future. These tests hard-coded
+# "2026-07-26", which has since passed; execute_chatbot_tool now refuses past
+# departure dates (see prepare_tool_args), so a fixed date would rot.
+from datetime import date as _date, timedelta as _timedelta
+FUTURE_DATE = (_date.today() + _timedelta(days=30)).isoformat()
+
 from backend.services.chatbot_service import chatbot_service
 from backend.services.flight_search_service import flight_search_service
 
@@ -15,7 +21,7 @@ async def test_chatbot_context_fill_followups(monkeypatch):
     context = chatbot_service.get_session_context("sess_12345")
     context.origin = "DEL"
     context.destination = "BOM"
-    context.departure_date = "2026-07-26"
+    context.departure_date = FUTURE_DATE
 
     # Simulate final tool execution callback
     mock_search = AsyncMock(return_value=[])
@@ -36,7 +42,7 @@ async def test_chatbot_context_fill_followups(monkeypatch):
     mock_search.assert_called_once_with(
         origin_iata="DEL",
         destination_iata="BOM",
-        departure_date="2026-07-26",
+        departure_date=FUTURE_DATE,
         adults=1,
         cabin_class="BUSINESS",
         sorting="price"

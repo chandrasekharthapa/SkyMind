@@ -11,82 +11,146 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 class ChatResponseValidator:
+    _CURRENCY_AMOUNT = re.compile(
+        r"(?:₹|\bRs\.?|\bINR)\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(?:\bINR\b|\brupees?\b)",
+        re.IGNORECASE,
+    )
+
     @staticmethod
     def extract_prices(text: str) -> List[float]:
-        """Extract all prices/numbers from the output text.
-        
-        Deliberately excludes:
-        - Calendar years (1900–2099) — e.g. "July 23, 2026"
-        - Numbers below 500 — e.g. flight durations, stops, seat counts
-        - Flight numbers that embed a year-like digit sequence
+        """Extract fare-like amounts from the output text.
+
+        An amount written with a rupee marker (₹, Rs, INR, "rupees") is always a
+        price. A bare number is treated as one only if it is >= 500 and not a
+        calendar year (1900–2099), so durations, stops, seat counts and dates are
+        skipped.
+
+        The year exclusion used to apply to every number, marked or not, so an
+        invented ₹1,999 or ₹2,000 fare — ordinary sale-fare figures — could never
+        fail verification.
         """
-        cleaned = re.sub(r'[,₹$]', '', text)
-        prices = []
-        for match in re.finditer(r'\b(\d+(?:\.\d+)?)\b', cleaned):
-            raw = match.group(1)
+        prices: List[float] = []
+        spans = []
+        for m in ChatResponseValidator._CURRENCY_AMOUNT.finditer(text):
+            raw = (m.group(1) or m.group(2) or "").replace(",", "")
             try:
-                val = float(raw)
-                int_val = int(val)
-                # Skip calendar years (1900–2099)
-                if 1900 <= int_val <= 2099:
-                    continue
-                # Skip anything below a realistic minimum domestic fare
-                if val < 500:
-                    continue
-                prices.append(val)
+                prices.append(float(raw))
+                spans.append(m.span())
             except ValueError:
                 pass
+
+        # Bare numbers, outside the currency-marked spans already taken.
+        masked = list(text)
+        for a, b in spans:
+            masked[a:b] = " " * (b - a)
+        cleaned = re.sub(r"(?<=\d),(?=\d)", "", "".join(masked))
+        for match in re.finditer(r"\b(\d+(?:\.\d+)?)\b", cleaned):
+            try:
+                val = float(match.group(1))
+            except ValueError:
+                continue
+            if 1900 <= int(val) <= 2099 or val < 500:
+                continue
+            prices.append(val)
         return prices
+
+    @staticmethod
+    def _num(value: Any) -> Optional[float]:
+        """A price as a float, or None. Accepts {"total": x} price objects too."""
+        if isinstance(value, dict):
+            value = value.get("total")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def collect_verified_prices(tool_results: List[Dict[str, Any]]) -> set:
+        """Every fare figure the tools actually returned, rounded to the rupee.
+
+        This used to read only `result["flights"]`, `predicted_price` and
+        `data`. recommend_flights returns its options under cheapest / fastest /
+        best_value, so a turn that called only that tool produced an EMPTY set —
+        and an empty set disabled the check below entirely ("if not matched and
+        valid_prices"), letting any invented fare through. It also called
+        float() on whatever `price` held and indexed forecast days with [],
+        either of which raised on an unexpected shape and turned the whole chat
+        turn into "Something went wrong".
+        """
+        valid: set = set()
+
+        def add(v: Any) -> None:
+            n = ChatResponseValidator._num(v)
+            if n is not None:
+                valid.add(round(n))
+
+        def add_flight(f: Any) -> None:
+            if isinstance(f, dict):
+                add(f.get("price"))
+
+        for result in tool_results:
+            if not isinstance(result, dict):
+                continue
+            for f in result.get("flights") or []:
+                add_flight(f)
+            for key in ("cheapest", "fastest", "best_value"):
+                add_flight(result.get(key))
+            if "predicted_price" in result:
+                add(result.get("predicted_price"))
+            for day in result.get("forecast") or []:
+                if isinstance(day, dict):
+                    for k in ("price", "lower", "upper"):
+                        add(day.get(k))
+            data = result.get("data")
+            if isinstance(data, list):
+                for r in data:
+                    if isinstance(r, dict):
+                        add(r.get("price"))
+        return valid
+
+    # Words for details SkyMind's tools never return. Mentioning one is a sign the
+    # model is describing something it was not given — unless the sentence says
+    # the detail is NOT available, which is the honest answer to "is baggage
+    # included?" and used to be rejected just the same.
+    HALLUCINATION_TRIGGERS = ("baggage", "luggage", "discount", "promo", "terminal", "gate")
+    _NEGATION = re.compile(
+        r"\b(?:not|no|don't|doesn't|isn't|aren't|can't|cannot|won't|unavailable|"
+        r"unable|without|n't|never|don’t|doesn’t|isn’t|can’t)\b",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _asserts_unverified_detail(cls, text: str) -> Optional[str]:
+        for sentence in re.split(r"(?<=[.!?\n])\s+", text):
+            lowered = sentence.lower()
+            for word in cls.HALLUCINATION_TRIGGERS:
+                if re.search(r"\b" + word, lowered) and not cls._NEGATION.search(sentence):
+                    return word
+        return None
 
     @staticmethod
     def validate_llm_response(text: str, tool_results: List[Dict[str, Any]]) -> bool:
         """Verifies text content matches values inside tool_results.
-        
-        Returns True if valid, False if it contains hallucinations.
+
+        Returns True if valid, False if it contains hallucinations. With no tool
+        results at all, any fare figure in the text is unverifiable and fails:
+        the assistant may only quote prices a tool returned.
         """
-        # Collect all valid prices
-        valid_prices = set()
-        valid_airlines = set()
-        valid_flights = set()
+        valid_prices = ChatResponseValidator.collect_verified_prices(tool_results)
 
-        for result in tool_results:
-            # 1. Search flights result mapping
-            if "status" in result and result.get("status") == "success" and "flights" in result:
-                for f in result["flights"]:
-                    valid_prices.add(round(float(f.get("price", 0.0))))
-                    valid_airlines.add(str(f.get("primary_airline", "")).upper())
-                    valid_flights.add(str(f.get("flight_number", "")).upper())
-            # 2. Predict price result mapping
-            elif "predicted_price" in result:
-                valid_prices.add(round(float(result["predicted_price"])))
-                if "forecast" in result:
-                    for day in result["forecast"]:
-                        valid_prices.add(round(float(day["price"])))
-                        valid_prices.add(round(float(day["lower"])))
-                        valid_prices.add(round(float(day["upper"])))
-            # 3. Direct pricing lists
-            elif "data" in result and isinstance(result["data"], list):
-                for r in result["data"]:
-                    if "price" in r:
-                        valid_prices.add(round(float(r["price"])))
-
-        # Extract prices from text
-        text_prices = ChatResponseValidator.extract_prices(text)
-        for p in text_prices:
+        for p in ChatResponseValidator.extract_prices(text):
             rounded_p = round(p)
             # Allow minor rounding differences of +/- 5 units
-            matched = any(abs(rounded_p - vp) <= 5 for vp in valid_prices)
-            if not matched and valid_prices:
-                logger.warning(f"Validation rejection: price {p} (rounded {rounded_p}) not in verified prices: {valid_prices}")
+            if not any(abs(rounded_p - vp) <= 5 for vp in valid_prices):
+                logger.warning(
+                    f"Validation rejection: price {p} (rounded {rounded_p}) not in verified prices: "
+                    f"{sorted(valid_prices)[:20]}"
+                )
                 return False
 
-        # Hallucination keywords check: do not invent details not present in tool results
-        hallucination_triggers = ["baggage", "luggage", "discount", "promo", "terminal", "gate"]
-        for word in hallucination_triggers:
-            if word in text.lower():
-                # If these words are mentioned in text, assert they are not hallucinated details
-                # In our platform, tool results do not contain baggage/terminals, so LLM must not fabricate them.
-                logger.warning(f"Validation rejection: contains hallucination-prone keyword '{word}'")
-                return False
+        word = ChatResponseValidator._asserts_unverified_detail(text)
+        if word:
+            logger.warning(f"Validation rejection: asserts unverified detail '{word}'")
+            return False
 
         return True

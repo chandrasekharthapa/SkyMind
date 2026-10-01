@@ -27,6 +27,20 @@ _KEYWORD_MAP: Dict[DomainEnum, List[str]] = {
         "connecting flight", "ticket", "travel", "destination",
         "turbulence", "pilot", "cabin", "jet", "airplane", "fly", "flying",
         "book", "booking", "trend", "trends", "route", "routes",
+        # The words people actually use to ask about fares. None of these were
+        # here, so "Delhi to Mumbai price on Friday" or "cheapest fare to Goa"
+        # matched nothing, fell through to UNKNOWN, and were redirected with
+        # "I'm designed to assist with aviation and travel" — the product's core
+        # question refused by its own scope filter.
+        "fare", "fares", "price", "prices", "pricing", "cheap", "cheapest",
+        "cost", "costs", "expensive", "deal", "deals", "trip", "trips",
+        "holiday", "vacation", "itinerary", "one way", "one-way", "oneway",
+        "round trip", "return trip", "nonstop", "non-stop", "direct",
+        "stopover", "economy", "business class", "first class", "premium economy",
+        "refund", "cancellation", "reschedule", "pnr", "seat", "seats",
+        "forecast", "predict", "prediction", "depart", "leave", "arrive",
+        "indigo", "air india", "vistara", "spicejet", "akasa", "airasia",
+        "go first", "alliance air", "star air",
     ],
     DomainEnum.PERSONAL: [
         "girlfriend", "boyfriend", "relationship", "love", "love you",
@@ -56,7 +70,9 @@ _KEYWORD_MAP: Dict[DomainEnum, List[str]] = {
         "hospital", "prescription", "therapy", "diagnosis",
     ],
     DomainEnum.POLITICS: [
-        "election", "president", "policy", "government",
+        # "policy" was here, which sent "IndiGo's cancellation policy" — a booking
+        # question — to the politics redirect ("can't discuss politics").
+        "election", "president", "government",
         "political", "congress", "parliament", "vote", "modi",
         "minister", "politician", "trump", "biden", "obama", "politics",
     ],
@@ -82,13 +98,60 @@ def _match_keywords(text: str, keywords: List[str]) -> bool:
 
     Uses ``\\b`` at the start to anchor to a word boundary, but allows
     the keyword to appear as a prefix of a longer word (e.g., ``flight``
-    matches ``flights``).
+    matches ``flights``). Used for aviation, where prefix matching is what
+    lets one entry cover flights/flying/booked.
     """
     lowered = text.lower()
     for kw in keywords:
         if re.search(r"\b" + re.escape(kw), lowered):
             return True
     return False
+
+
+def _match_whole_words(text: str, keywords: List[str]) -> bool:
+    """Whole-word match (allowing a plural s/es), for the off-topic domains.
+
+    Prefix matching is wrong for a deny-list: "stock" matched "Stockholm",
+    "sad" matched "saddle", "code" matched "codeshare", "api" matched "apiece",
+    and each of those redirected a travel question away from the assistant.
+    """
+    lowered = text.lower()
+    for kw in keywords:
+        if re.search(r"\b" + re.escape(kw) + r"(?:s|es)?\b", lowered):
+            return True
+    return False
+
+
+# Indian airport codes and the city names people type for them. A message naming
+# a route ("DEL to BOM tomorrow", "Bangalore to Goa") is an aviation question even
+# with no aviation word in it. Codes are matched only when written in capitals in
+# the original text, because several are ordinary English words in lower case.
+_AIRPORT_CODES = {
+    "DEL", "BOM", "BLR", "MAA", "CCU", "HYD", "GOI", "GOX", "COK", "BBI", "AMD",
+    "PNQ", "JAI", "LKO", "PAT", "GAU", "IXC", "SXR", "TRV", "VNS", "IXB", "NAG",
+    "IDR", "BHO", "RPR", "VTZ", "IXR", "CJB", "IXM", "TRZ", "IXE", "ATQ", "DED",
+    "IXZ", "STV", "UDR", "IXJ", "IXL", "DIB", "IMF", "AGR", "GAY", "VGA", "TIR",
+}
+_CITY_NAMES = [
+    "delhi", "new delhi", "mumbai", "bombay", "bangalore", "bengaluru", "chennai",
+    "madras", "kolkata", "calcutta", "hyderabad", "goa", "kochi", "cochin",
+    "bhubaneswar", "ahmedabad", "pune", "jaipur", "lucknow", "patna", "guwahati",
+    "chandigarh", "srinagar", "thiruvananthapuram", "trivandrum", "varanasi",
+    "bagdogra", "nagpur", "indore", "bhopal", "raipur", "visakhapatnam", "vizag",
+    "ranchi", "coimbatore", "madurai", "mangalore", "amritsar", "dehradun",
+    "port blair", "surat", "udaipur", "jammu", "leh", "dibrugarh", "imphal",
+]
+
+
+def _mentions_airport(text: str) -> bool:
+    if any(tok in _AIRPORT_CODES for tok in re.findall(r"\b[A-Z]{3}\b", text)):
+        return True
+    lowered = text.lower()
+    return any(re.search(r"\b" + re.escape(city) + r"\b", lowered) for city in _CITY_NAMES)
+
+
+def _is_aviation(text: str) -> bool:
+    return _match_keywords(text, _KEYWORD_MAP[DomainEnum.AVIATION]) or _mentions_airport(text)
 
 
 # Greeting keywords — these are ALLOWED through to the LLM.
@@ -123,11 +186,10 @@ def classify_message(text: str) -> DomainClassification:
 
     for domain in priority_order:
         keywords = _KEYWORD_MAP.get(domain, [])
-        if _match_keywords(text, keywords):
+        if _match_whole_words(text, keywords):
             # Special case: if both aviation AND off-topic keywords are
             # present, aviation wins (e.g. "I'm sad my flight got cancelled")
-            aviation_keywords = _KEYWORD_MAP.get(DomainEnum.AVIATION, [])
-            if _match_keywords(text, aviation_keywords):
+            if _is_aviation(text):
                 break  # Fall through to aviation check below
 
             scope = _SCOPE_FOR_DOMAIN.get(domain, ScopeEnum.HARD_OFF_TOPIC)
@@ -141,8 +203,7 @@ def classify_message(text: str) -> DomainClassification:
             )
 
     # Check aviation
-    aviation_keywords = _KEYWORD_MAP.get(DomainEnum.AVIATION, [])
-    if _match_keywords(text, aviation_keywords):
+    if _is_aviation(text):
         return DomainClassification(
             domain=DomainEnum.AVIATION,
             intent=IntentEnum.UNKNOWN,
@@ -153,7 +214,8 @@ def classify_message(text: str) -> DomainClassification:
         )
 
     # Check greetings — these are allowed through to the LLM as DomainEnum.GREETING
-    if _match_keywords(text, _GREETING_KEYWORDS):
+    # Whole words: as a prefix, "hi" also matched "his", "history" and "hiking".
+    if _match_whole_words(text, _GREETING_KEYWORDS):
         return DomainClassification(
             domain=DomainEnum.GREETING,
             intent=IntentEnum.GREETING,

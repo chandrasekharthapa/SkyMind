@@ -157,16 +157,23 @@ function ChatbotContent() {
 
       setAiStage("searching");
 
-      if (!response.ok) {
-        setHasError(true);
-        const text = await response.text();
-        if (text && text.includes("SkyMind")) {
-          setSystemMessage(text.trim());
-        } else {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+      // The backend labels fixed messages (blocked, off-topic redirect, rate
+      // limit, message too long) with this header. This used to be guessed from
+      // the text: any chunk containing "SkyMind" was treated as a notice, which
+      // also matched real answers that mention SkyMind and cut them off.
+      const isNotice = response.headers.get("X-SkyMind-Message-Type") === "notice";
+
+      if (isNotice) {
+        const text = (await response.text()).trim();
+        if (!response.ok) setHasError(true);
+        setSystemMessage(text || "Sorry, I couldn't process that. Please try again.");
         setIsAiStatusVisible(false);
         return;
+      }
+
+      if (!response.ok) {
+        setHasError(true);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       if (!response.body) {
@@ -186,13 +193,8 @@ function ChatbotContent() {
         const { value, done } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        if (!chunk) continue;
 
-        if (chunk && chunk.includes("SkyMind")) {
-          setSystemMessage(chunk.trim());
-          setMessages((prev) => prev.slice(0, -1));
-          setIsAiStatusVisible(false);
-          return;
-        }
         setMessages((prev) => {
           const updated = [...prev];
           const lastIndex = updated.length - 1;

@@ -4,8 +4,12 @@ Defines deterministic tool executions mapping directly to core SkyMind services.
 No direct database clients or synthetic features are used.
 """
 
+import asyncio
+import inspect
 import logging
-from typing import Dict, Any, Optional, List
+from datetime import date, datetime
+from typing import Dict, Any, Optional, List, Tuple
+from zoneinfo import ZoneInfo
 import numpy as np
 
 from backend.services.flight_search_service import flight_search_service
@@ -296,21 +300,106 @@ TOOL_MAP = {
     "historical_prices": HistoricalPricesTool
 }
 
+# Fields the chat service fills from the conversation when a tool call omits them.
+CONTEXT_FIELDS = ("origin", "destination", "departure_date")
+_IST = ZoneInfo("Asia/Kolkata")
+
+
+def accepted_params(name: str) -> Optional[set]:
+    """The keyword arguments a registered tool's run() accepts, or None if unknown."""
+    tool_cls = TOOL_MAP.get(name)
+    if not tool_cls or not hasattr(tool_cls, "run"):
+        return None
+    return {
+        p.name for p in inspect.signature(tool_cls.run).parameters.values()
+        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+
+
+def prepare_tool_args(name: str, args: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """Clean an LLM-produced argument dict for `name`.
+
+    Returns (args, error). The model's arguments were passed straight to
+    run(**args), so any key the tool does not take — an "adults" the model
+    added, or the origin/destination/departure_date the chat service merged in
+    from earlier turns — raised TypeError. That made airport_information and
+    route_information fail on every turn after the first route search, because
+    the merged context always carried a departure_date they do not accept.
+
+    Also normalises what the model commonly gets almost right: city names for
+    airport codes ("Delhi" -> "DEL"), relative dates ("tomorrow"), and lower
+    case. A date that is malformed or already past (in India time — the fares
+    are Indian domestic) is returned as an error the model can relay, instead of
+    sending the scraper after a flight that has left.
+    """
+    from backend.services.intent_planner import normalize_airport_code, normalize_relative_date
+
+    allowed = accepted_params(name)
+    cleaned = {k: v for k, v in (args or {}).items() if allowed is None or k in allowed}
+
+    for key in ("origin", "destination"):
+        if key in cleaned:
+            raw = cleaned[key]
+            code = normalize_airport_code(str(raw)) if raw is not None else None
+            if not code:
+                return cleaned, (
+                    f"'{raw}' is not a recognised airport. Ask the user for the city or its "
+                    "3-letter IATA code."
+                )
+            cleaned[key] = code
+
+    if "airline_code" in cleaned:
+        code = str(cleaned["airline_code"] or "").strip().upper()
+        if code:
+            cleaned["airline_code"] = code
+        else:
+            cleaned.pop("airline_code")
+
+    if "cabin_class" in cleaned:
+        cabin = str(cleaned["cabin_class"] or "ECONOMY").strip().upper().replace(" ", "_")
+        cleaned["cabin_class"] = cabin if cabin in {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"} else "ECONOMY"
+
+    if "departure_date" in cleaned:
+        raw = cleaned["departure_date"]
+        iso = normalize_relative_date(str(raw), datetime.now(_IST)) if raw else None
+        try:
+            parsed = date.fromisoformat(iso) if iso else None
+        except ValueError:
+            parsed = None
+        if parsed is None:
+            return cleaned, (
+                f"'{raw}' is not a valid departure date. Ask the user for a date (YYYY-MM-DD)."
+            )
+        if parsed < datetime.now(_IST).date():
+            return cleaned, (
+                f"{parsed.isoformat()} is in the past. Ask the user for a future departure date."
+            )
+        cleaned["departure_date"] = parsed.isoformat()
+
+    return cleaned, None
+
+
 async def execute_chatbot_tool(name: str, args: dict) -> Dict[str, Any]:
     """Dynamically route execution to target registered tool wrapper."""
     tool_cls = TOOL_MAP.get(name)
     if not tool_cls:
         logger.warning(f"Unregistered tool invoked: {name}")
         return {"status": "error", "message": f"Tool '{name}' is not registered."}
-        
+
+    clean_args, problem = prepare_tool_args(name, args)
+    if problem:
+        return {"status": "error", "message": problem}
+
     try:
-        # Route async run or sync run
-        if hasattr(tool_cls, "run"):
-            import inspect
-            if inspect.iscoroutinefunction(tool_cls.run):
-                return await tool_cls.run(**args)
-            else:
-                return tool_cls.run(**args)
+        if inspect.iscoroutinefunction(tool_cls.run):
+            return await tool_cls.run(**clean_args)
+        # The synchronous tools make blocking Supabase calls; run them off the
+        # event loop so one chat turn does not stall every other request.
+        return await asyncio.to_thread(tool_cls.run, **clean_args)
+    except TypeError as e:
+        # A required argument is missing. Tell the model what to ask for.
+        logger.warning(f"Tool {name} called with incomplete args {sorted(clean_args)}: {e}")
+        return {"status": "error", "message": f"Missing information for {name}: {e}. Ask the user for it."}
     except Exception as e:
-        logger.error(f"Failed executing tool {name} with args {args}: {e}")
+        logger.error(f"Failed executing tool {name} with args {clean_args}: {e}")
         return {"status": "error", "message": str(e)}

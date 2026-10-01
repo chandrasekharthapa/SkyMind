@@ -9,11 +9,14 @@ import json
 import logging
 import asyncio
 import time
+from collections import OrderedDict
 from typing import List, Dict, Any, AsyncGenerator, Optional
 from openai import AsyncOpenAI
 from opentelemetry import metrics, trace
 
-from backend.services.chatbot_tools import TOOL_MAP, execute_chatbot_tool
+from backend.services.chatbot_tools import (
+    TOOL_MAP, CONTEXT_FIELDS, accepted_params, execute_chatbot_tool,
+)
 from backend.services.chat_response_builder import ChatResponseBuilder
 from backend.services.chat_response_validator import ChatResponseValidator
 from backend.governance.models import GovernanceActionEnum
@@ -112,7 +115,30 @@ def _slim_tool_result(result: Dict[str, Any], max_flights: int = 5) -> Dict[str,
 
 # NVIDIA Llama Infrastructure
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-LLM_MODEL_ID = "meta/llama-3.1-70b-instruct"
+# Overridable so a retired or renamed hosted model is a settings change, not a deploy.
+LLM_MODEL_ID = os.getenv("CHAT_MODEL_ID", "meta/llama-3.1-70b-instruct")
+
+# How many rounds of tool calls one turn may make before the model must answer.
+# The old flow made exactly one: it ran the first batch of tools, then asked for
+# the final answer while still offering the tools, and if the model used that
+# second call to request another tool (look up an airport, then search it) the
+# request was dropped, `content` was None, and the user got "Live data isn't
+# available" for a route whose data had just been fetched.
+MAX_TOOL_ROUNDS = int(os.getenv("CHAT_MAX_TOOL_ROUNDS", "3"))
+
+# Conversation contexts kept in memory, least-recently-used evicted first. The
+# dict this replaces was never pruned.
+MAX_SESSIONS = int(os.getenv("CHAT_MAX_SESSIONS", "1000"))
+
+NO_DATA_MESSAGE = "Live data isn't available for this route right now. Try again shortly."
+UNVERIFIED_FARE_MESSAGE = (
+    "I can only quote fares that come from a live search. Tell me the route and date "
+    "(for example, \"DEL to BOM on 15 October\") and I'll look them up."
+)
+UNVERIFIED_ANSWER_MESSAGE = (
+    "I couldn't verify that answer against SkyMind's data, so I've held it back. "
+    "Try asking about a specific route and date."
+)
 
 _SYSTEM_PROMPT_TEMPLATE = """You are SkyMind, a premium Aviation Intelligence Platform.
 
@@ -205,17 +231,43 @@ class ConversationContext:
         self.cabin_class: str = "ECONOMY"
 
     def update_from_args(self, args: Dict[str, Any]) -> None:
-        """Update context parameters from successful tool call arguments."""
-        if args.get("origin"):
-            self.origin = args["origin"].upper()
-        if args.get("destination"):
-            self.destination = args["destination"].upper()
-        if args.get("departure_date"):
-            self.departure_date = args["departure_date"]
-        if args.get("airline_code"):
-            self.airline_code = args["airline_code"].upper()
-        if args.get("cabin_class"):
-            self.cabin_class = args["cabin_class"]
+        """Update context parameters from successful tool call arguments.
+
+        Values come from the model's JSON, so they are not guaranteed to be
+        strings; `.upper()` on a number raised and ended the turn.
+        """
+        def text(key: str) -> Optional[str]:
+            value = args.get(key)
+            return str(value).strip() if value not in (None, "") else None
+
+        if text("origin"):
+            self.origin = text("origin").upper()
+        if text("destination"):
+            self.destination = text("destination").upper()
+        if text("departure_date"):
+            self.departure_date = text("departure_date")
+        if text("airline_code"):
+            self.airline_code = text("airline_code").upper()
+        if text("cabin_class"):
+            self.cabin_class = text("cabin_class").upper()
+
+    def seed_from_route(self, route: Optional[Dict[str, Any]]) -> None:
+        """Fill unset fields from the results page the user is chatting on.
+
+        The widget sends the route of the search page it is opened on; it was
+        ignored, so "is this a good price?" asked from DEL->BOM results had no
+        route. Only empty fields are filled — the conversation wins.
+        """
+        if not route:
+            return
+        if not self.origin and route.get("origin"):
+            self.origin = str(route["origin"]).upper()
+        if not self.destination and route.get("destination"):
+            self.destination = str(route["destination"]).upper()
+        if not self.departure_date and route.get("departure_date"):
+            self.departure_date = str(route["departure_date"])
+        if route.get("cabin_class") and self.cabin_class == "ECONOMY":
+            self.cabin_class = str(route["cabin_class"]).upper()
 
     def to_system_prompt_addition(self) -> str:
         """Produce system context text for the LLM injection."""
@@ -235,7 +287,10 @@ from backend.services.memory_manager import memory_manager
 class ChatbotService:
     def __init__(self, nvidia_client: Optional[AsyncOpenAI] = None):
         self.nvidia_client = nvidia_client
-        self.sessions: Dict[str, ConversationContext] = {}
+        self.sessions: "OrderedDict[str, ConversationContext]" = OrderedDict()
+        # Fire-and-forget tasks must be referenced until they finish, or the
+        # event loop may garbage-collect them mid-run.
+        self._background: set = set()
 
     def _get_nvidia_client(self) -> AsyncOpenAI:
         if self.nvidia_client is None:
@@ -249,15 +304,19 @@ class ChatbotService:
         return self.nvidia_client
 
     def get_session_context(self, session_id: str) -> ConversationContext:
-        if session_id not in self.sessions:
-            ctx = ConversationContext()
-            state = memory_manager.get_session_state(session_id)
-            ctx.origin = state.origin
-            ctx.destination = state.destination
-            ctx.departure_date = state.departure_date
-            self.sessions[session_id] = ctx
+        if session_id in self.sessions:
+            self.sessions.move_to_end(session_id)
+            return self.sessions[session_id]
 
-        return self.sessions[session_id]
+        ctx = ConversationContext()
+        state = memory_manager.get_session_state(session_id)
+        ctx.origin = state.origin
+        ctx.destination = state.destination
+        ctx.departure_date = state.departure_date
+        self.sessions[session_id] = ctx
+        while len(self.sessions) > MAX_SESSIONS:
+            self.sessions.popitem(last=False)
+        return ctx
 
     def sync_memory_manager(self, session_id: str, context: ConversationContext):
         memory_manager.update_session_state(session_id, {
@@ -400,275 +459,265 @@ class ChatbotService:
             }
         ]
 
-    async def chat_stream(self, session_id: str, messages: List[Dict[str, Any]]) -> AsyncGenerator[bytes, None]:
-        """Runs conversational flow, executing tools and validation checks before outputting chunks."""
+    @staticmethod
+    def _verified_summary(tool_payloads: List[Dict[str, Any]], context: ConversationContext) -> Optional[str]:
+        """A deterministic answer built only from tool output, for when the
+        model's own wording fails verification. Returns None if there is nothing
+        verified to show."""
+        for payload in tool_payloads:
+            if not isinstance(payload, dict) or payload.get("status") != "success":
+                continue
+            try:
+                if any(payload.get(k) for k in ("cheapest", "fastest", "best_value")):
+                    return ChatResponseBuilder.build_recommendations_summary(payload)
+                flights = payload.get("flights")
+                if flights:
+                    shown = []
+                    for f in flights[:5]:
+                        f = dict(f)
+                        price = f.get("price")
+                        if isinstance(price, (int, float)) and (f.get("currency") in (None, "INR")):
+                            f.setdefault("price_display", f"₹{price:,.0f}")
+                        shown.append(f)
+                    return ChatResponseBuilder.build_flight_search_summary(
+                        shown, context.origin or "", context.destination or ""
+                    )
+            except Exception as e:  # the builder is a convenience, never a failure
+                logger.warning(f"[ChatbotService] Verified summary failed: {e}")
+        return None
+
+    async def _run_tools(
+        self,
+        session_id: str,
+        context: ConversationContext,
+        tool_calls: List[Any],
+        formatted_messages: List[Dict[str, Any]],
+        planner_result: Any,
+    ) -> List[Dict[str, Any]]:
+        """Execute one round of tool calls, append them to the conversation, and
+        return their raw payloads."""
+        formatted_tool_calls = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+            }
+            for tc in tool_calls
+        ]
+        formatted_messages.append({"role": "assistant", "content": None, "tool_calls": formatted_tool_calls})
+
+        llm_tool_names = [tc["function"]["name"] for tc in formatted_tool_calls]
+        suggested_tools = list(getattr(planner_result, "required_tools", []) or [])
+        intersection = set(suggested_tools) & set(llm_tool_names)
+        union = set(suggested_tools) | set(llm_tool_names)
+        match_percent = round(len(intersection) / len(union) * 100.0, 2) if union else 100.0
+        with tracer.start_as_current_span("Tool Comparison") as comp_span:
+            comp_span.set_attribute("planner_vs_llm_match_percent", match_percent)
+        logger.info(json.dumps({
+            "event": "planner_vs_llm_comparison",
+            "suggested_tools": suggested_tools,
+            "llm_tool_calls": llm_tool_names,
+            "planner_vs_llm_match_percent": match_percent,
+        }))
+
+        tasks, infos = [], []
+        for tc in formatted_tool_calls:
+            name = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"]["arguments"] or "{}")
+                if not isinstance(args, dict):
+                    args = {}
+            except Exception:
+                args = {}
+
+            # Fill route fields the model left out from earlier turns — but only
+            # fields this tool takes. Merging all three into every call is what
+            # broke airport_information and route_information.
+            params = accepted_params(name) or set()
+            for key in CONTEXT_FIELDS:
+                if key in params and not args.get(key) and getattr(context, key, None):
+                    args[key] = getattr(context, key)
+
+            infos.append((tc["id"], name, args))
+            tasks.append(execute_chatbot_tool(name, args))
+
+        t0 = time.perf_counter()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        tool_latency_hist.record(time.perf_counter() - t0)
+
+        payloads, failed = [], []
+        for (tool_id, name, args), result in zip(infos, results):
+            if isinstance(result, Exception):
+                tool_failures_counter.add(1, {"tool": name})
+                failed.append(name)
+                logger.error(f"Tool {name} raised: {result}")
+                result = {"status": "error", "message": str(result)}
+            elif isinstance(result, dict) and result.get("status") == "success":
+                # Remember the route only from calls that worked, so a rejected
+                # date or unknown city does not become the session's context.
+                context.update_from_args(args)
+            payloads.append(result)
+            formatted_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_id,
+                "name": name,
+                "content": json.dumps(_slim_tool_result(result), default=str),
+            })
+
+        logger.info(json.dumps({
+            "event": "tool_execution_completed",
+            "tools_executed": llm_tool_names,
+            "tool_execution_time_ms": round((time.perf_counter() - t0) * 1000, 2),
+            "failed_tools": failed,
+        }))
+
+        task = asyncio.create_task(evidence_builder.build_shadow(session_id, payloads))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+        return payloads
+
+    async def chat_stream(
+        self,
+        session_id: str,
+        messages: List[Dict[str, Any]],
+        route_context: Optional[Dict[str, Any]] = None,
+    ) -> AsyncGenerator[bytes, None]:
+        """Run one conversational turn and yield the verified answer.
+
+        The answer is yielded only after it has been checked against the tool
+        output. The first model call used to be streamed straight to the user,
+        so an answer that quoted fares without calling any tool reached the
+        screen unverified; every path now goes through the same validator.
+        """
         req_t0 = time.perf_counter()
         context = self.get_session_context(session_id)
-        
+        context.seed_from_route(route_context)
+
         user_msgs = [m["content"] for m in messages if m.get("role") == "user"]
         latest_query = user_msgs[-1] if user_msgs else ""
         context_dict = {"origin": context.origin, "destination": context.destination, "departure_date": context.departure_date}
-        
-        # ── Phase 1.1: Hybrid OpenAI Intent Planner ──────────────────────
-        planner_result = await intent_planner.plan(latest_query, context_dict)
 
-        # ── Phase 2.0: Planner-Informed System Prompt Construction ─────────
-        planner_prompt_section = format_planner_prompt_section(planner_result)
-        is_injected = bool(planner_prompt_section)
-        section_size = len(planner_prompt_section)
-        planner_tokens = len(planner_prompt_section.split()) if is_injected else 0
-
-        logger.info(json.dumps({
-            "event": "planner_context_injected",
-            "planner_context_injected": is_injected,
-            "prompt_planner_section_size": section_size,
-            "planner_prompt_tokens": planner_tokens
-        }))
-
-        # Inject conversation history & advisory planner context into system prompt
-        full_system_prompt = _build_system_prompt() + context.to_system_prompt_addition() + planner_prompt_section
-        
-        formatted_messages = [{"role": "system", "content": full_system_prompt}]
-        for msg in messages:
-            if msg.get("role") in ["user", "assistant"]:
-                formatted_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
-
-        parent_run_id = langsmith_tracer.start_trace_request(session_id, latest_query, messages)
+        parent_run_id = None
         full_output_text = ""
-
-        # Attach Planner Observability Metadata to LangSmith Trace
-        langsmith_tracer.trace_tool_call(
-            tool_name="planner_telemetry",
-            args={"query": latest_query, "planner_source": planner_result.planner_source},
-            result=planner_result.model_dump(),
-            duration_seconds=planner_result.planner_latency_ms / 1000.0
-        )
-
         try:
-            llm_start = time.perf_counter()
-            response = await self._get_nvidia_client().chat.completions.create(
-                model=LLM_MODEL_ID,
-                messages=formatted_messages,
-                tools=self.get_tool_definitions(),
-                stream=True
+            planner_result = await intent_planner.plan(latest_query, context_dict)
+            planner_prompt_section = format_planner_prompt_section(planner_result)
+
+            full_system_prompt = (
+                _build_system_prompt() + context.to_system_prompt_addition() + planner_prompt_section
             )
-            llm_latency_hist.record(time.perf_counter() - llm_start)
+            formatted_messages: List[Dict[str, Any]] = [{"role": "system", "content": full_system_prompt}]
+            for msg in messages:
+                if msg.get("role") in ("user", "assistant"):
+                    formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-            tool_calls = {}
-            streamed_text = ""
-            stream_start = time.perf_counter()
+            parent_run_id = langsmith_tracer.start_trace_request(session_id, latest_query, messages)
+            langsmith_tracer.trace_tool_call(
+                tool_name="planner_telemetry",
+                args={"query": latest_query, "planner_source": planner_result.planner_source},
+                result=planner_result.model_dump(),
+                duration_seconds=planner_result.planner_latency_ms / 1000.0,
+            )
 
-            async for chunk in response:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    streamed_text += delta.content
-                    full_output_text += delta.content
-                    yield delta.content.encode("utf-8")
+            client = self._get_nvidia_client()
+            tool_payloads: List[Dict[str, Any]] = []
+            tools_called = False
+            final_text = ""
+            for round_no in range(MAX_TOOL_ROUNDS + 1):
+                # The last round withholds the tools, so the model has to answer.
+                offer_tools = round_no < MAX_TOOL_ROUNDS
+                kwargs: Dict[str, Any] = {"model": LLM_MODEL_ID, "messages": formatted_messages}
+                if offer_tools:
+                    kwargs["tools"] = self.get_tool_definitions()
+                llm_t0 = time.perf_counter()
+                response = await client.chat.completions.create(**kwargs)
+                llm_latency_hist.record(time.perf_counter() - llm_t0)
 
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        if tc.index not in tool_calls:
-                            tool_calls[tc.index] = {
-                                "id": tc.id,
-                                "function": {"name": tc.function.name, "arguments": ""},
-                            }
-                        if tc.function.arguments:
-                            tool_calls[tc.index]["function"]["arguments"] += tc.function.arguments
+                message = response.choices[0].message
+                calls = list(getattr(message, "tool_calls", None) or [])
+                if not calls or not offer_tools:
+                    final_text = (message.content or "").strip()
+                    break
+                tools_called = True
+                tool_payloads.extend(
+                    await self._run_tools(session_id, context, calls, formatted_messages, planner_result)
+                )
 
-            streaming_duration_ms = round((time.perf_counter() - stream_start) * 1000, 2)
+            is_valid = ChatResponseValidator.validate_llm_response(final_text, tool_payloads)
+            val_errors = [] if is_valid else ["unverified fare or detail in response"]
+            if not is_valid:
+                hallucination_rejection_counter.add(1)
+                logger.warning("[ChatbotService] Final answer failed verification; not shown.")
 
-            # ── Execute Tool Calls in Parallel ──────────────────────────
-            if tool_calls:
-                formatted_tool_calls = []
-                for idx, tc in tool_calls.items():
-                    formatted_tool_calls.append({
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc["function"]["name"],
-                            "arguments": tc["function"]["arguments"]
-                        }
-                    })
-                formatted_messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": formatted_tool_calls
-                })
-
-                # ── Runtime Planner vs. LLM Tool Comparison ─────────────
-                llm_tool_names = [tc["function"]["name"] for tc in formatted_tool_calls]
-                suggested_tools = planner_result.required_tools
-
-                planner_missing = [t for t in llm_tool_names if t not in suggested_tools]
-                planner_extra = [t for t in suggested_tools if t not in llm_tool_names]
-                
-                intersection = set(suggested_tools).intersection(set(llm_tool_names))
-                union = set(suggested_tools).union(set(llm_tool_names))
-                match_percent = round((len(intersection) / len(union)) * 100.0, 2) if union else 100.0
-
-                with tracer.start_as_current_span("Tool Comparison") as comp_span:
-                    comp_span.set_attribute("planner_vs_llm_match_percent", match_percent)
-                    comp_span.set_attribute("planner_missing_count", len(planner_missing))
-                    comp_span.set_attribute("planner_extra_count", len(planner_extra))
-
-                # Emit Structured JSON Log for Comparison
-                logger.info(json.dumps({
-                    "event": "planner_vs_llm_comparison",
-                    "suggested_tools": suggested_tools,
-                    "llm_tool_calls": llm_tool_names,
-                    "planner_vs_llm_match_percent": match_percent,
-                    "planner_missing_tools": planner_missing,
-                    "planner_extra_tools": planner_extra,
-                    "llm_extra_tools": planner_missing
-                }))
-
-                # Prepare parallel coroutines
-                tasks = []
-                tool_info_list = []
-                for idx, tc in tool_calls.items():
-                    tool_name = tc["function"]["name"]
-                    tool_args_str = tc["function"]["arguments"]
-                    tool_id = tc["id"]
-                    
-                    try:
-                        tool_args = json.loads(tool_args_str)
-                    except Exception:
-                        tool_args = {}
-
-                    # Enrich tool_args with missing fields from context
-                    for key in ["origin", "destination", "departure_date"]:
-                        if key not in tool_args and getattr(context, key, None):
-                            tool_args[key] = getattr(context, key)
-
-                    # Update context with new state parameters
-                    context.update_from_args(tool_args)
-
-                    tool_info_list.append((tool_id, tool_name, tool_args))
-                    tasks.append(execute_chatbot_tool(tool_name, tool_args))
-
-                # Execute tasks concurrently
-                tool_t0 = time.perf_counter()
-                tool_results = await asyncio.gather(*tasks, return_exceptions=True)
-                tool_execution_time_ms = round((time.perf_counter() - tool_t0) * 1000, 2)
-                tool_latency_hist.record(tool_execution_time_ms / 1000.0)
-
-                tool_payloads = []
-                failed_tools = []
-                for idx, result in enumerate(tool_results):
-                    tool_id, tool_name, tool_args = tool_info_list[idx]
-                    
-                    if isinstance(result, Exception):
-                        tool_failures_counter.add(1, {"tool": tool_name})
-                        failed_tools.append(tool_name)
-                        logger.error(f"Concurrent tool execution error: {result}")
-                        result = {"status": "error", "message": str(result)}
-                    
-                    tool_payloads.append(result)
-
-                    # Slim result for LLM context
-                    llm_content = _slim_tool_result(result)
-                    formatted_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "name": tool_name,
-                        "content": json.dumps(llm_content)
-                    })
-
-                # Emit Structured Tool Execution JSON Log
-                logger.info(json.dumps({
-                    "event": "tool_execution_completed",
-                    "tools_executed": llm_tool_names,
-                    "tool_execution_time_ms": tool_execution_time_ms,
-                    "parallel_batches": 1,
-                    "failed_tools": failed_tools
-                }))
-
-                # Execute shadow evidence builder (non-blocking)
-                asyncio.create_task(evidence_builder.build_shadow(session_id, tool_payloads))
-
-                # Run final LLM generation step based on tool details
-                if tool_payloads:
-                    final_res = await self._get_nvidia_client().chat.completions.create(
-                        model=LLM_MODEL_ID,
-                        messages=formatted_messages,
-                        tools=self.get_tool_definitions(),
-                        stream=False
-                    )
-                    
-                    final_text = final_res.choices[0].message.content or ""
-
-                    # Verify response logic
-                    is_valid = ChatResponseValidator.validate_llm_response(final_text, tool_payloads)
-                    val_errors = [] if is_valid else ["detected hallucinated fields in response"]
-                    if not is_valid:
-                        hallucination_rejection_counter.add(1)
-                        logger.warning("Rejection trigger: detected hallucinated fields in final LLM response.")
-                        final_text = "Live pricing data isn't available for this route right now. Try again shortly."
-
-                    # ── Phase 3.0: OpenAI LLM Judge Quality Assurance Check ────
-                    should_run_judge, trigger_reason = judge_agent.should_trigger(
-                        validator_passed=is_valid,
-                        planner_confidence=planner_result.confidence,
-                        missing_tool_outputs=not tool_payloads if tool_calls else False
-                    )
-
-                    if should_run_judge:
-                        judge_res = await judge_agent.evaluate(
-                            query=latest_query,
-                            messages=messages,
-                            planner_result=planner_result,
-                            tool_payloads=tool_payloads,
-                            primary_llm_response=final_text,
-                            validator_passed=is_valid,
-                            validation_errors=val_errors,
-                            trigger_reason=trigger_reason
-                        )
-
-                        # Attach Judge Telemetry to LangSmith Trace
-                        langsmith_tracer.trace_tool_call(
-                            tool_name="judge_evaluation",
-                            args={"trigger_reason": trigger_reason},
-                            result=judge_res.model_dump(),
-                            duration_seconds=judge_res.judge_latency_ms / 1000.0
-                        )
-
-                        if judge_res.decision == "REPAIR" and judge_res.repaired_response:
-                            logger.info(f"[ChatbotService] Applying Judge Repair (reason: {judge_res.repair_reason})")
-                            final_text = judge_res.repaired_response
-
-                    full_output_text = final_text
-                    if final_text:
-                        yield final_text.encode("utf-8")
+            should_run_judge, trigger_reason = judge_agent.should_trigger(
+                validator_passed=is_valid,
+                planner_confidence=planner_result.confidence,
+                missing_tool_outputs=tools_called and not tool_payloads,
+            )
+            if should_run_judge:
+                judge_res = await judge_agent.evaluate(
+                    query=latest_query,
+                    messages=messages,
+                    planner_result=planner_result,
+                    tool_payloads=tool_payloads,
+                    primary_llm_response=final_text,
+                    validator_passed=is_valid,
+                    validation_errors=val_errors,
+                    trigger_reason=trigger_reason,
+                )
+                langsmith_tracer.trace_tool_call(
+                    tool_name="judge_evaluation",
+                    args={"trigger_reason": trigger_reason},
+                    result=judge_res.model_dump(),
+                    duration_seconds=judge_res.judge_latency_ms / 1000.0,
+                )
+                if judge_res.decision == "REPAIR" and judge_res.repaired_response:
+                    # The repair is another model's text. It used to replace the
+                    # answer unchecked — including an answer the validator had just
+                    # rejected for an invented fare — so the judge could put the
+                    # hallucination straight back. It must pass the same check.
+                    if ChatResponseValidator.validate_llm_response(judge_res.repaired_response, tool_payloads):
+                        logger.info(f"[ChatbotService] Applying judge repair ({judge_res.repair_reason})")
+                        final_text = judge_res.repaired_response
+                        is_valid = True
                     else:
-                        fallback = "Live data isn't available for this route right now. Try again shortly."
-                        full_output_text = fallback
-                        yield fallback.encode("utf-8")
+                        logger.warning("[ChatbotService] Judge repair failed verification; discarded.")
 
-                    total_latency_ms = round((time.perf_counter() - req_t0) * 1000, 2)
-                    
-                    # Emit Request Final Telemetry Log
-                    logger.info(json.dumps({
-                        "event": "request_telemetry_completed",
-                        "total_request_latency_ms": total_latency_ms,
-                        "streaming_duration_ms": streaming_duration_ms,
-                        "validator_passed": is_valid,
-                        "validator_errors": val_errors
-                    }))
+            if not is_valid:
+                final_text = (
+                    self._verified_summary(tool_payloads, context)
+                    or (UNVERIFIED_ANSWER_MESSAGE if tools_called else UNVERIFIED_FARE_MESSAGE)
+                )
+            if not final_text:
+                final_text = NO_DATA_MESSAGE if tools_called else UNVERIFIED_ANSWER_MESSAGE
 
-            total_latency_sec = time.perf_counter() - req_t0
-            chat_latency_hist.record(total_latency_sec)
+            # Only worth persisting when there is a shared store behind it. Without
+            # Redis, memory_manager is a second unbounded in-process dict holding
+            # the same three fields this service already keeps.
+            if getattr(memory_manager, "redis_client", None):
+                self.sync_memory_manager(session_id, context)
+            full_output_text = final_text
+            yield final_text.encode("utf-8")
 
-            # End LangSmith parent trace
-            p_tokens = LangSmithTracer.estimate_tokens(latest_query)
-            c_tokens = LangSmithTracer.estimate_tokens(full_output_text)
-            langsmith_tracer.end_trace_request(parent_run_id, {"response": full_output_text}, p_tokens, c_tokens)
+            total = time.perf_counter() - req_t0
+            chat_latency_hist.record(total)
+            logger.info(json.dumps({
+                "event": "request_telemetry_completed",
+                "total_request_latency_ms": round(total * 1000, 2),
+                "tool_rounds_used": round_no,
+                "validator_passed": is_valid,
+            }))
+            langsmith_tracer.end_trace_request(
+                parent_run_id,
+                {"response": full_output_text},
+                LangSmithTracer.estimate_tokens(latest_query),
+                LangSmithTracer.estimate_tokens(full_output_text),
+            )
 
         except Exception as e:
-            logger.error(f"ChatbotService error: {e}")
-            langsmith_tracer.end_trace_request(parent_run_id, {"error": str(e)})
+            logger.error(f"ChatbotService error: {type(e).__name__}: {e}", exc_info=True)
+            if parent_run_id is not None:
+                langsmith_tracer.end_trace_request(parent_run_id, {"error": str(e)})
             if not full_output_text:
                 yield b"Something went wrong. Please try your aviation question again."
 

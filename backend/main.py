@@ -77,6 +77,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    # The chat widget reads this to tell a fixed notice (blocked, redirected,
+    # rate-limited) from an answer. The frontend is on another origin, so the
+    # browser hides any response header not listed here.
+    expose_headers=["X-SkyMind-Message-Type"],
 )
 
 logger = logging.getLogger("skymind_observability")
