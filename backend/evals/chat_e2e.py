@@ -675,7 +675,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--ids", nargs="*", help="run only these case ids")
     ap.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     ap.add_argument("--delay", type=float, default=None,
-                    help="seconds between requests (default 7, or 1 with SKYMIND_EVAL_KEY)")
+                    help="seconds between requests (default 7, or 10 with SKYMIND_EVAL_KEY for Groq's token limit)")
     ap.add_argument("--timeout", type=float, default=240.0, help="per-request timeout, seconds")
     ap.add_argument("--min-pass", type=float, default=None,
                     help="overall pass-rate floor (default: the dataset's gates, else 0.85)")
@@ -693,7 +693,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.category:
         cases = [c for c in cases if c["category"] in set(args.category)]
     if args.delay is None:
-        args.delay = 1.0 if os.getenv("SKYMIND_EVAL_KEY") else 7.0
+        # With the eval key the rate limit no longer paces the run, but Groq's
+        # free tier still does: about 8,000 tokens a minute per model, and one
+        # chat turn uses 2,000-4,000. Back-to-back cases exhausted it and the
+        # chain fell through to slower models, or failed outright.
+        args.delay = 10.0 if os.getenv("SKYMIND_EVAL_KEY") else 7.0
     gates = load_gates(args.dataset)
     min_pass = args.min_pass if args.min_pass is not None else float(gates.get("min_pass", 0.85))
     if not cases:
