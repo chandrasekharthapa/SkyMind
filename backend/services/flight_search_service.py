@@ -4,6 +4,7 @@ Combines the Flight Repository, MCP Flight Search client, Flight Normalizer,
 ML enrichment, and Recommendation Engine into a unified business logic flow.
 """
 
+import asyncio
 import time
 import logging
 from datetime import date, datetime, timezone
@@ -674,7 +675,10 @@ class FlightSearchService:
                         # swallowed at warning level, so a search whose observations
                         # never reached the database was reported to the caller as an
                         # unqualified success. Both are now recorded.
-                        rows_persisted = historical_data_service.insert_observations(db_payloads)
+                        # Off the event loop: a blocking Supabase insert here
+                        # stalled every other request, /health included.
+                        rows_persisted = await asyncio.to_thread(
+                            historical_data_service.insert_observations, db_payloads)
                         if rows_persisted == -1:
                             persistence_error = "database acknowledged no rows; persisted count unknown"
                             logger.error(f"Ingest of {rows_submitted} observation(s) unconfirmed: {persistence_error}")
@@ -737,7 +741,10 @@ class FlightSearchService:
         unique_flights = FlightNormalizer.deduplicate_flights(unique_flights)
 
         # 4. ML Enrichment
-        unique_flights = self._enrich_with_ml(unique_flights, origin_iata, destination_iata, departure_date)
+        # A Supabase read plus one model prediction per flight, all synchronous;
+        # run in a worker thread so the server keeps answering meanwhile.
+        unique_flights = await asyncio.to_thread(
+            self._enrich_with_ml, unique_flights, origin_iata, destination_iata, departure_date)
 
         # 5. Highlights Identification (Cheapest, Fastest, Best Value)
         cheapest, fastest, best_value = RecommendationEngine.identify_highlights(unique_flights)
