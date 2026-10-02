@@ -26,7 +26,7 @@ The endpoint rate-limits each client (CHAT_RATE_LIMIT_PER_MINUTE, default 10;
 per hour, 60), so the runner paces requests (--delay, default 7 s) and backs off
 once on HTTP 429. The default dataset is chat-e2e-v2: 152 conversations (smoke:
 22). Against the free-tier deployment allow about 10 minutes for smoke and over
-an hour for full — 48 cases are live scrapes, and the per-hour limit of 60
+an hour for full — 49 cases are live scrapes, and the per-hour limit of 60
 requests applies. Release gates are read from the dataset's metadata.json.
 
 Exit codes follow backend.evals.run:

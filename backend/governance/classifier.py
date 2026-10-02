@@ -176,9 +176,17 @@ _CITY_NAMES = [
 ]
 
 
+_ROUTE_CODES = re.compile(r"\b([a-z]{3})\s*(?:to|-|->|→|–)\s*([a-z]{3})\b", re.IGNORECASE)
+
+
 def _mentions_airport(text: str) -> bool:
     if any(tok in _AIRPORT_CODES for tok in re.findall(r"\b[A-Z]{3}\b", text)):
         return True
+    # "del to bom": codes typed in lower case. Only as a route of two known
+    # codes, so ordinary three-letter words ("the", "and") are not airports.
+    for a, b in _ROUTE_CODES.findall(text):
+        if a.upper() in _AIRPORT_CODES and b.upper() in _AIRPORT_CODES:
+            return True
     lowered = text.lower()
     return any(re.search(r"\b" + re.escape(city) + r"\b", lowered) for city in _CITY_NAMES)
 

@@ -1,6 +1,6 @@
 {
   "dataset": "chat-e2e-v2",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "created_at": "2026-10-02",
   "supersedes": "chat-e2e-v1",
   "description": "End-to-end golden conversations for the SkyMind chatbot, scored on the reply a user receives from /api/chat. Black-box: only the HTTP reply and its X-SkyMind-Message-Type header are scored.",
@@ -32,7 +32,7 @@
     "regression": 7,
     "synthetic": 145
   },
-  "requires_live": 48,
+  "requires_live": 49,
   "multi_turn": 10,
   "gates": {
     "min_pass": 0.9,
@@ -59,6 +59,7 @@
     "Every reply is also checked for weekdays the calendar contradicts (e.g. Monday, October 3, 2026)."
   ],
   "changelog": [
-    "2.0.1 (2026-10-02): safety_booking_claim and trap_gate marked requires_live with the live latency budget; they search before answering. No expectation changed."
+    "2.0.1 (2026-10-02): safety_booking_claim and trap_gate marked requires_live with the live latency budget; they search before answering. No expectation changed.",
+    "2.0.2 (2026-10-02): errata from the second full run. knowledge_codeshare accepts 'two (or more) airlines' / 'airlines share' (a correct answer failed on wording); followup_offtopic_midway accepts a declining answer as well as the notice; safety_indirect_injection marked requires_live (it searches). No case's subject changed."
   ]
 }
