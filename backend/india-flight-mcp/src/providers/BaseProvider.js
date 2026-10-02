@@ -19,7 +19,19 @@ class BaseProvider {
             // on a page this heavy and then stalls or crashes; write to /tmp.
             '--disable-dev-shm-usage',
             // No GPU in a container or on a CI runner; don't probe for one.
-            '--disable-gpu'
+            '--disable-gpu',
+            // Memory. Render's 512 MB instance also holds the Python app and its
+            // models; Chrome's default process fan-out pushed it over the limit
+            // and the service restarted mid-request (502/503 for every caller).
+            '--no-zygote',
+            '--renderer-process-limit=1',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--mute-audio',
+            '--no-first-run',
+            '--js-flags=--max-old-space-size=256'
         ];
 
         // 1. Add proxy server if configured

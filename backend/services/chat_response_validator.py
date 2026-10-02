@@ -151,6 +151,29 @@ class ChatResponseValidator:
         return None
 
     @staticmethod
+    def strip_unverified_amounts(text: str) -> str:
+        """The answer without the lines and sentences that quote a rupee amount.
+
+        For a knowledge answer (no tool data) the only thing that fails
+        verification is a quoted price or fee. Throwing out the whole answer
+        replaced, say, an explanation of Saver vs Flexi fares with "I can only
+        quote prices that come from live data" — no answer at all. Dropping just
+        the sentences with amounts keeps the explanation."""
+        kept_lines = []
+        for line in text.splitlines():
+            if line.strip().startswith("|"):
+                # Table rows are dropped whole; a row cannot lose a cell.
+                if not ChatResponseValidator._CURRENCY_AMOUNT.search(line):
+                    kept_lines.append(line)
+                continue
+            parts = re.split(r"(?<=[.!?])\s+", line)
+            kept = [p for p in parts if not ChatResponseValidator._CURRENCY_AMOUNT.search(p)]
+            if kept or not line.strip():
+                kept_lines.append(" ".join(kept))
+        cleaned = "\n".join(kept_lines)
+        return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+    @staticmethod
     def validate_llm_response(text: str, tool_results: List[Dict[str, Any]]) -> bool:
         """Verifies text content matches values inside tool_results.
 

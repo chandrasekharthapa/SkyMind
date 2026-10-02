@@ -26,7 +26,7 @@ The endpoint rate-limits each client (CHAT_RATE_LIMIT_PER_MINUTE, default 10;
 per hour, 60), so the runner paces requests (--delay, default 7 s) and backs off
 once on HTTP 429. The default dataset is chat-e2e-v2: 152 conversations (smoke:
 22). Against the free-tier deployment allow about 10 minutes for smoke and over
-an hour for full — 46 cases are live scrapes, and the per-hour limit of 60
+an hour for full — 48 cases are live scrapes, and the per-hour limit of 60
 requests applies. Release gates are read from the dataset's metadata.json.
 
 Exit codes follow backend.evals.run:
@@ -463,8 +463,31 @@ def run_case(client: httpx.Client, base_url: str, case: Dict[str, Any], timeout:
         result.text = resp.text
         if resp.status_code == 429:
             result.error = "rate limited (HTTP 429) after one back-off"
+        elif resp.status_code in (502, 503, 504):
+            # The host's proxy answering for a backend that is down or
+            # restarting: an outage, not an answer the chatbot gave. Counted as
+            # not scorable (the run is PARTIAL), and the runner waits for the
+            # service to come back before the next case.
+            result.error = f"service unavailable (HTTP {resp.status_code})"
         return result
     return result
+
+
+def wait_until_healthy(client: httpx.Client, base_url: str, max_wait: float = 300.0,
+                       cooldown: float = 20.0) -> bool:
+    """After a timeout or an outage, poll /health until the service answers,
+    then let it settle. Firing the next case into a restarting or still-busy
+    server turned one crash into thirty failed cases."""
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
+        try:
+            if client.get(f"{base_url.rstrip('/')}/health", timeout=30).status_code == 200:
+                time.sleep(cooldown)
+                return True
+        except httpx.HTTPError:
+            pass
+        time.sleep(10)
+    return False
 
 
 def wake(client: httpx.Client, base_url: str) -> None:
@@ -693,8 +716,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         for i, (case, n) in enumerate(runs):
             if i:
                 time.sleep(args.delay)
-            r = score(case, run_case(client, args.base_url, case, args.timeout))
+            # Live cases get their latency budget plus a margin, so the client
+            # does not give up (and move on, stacking a second scrape on the
+            # server) while the server is still within budget.
+            budget = (case.get("expect") or {}).get("max_latency_s")
+            timeout = max(args.timeout, budget + 60) if isinstance(budget, (int, float)) else args.timeout
+            r = score(case, run_case(client, args.base_url, case, timeout))
             r.attempt = n
+            if r.error and ("Timeout" in r.error or "unavailable" in r.error or "ConnectError" in r.error):
+                print(f"      {r.error}; waiting for the service to recover…", flush=True)
+                if not wait_until_healthy(client, args.base_url):
+                    print("      service did not recover within 5 minutes", flush=True)
             if args.judge and case.get("reference") and r.passed is not None and r.text:
                 try:
                     j = judge_answer(case["messages"][-1]["content"], case.get("reference", ""), r.text)

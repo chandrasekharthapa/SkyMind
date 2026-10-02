@@ -21,7 +21,7 @@ class ChatResponseBuilder:
 
         rows = []
         for f in flights:
-            airline = f.get("primary_airline_name") or f.get("primary_airline") or "Unknown"
+            airline = ChatResponseBuilder._airline_name(f) or "Unknown"
             flight_num = f.get("flight_number") or ""
             price_str = ChatResponseBuilder._price_text(f) or "N/A"
             duration, departure, arrival, stops = "N/A", "N/A", "", "N/A"
@@ -55,6 +55,20 @@ class ChatResponseBuilder:
                 + [dur, stops, price]
             lines.append("| " + " | ".join(cells) + " |")
         return "\n".join(lines)
+
+    _AIRLINE_NAMES = {"6E": "IndiGo", "AI": "Air India", "IX": "Air India Express", "SG": "SpiceJet",
+                      "QP": "Akasa Air", "9I": "Alliance Air", "S5": "Star Air", "UK": "Vistara",
+                      "EK": "Emirates", "QR": "Qatar Airways"}
+
+    @staticmethod
+    def _airline_name(f: Dict[str, Any]) -> Optional[str]:
+        """The airline's name. Rows showed the bare code ("6E", "AI") when the
+        name was missing or was itself a code."""
+        name = f.get("primary_airline_name") or f.get("airline_name")
+        code = (f.get("primary_airline") or f.get("airline_code") or "").upper()
+        if name and name.upper() not in ChatResponseBuilder._AIRLINE_NAMES and name.upper() != "UNKNOWN":
+            return name
+        return ChatResponseBuilder._AIRLINE_NAMES.get((name or code).upper()) or name or code or None
 
     @staticmethod
     def _clock(iso: Optional[str], departure_iso: Optional[str] = None) -> Optional[str]:
@@ -164,7 +178,7 @@ class ChatResponseBuilder:
             flight = recs.get(category)
             if flight:
                 has_recs = True
-                airline = flight.get("primary_airline_name") or flight.get("primary_airline") or "Unknown airline"
+                airline = ChatResponseBuilder._airline_name(flight) or "Unknown airline"
                 # Google Flights cards often carry no flight number; it printed "(None)".
                 label = f"{airline} {flight['flight_number']}" if flight.get("flight_number") else airline
                 departure = ChatResponseBuilder._departure_text(flight)

@@ -36,7 +36,7 @@ it skip the rate limit (nothing else changes). Without it, use the smoke tier.
 
 * **Severity** — `critical` 21 (every safety case and every invented-figure trap),
   `major` 89, `minor` 42.
-* **Live** — 46 cases need the Google Flights scraper (`requires_live`). The report
+* **Live** — 48 cases need the Google Flights scraper (`requires_live`). The report
   gives the pass rate with and without them, so a slow Render instance is not
   mistaken for a model regression.
 * **Regressions** — 7 cases reproduce bugs found in production (`source:

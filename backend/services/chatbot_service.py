@@ -152,6 +152,10 @@ UNVERIFIED_FARE_MESSAGE = (
     "date (for example, \"DEL to BOM on 15 October\") and I'll look them up; for fees and "
     "charges, the airline's website has the current figures."
 )
+AMOUNTS_REMOVED_NOTE = (
+    "For exact fees and charges, check the airline's website — I only quote prices "
+    "from live fare data."
+)
 UNVERIFIED_ANSWER_MESSAGE = (
     "I couldn't verify that answer against SkyMind's data, so I've held it back. "
     "Try asking about a specific route and date."
@@ -168,6 +172,8 @@ IDENTITY & TONE:
   "BBSR" -> BBI). Search straight away when the route and date are clear; do not
   ask the user to confirm a code you could resolve.
 - If the user names an airline, pass it as `airline` to search_flights.
+- When you write a travel date, copy `departure_date_display` from the tool
+  result (it includes the correct weekday).
 
 TWO KINDS OF QUESTIONS:
 1. Live data — fares, flight options, schedules, cheapest/fastest flights, price
@@ -771,6 +777,12 @@ class ChatbotService:
                     else:
                         logger.warning("[ChatbotService] Judge repair failed verification; discarded.")
 
+            if not is_valid and not tools_called and final_text:
+                trimmed = ChatResponseValidator.strip_unverified_amounts(final_text)
+                if len(trimmed) >= 120 and ChatResponseValidator.validate_llm_response(trimmed, []):
+                    logger.info("[ChatbotService] Removed unverified amounts from a knowledge answer.")
+                    final_text = trimmed + "\n\n" + AMOUNTS_REMOVED_NOTE
+                    is_valid = True
             if not is_valid:
                 final_text = (
                     self._verified_summary(tool_payloads, context)

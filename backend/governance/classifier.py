@@ -194,6 +194,10 @@ _GREETING_KEYWORDS = [
     "hello", "hi", "hey", "good morning", "good afternoon",
     "good evening", "howdy", "greetings", "thanks", "thank you",
     "bye", "goodbye", "see you",
+    # Questions about the assistant itself. "Who are you?" got the off-topic
+    # redirect, which is the one question the assistant must always answer.
+    "who are you", "what are you", "what can you do", "what can you help",
+    "how can you help", "what do you do", "introduce yourself", "your name", "skymind",
 ]
 
 

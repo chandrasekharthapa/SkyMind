@@ -7,6 +7,8 @@ No direct database clients or synthetic features are used.
 import asyncio
 import inspect
 import logging
+import os
+import time
 from datetime import date, datetime
 from typing import Dict, Any, Optional, List, Tuple
 from zoneinfo import ZoneInfo
@@ -73,6 +75,49 @@ def resolve_airline(text: Optional[str]) -> Optional[str]:
     return None
 
 
+# Live results reused within one conversation. A single turn often calls
+# search_flights and then recommend_flights for the same route and date, and a
+# follow-up ("only Air India") repeats it; each call used to start its own
+# Google Flights scrape — 70–90 s apiece on Render, twice per answer.
+_SEARCH_CACHE: Dict[Tuple[str, str, str, str], Tuple[float, Any]] = {}
+_SEARCH_LOCKS: Dict[Tuple[str, str, str, str], asyncio.Lock] = {}
+_SEARCH_CACHE_MAX = 64
+
+
+def _cache_seconds() -> float:
+    return float(os.getenv("CHAT_SEARCH_CACHE_SECONDS", "600"))
+
+
+def clear_search_cache() -> None:
+    _SEARCH_CACHE.clear()
+    _SEARCH_LOCKS.clear()
+
+
+async def _cached_search(origin: str, destination: str, departure_date: str, cabin_class: str):
+    """flight_search_service.search, reused for CHAT_SEARCH_CACHE_SECONDS. A
+    second identical request waits for the first instead of scraping again.
+    Only results with flights are kept, so a failed scrape is retried."""
+    ttl = _cache_seconds()
+    key = (origin.upper(), destination.upper(), departure_date, (cabin_class or "ECONOMY").upper())
+    if ttl <= 0:
+        return await flight_search_service.search(origin_iata=origin, destination_iata=destination,
+                                                  departure_date=departure_date, adults=1,
+                                                  cabin_class=cabin_class, sorting="price")
+    lock = _SEARCH_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        hit = _SEARCH_CACHE.get(key)
+        if hit and time.monotonic() - hit[0] < ttl:
+            return hit[1]
+        res = await flight_search_service.search(origin_iata=origin, destination_iata=destination,
+                                                 departure_date=departure_date, adults=1,
+                                                 cabin_class=cabin_class, sorting="price")
+        if _presentation_to_flights(res):
+            if len(_SEARCH_CACHE) >= _SEARCH_CACHE_MAX:
+                _SEARCH_CACHE.pop(min(_SEARCH_CACHE, key=lambda k: _SEARCH_CACHE[k][0]), None)
+            _SEARCH_CACHE[key] = (time.monotonic(), res)
+        return res
+
+
 class SearchFlightsTool:
     @staticmethod
     async def run(origin: str, destination: str, departure_date: str, cabin_class: str = "ECONOMY",
@@ -84,14 +129,7 @@ class SearchFlightsTool:
         cheapest flights of any airline, all IndiGo.
         """
         try:
-            res = await flight_search_service.search(
-                origin_iata=origin,
-                destination_iata=destination,
-                departure_date=departure_date,
-                adults=1,
-                cabin_class=cabin_class,
-                sorting="price"
-            )
+            res = await _cached_search(origin, destination, departure_date, cabin_class)
             flights = _presentation_to_flights(res)
             metadata = res.metadata if hasattr(res, "metadata") else {}
             result: Dict[str, Any] = {"status": "success", "flights": flights, "metadata": metadata}
@@ -154,14 +192,7 @@ class RecommendFlightsTool:
         """Uses RecommendationEngine to determine Cheapest, Fastest, and Best Value options."""
         try:
             # 1. Search options
-            presentation = await flight_search_service.search(
-                origin_iata=origin,
-                destination_iata=destination,
-                departure_date=departure_date,
-                adults=1,
-                cabin_class=cabin_class,
-                sorting="price"
-            )
+            presentation = await _cached_search(origin, destination, departure_date, cabin_class)
             search_res = _presentation_to_flights(presentation)
             if not search_res:
                 return {"status": "success", "cheapest": None, "fastest": None, "best_value": None}
@@ -287,14 +318,7 @@ class CompareFlightsTool:
     async def run(origin: str, destination: str, departure_date: str, cabin_class: str = "ECONOMY") -> Dict[str, Any]:
         """Compare options side-by-side."""
         try:
-            res = await flight_search_service.search(
-                origin_iata=origin,
-                destination_iata=destination,
-                departure_date=departure_date,
-                adults=1,
-                cabin_class=cabin_class,
-                sorting="price"
-            )
+            res = await _cached_search(origin, destination, departure_date, cabin_class)
             flights = _presentation_to_flights(res)
             return {"status": "success", "flights": flights[:3]}  # Return top 3 options
         except Exception as e:
@@ -440,10 +464,20 @@ async def execute_chatbot_tool(name: str, args: dict) -> Dict[str, Any]:
 
     try:
         if inspect.iscoroutinefunction(tool_cls.run):
-            return await tool_cls.run(**clean_args)
-        # The synchronous tools make blocking Supabase calls; run them off the
-        # event loop so one chat turn does not stall every other request.
-        return await asyncio.to_thread(tool_cls.run, **clean_args)
+            result = await tool_cls.run(**clean_args)
+        else:
+            # The synchronous tools make blocking Supabase calls; run them off the
+            # event loop so one chat turn does not stall every other request.
+            result = await asyncio.to_thread(tool_cls.run, **clean_args)
+        # The model worked out weekdays itself and got them wrong ("Monday,
+        # 1 November 2026" — a Sunday). Hand it the date already spelled out.
+        if isinstance(result, dict) and clean_args.get("departure_date"):
+            try:
+                d = date.fromisoformat(clean_args["departure_date"])
+                result.setdefault("departure_date_display", f"{d.strftime('%A')}, {d.day} {d.strftime('%B %Y')}")
+            except ValueError:
+                pass
+        return result
     except TypeError as e:
         # A required argument is missing. Tell the model what to ask for.
         logger.warning(f"Tool {name} called with incomplete args {sorted(clean_args)}: {e}")

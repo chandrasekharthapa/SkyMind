@@ -191,7 +191,12 @@ class FlightDataService:
                     # Waiting for a slot is bounded by the same per-attempt timeout;
                     # if the queue does not clear in time this attempt times out
                     # like a slow scrape would, through the handler below.
-                    await _acquire_scrape_slot(timeout)
+                    # MCP_SLOT_WAIT_SECONDS caps the wait for a busy scraper
+                    # separately: on a small web instance a chat user is better
+                    # told "busy, try again" in 20 s than queued for minutes
+                    # while requests pile up behind one slow scrape.
+                    slot_wait = float(os.getenv("MCP_SLOT_WAIT_SECONDS", str(timeout)))
+                    await _acquire_scrape_slot(min(timeout, slot_wait))
                     try:
                         res = await asyncio.wait_for(
                             call_fresh_gateway(), timeout=timeout

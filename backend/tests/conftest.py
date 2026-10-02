@@ -47,3 +47,14 @@ def reset_firewall_client():
     NVIDIAClientProvider.reset_client()
     yield
     NVIDIAClientProvider.reset_client()
+
+
+
+@pytest.fixture(autouse=True)
+def _fresh_chat_search_cache():
+    """Chat tools reuse live results for 10 minutes; tests must not see each
+    other's mocked results."""
+    from backend.services.chatbot_tools import clear_search_cache
+    clear_search_cache()
+    yield
+    clear_search_cache()
