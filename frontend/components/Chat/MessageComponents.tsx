@@ -17,18 +17,148 @@ export const TypingMessage: React.FC = () => (
 );
 
 // ─── Markdown Message ────────────────────────────────────────────────
+// Renders the subset of Markdown the assistant writes: headings, tables, bullet
+// and numbered lists, **bold** and `code`. It builds React elements, never an
+// HTML string. The previous version pasted model output into
+// dangerouslySetInnerHTML after a few regex replacements, so a reply containing
+// "<img src=x onerror=...>" (a prompt-injected or echoed string) would have run
+// in the page; it also showed tables and "###" headings as raw text.
+
+const codeStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.03)", padding: "2px 6px", borderRadius: 4,
+  fontFamily: "var(--fm)", fontSize: "0.75rem", border: "1px solid var(--grey1)",
+};
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = pattern.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const token = m[0];
+    if (token.startsWith("**")) {
+      out.push(<strong key={`${keyPrefix}-b${i++}`}>{token.slice(2, -2)}</strong>);
+    } else {
+      out.push(<code key={`${keyPrefix}-c${i++}`} style={codeStyle}>{token.slice(1, -1)}</code>);
+    }
+    last = m.index + token.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+const isTableLine = (line: string) => {
+  const t = line.trim();
+  return t.startsWith("|") && t.endsWith("|") && t.length > 1;
+};
+const splitRow = (line: string) => line.trim().slice(1, -1).split("|").map((c) => c.trim());
+const isDivider = (cells: string[]) => cells.every((c) => /^:?-{2,}:?$/.test(c));
+
 export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
-  let html = content;
-  // Bold
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.03);padding:2px 6px;border-radius:4px;font-family:var(--fm);font-size:0.75rem;border:1px solid var(--grey1)">$1</code>');
-  // Lists
-  html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li style="margin-left:16px;list-style-type:disc;font-size:0.8rem;margin-top:4px">$1</li>');
-  // Newlines
-  html = html.replace(/\n/g, "<br/>");
-  
-  return <div dangerouslySetInnerHTML={{ __html: html }} style={{ fontSize: "0.85rem", lineHeight: "1.5" }} />;
+  const lines = (content || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks: React.ReactNode[] = [];
+  let i = 0;
+  let k = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) { i++; continue; }
+
+    // Table: consecutive |...| lines.
+    if (isTableLine(line)) {
+      const rows: string[][] = [];
+      while (i < lines.length && isTableLine(lines[i])) {
+        const cells = splitRow(lines[i]);
+        if (!isDivider(cells)) rows.push(cells);
+        i++;
+      }
+      const [head, ...body] = rows;
+      blocks.push(
+        <div key={`t${k++}`} style={{ overflowX: "auto", margin: "8px 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem", border: "1px solid var(--grey1)" }}>
+            {head && (
+              <thead>
+                <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                  {head.map((c, ci) => (
+                    <th key={ci} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 700, borderBottom: "1px solid var(--grey1)", whiteSpace: "nowrap" }}>
+                      {renderInline(c, `h${k}-${ci}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {body.map((r, ri) => (
+                <tr key={ri} style={{ borderBottom: "1px solid var(--grey1)" }}>
+                  {r.map((c, ci) => (
+                    <td key={ci} style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{renderInline(c, `r${k}-${ri}-${ci}`)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    // Heading: #, ## or ###.
+    const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const size = h[1].length <= 2 ? "0.95rem" : "0.88rem";
+      blocks.push(
+        <div key={`h${k++}`} style={{ fontWeight: 700, fontSize: size, margin: "6px 0 4px" }}>
+          {renderInline(h[2].replace(/:$/, ""), `hd${k}`)}
+        </div>
+      );
+      i++;
+      continue;
+    }
+
+    // Lists: "- item", "* item" or "1. item".
+    const listItem = (l: string) => l.trim().match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (listItem(line)) {
+      const ordered = /^\d+[.)]/.test(trimmed);
+      const items: string[] = [];
+      while (i < lines.length && listItem(lines[i]) && /^\d+[.)]/.test(lines[i].trim()) === ordered) {
+        items.push(listItem(lines[i])![1]);
+        i++;
+      }
+      const ListTag = ordered ? "ol" : "ul";
+      blocks.push(
+        <ListTag key={`l${k++}`} style={{ margin: "4px 0", paddingLeft: 20, listStyleType: ordered ? "decimal" : "disc" }}>
+          {items.map((it, ii) => <li key={ii} style={{ marginTop: 2 }}>{renderInline(it, `li${k}-${ii}`)}</li>)}
+        </ListTag>
+      );
+      continue;
+    }
+
+    // Paragraph: lines up to the next blank line or block.
+    const para: string[] = [];
+    while (
+      i < lines.length && lines[i].trim() && !isTableLine(lines[i]) &&
+      !/^#{1,6}\s/.test(lines[i].trim()) && !listItem(lines[i])
+    ) {
+      para.push(lines[i].trim());
+      i++;
+    }
+    blocks.push(
+      <p key={`p${k++}`} style={{ margin: "4px 0" }}>
+        {para.map((pl, pi) => (
+          <React.Fragment key={pi}>
+            {pi > 0 && <br />}
+            {renderInline(pl, `p${k}-${pi}`)}
+          </React.Fragment>
+        ))}
+      </p>
+    );
+  }
+
+  return <div style={{ fontSize: "0.85rem", lineHeight: 1.5 }}>{blocks}</div>;
 };
 
 // ─── Table Message ───────────────────────────────────────────────────

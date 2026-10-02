@@ -48,10 +48,41 @@ def _presentation_to_flights(res) -> List[Dict[str, Any]]:
     return []
 
 
+# Airline names people type, to IATA codes. Longest names first, so "Air India
+# Express" is not read as "Air India".
+AIRLINE_ALIASES = {
+    "air india express": "IX", "ai express": "IX",
+    "air india": "AI", "airindia": "AI", "vistara": "AI",  # Vistara merged into Air India (Nov 2024)
+    "indigo": "6E", "spicejet": "SG", "spice jet": "SG",
+    "akasa air": "QP", "akasa": "QP", "alliance air": "9I", "star air": "S5",
+}
+_AIRLINE_CODES = {"6E", "AI", "IX", "SG", "QP", "9I", "S5", "UK"}
+
+
+def resolve_airline(text: Optional[str]) -> Optional[str]:
+    """IATA code for an airline name or code ("Air India" -> "AI"), or None."""
+    if not text:
+        return None
+    raw = str(text).strip()
+    if raw.upper() in _AIRLINE_CODES:
+        return "AI" if raw.upper() == "UK" else raw.upper()
+    lowered = " ".join(raw.lower().split())
+    for name in sorted(AIRLINE_ALIASES, key=len, reverse=True):
+        if name in lowered:
+            return AIRLINE_ALIASES[name]
+    return None
+
+
 class SearchFlightsTool:
     @staticmethod
-    async def run(origin: str, destination: str, departure_date: str, cabin_class: str = "ECONOMY") -> Dict[str, Any]:
-        """Wrap FlightSearchService search execution."""
+    async def run(origin: str, destination: str, departure_date: str, cabin_class: str = "ECONOMY",
+                  airline: Optional[str] = None) -> Dict[str, Any]:
+        """Wrap FlightSearchService search execution.
+
+        `airline` keeps only that carrier's flights. It used to be impossible to
+        ask for: "Air India flights Delhi to Bhubaneswar" returned the five
+        cheapest flights of any airline, all IndiGo.
+        """
         try:
             res = await flight_search_service.search(
                 origin_iata=origin,
@@ -63,7 +94,24 @@ class SearchFlightsTool:
             )
             flights = _presentation_to_flights(res)
             metadata = res.metadata if hasattr(res, "metadata") else {}
-            return {"status": "success", "flights": flights, "metadata": metadata}
+            result: Dict[str, Any] = {"status": "success", "flights": flights, "metadata": metadata}
+            if airline:
+                code = resolve_airline(airline)
+                if code is None:
+                    result["note"] = f"'{airline}' is not an airline SkyMind recognises; showing all airlines."
+                    return result
+                matching = [f for f in flights if (f.get("primary_airline") or "").upper() == code]
+                result["airline_filter"] = code
+                if matching:
+                    result["flights"] = matching
+                elif flights:
+                    names = sorted({f.get("primary_airline_name") or f.get("primary_airline") or "Unknown" for f in flights})
+                    result["note"] = (
+                        f"No {airline.strip()} flights were found for this date. "
+                        f"Other airlines on this route: {', '.join(names)}."
+                    )
+                    result["flights"] = []
+            return result
         except Exception as e:
             logger.error(f"SearchFlightsTool execution failed: {e}")
             return {"status": "error", "message": str(e)}

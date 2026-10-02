@@ -29,18 +29,24 @@ class ChatResponseBuilder:
             duration = "N/A"
             departure = "N/A"
             stops = 0
+            stops = "N/A"
             if f.get("itineraries") and f["itineraries"]:
                 itin = f["itineraries"][0]
-                duration = itin.get("duration") or "N/A"
-                if "PT" in duration:
-                    # Clean ISO format
-                    duration = duration.replace("PT", "").replace("H", "h ").replace("M", "m").strip()
+                duration = ChatResponseBuilder.format_duration(itin.get("duration")) or "N/A"
                 if itin.get("segments") and itin["segments"]:
                     seg = itin["segments"][0]
                     departure = seg.get("departure_time") or "N/A"
                     if "T" in departure:
                         departure = departure.split("T")[1][:5]
-                    stops = len(itin["segments"]) - 1
+                    # The scraper reports stops on the segment. Counting segments
+                    # gave 0 for every flight (there is one segment per card), so
+                    # a 5-hour connection was listed as non-stop.
+                    if isinstance(seg.get("stops"), int):
+                        stops = seg["stops"]
+                    elif len(itin["segments"]) > 1:
+                        stops = len(itin["segments"]) - 1
+            if stops == 0:
+                stops = "Non-stop"
 
             rec_label = "Monitor"
             if f.get("metadata") and isinstance(f["metadata"], dict):
@@ -49,6 +55,18 @@ class ChatResponseBuilder:
             lines.append(f"| {airline} | {flight_num} | {departure} | {duration} | {stops} | {price_str} | {rec_label} |")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def format_duration(iso: Optional[str]) -> Optional[str]:
+        """"PT350M" or "PT5H50M" -> "5h 50m". The normaliser writes whole minutes
+        ("PT350M"), which used to display as "350m"."""
+        import re
+        m = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?", str(iso or "").strip())
+        if not m or not (m.group(1) or m.group(2)):
+            return None
+        total = int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+        h, mins = divmod(total, 60)
+        return f"{h}h {mins:02d}m" if h else f"{mins}m"
 
     @staticmethod
     def build_prediction_summary(pred: Dict[str, Any], origin: str, destination: str, departure_date: str) -> str:

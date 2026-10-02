@@ -37,9 +37,21 @@ CITY_TO_IATA = {
     "HYDERABAD": "HYD",
     "GOA": "GOI",
     "COCHIN": "COK", "KOCHI": "COK",
-    "BHUBANESWAR": "BBI",
+    "BHUBANESWAR": "BBI", "BBSR": "BBI",
     "AHMEDABAD": "AMD",
     "PUNE": "PNQ",
+    "GURGAON": "DEL", "GURUGRAM": "DEL", "NOIDA": "DEL",
+    "SECUNDERABAD": "HYD",
+    "JAIPUR": "JAI", "LUCKNOW": "LKO", "GUWAHATI": "GAU", "PATNA": "PAT",
+    "SRINAGAR": "SXR", "VARANASI": "VNS", "CHANDIGARH": "IXC", "INDORE": "IDR",
+    "NAGPUR": "NAG", "COIMBATORE": "CJB", "VIZAG": "VTZ", "VISAKHAPATNAM": "VTZ",
+    "BAGDOGRA": "IXB", "SILIGURI": "IXB", "AMRITSAR": "ATQ", "RANCHI": "IXR",
+    "RAIPUR": "RPR", "MANGALORE": "IXE", "MANGALURU": "IXE", "MADURAI": "IXM",
+    "DEHRADUN": "DED", "UDAIPUR": "UDR", "PORT BLAIR": "IXZ",
+    "TRIVANDRUM": "TRV", "THIRUVANANTHAPURAM": "TRV", "TVM": "TRV",
+    "CALICUT": "CCJ", "KOZHIKODE": "CCJ", "BHOPAL": "BHO", "SURAT": "STV",
+    "VADODARA": "BDQ", "BARODA": "BDQ", "LEH": "IXL", "JAMMU": "IXJ",
+    "IMPHAL": "IMF", "AGARTALA": "IXA", "TIRUPATI": "TIR", "VIJAYAWADA": "VGA",
 }
 
 INTENT_REQUIRED_PARAMS = {
@@ -59,10 +71,16 @@ def normalize_airport_code(text: str) -> Optional[str]:
     """Resolves city name or IATA code to 3-letter IATA code."""
     if not text:
         return None
-    upper = text.strip().upper()
+    upper = re.sub(r"[^A-Z ]", " ", text.strip().upper())
+    upper = re.sub(r"\s+(INTERNATIONAL\s+)?AIRPORT$", "", " ".join(upper.split()))
+    # Names and common abbreviations first: "BBSR" (Bhubaneswar) and "TVM"
+    # (Trivandrum) are what people type, and "TVM" would otherwise pass as a
+    # 3-letter code that no airport has.
+    if upper in CITY_TO_IATA:
+        return CITY_TO_IATA[upper]
     if len(upper) == 3 and upper.isalpha():
         return upper
-    return CITY_TO_IATA.get(upper)
+    return None
 
 
 def normalize_relative_date(date_str: str, base_date: Optional[datetime] = None) -> Optional[str]:

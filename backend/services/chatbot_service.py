@@ -162,7 +162,12 @@ _SYSTEM_PROMPT_TEMPLATE = """You are SkyMind, an aviation and air-travel assista
 IDENTITY & TONE:
 - Concise, accurate and practical, like a knowledgeable airline or airport desk agent.
 - Use natural date styles ("Monday, July 7") and formatted prices ("₹9,330").
-- Today's date is {today}. Use it to resolve relative dates like "tomorrow" or "next week".
+- Today is {today}; tomorrow is {tomorrow} (India time). Use these for relative
+  dates, and take weekdays from them rather than working them out.
+- Accept city names and common abbreviations for airports (e.g. "Bhubaneswar" or
+  "BBSR" -> BBI). Search straight away when the route and date are clear; do not
+  ask the user to confirm a code you could resolve.
+- If the user names an airline, pass it as `airline` to search_flights.
 
 TWO KINDS OF QUESTIONS:
 1. Live data — fares, flight options, schedules, cheapest/fastest flights, price
@@ -190,9 +195,16 @@ RULES FOR KNOWLEDGE ANSWERS:
 
 
 def _build_system_prompt() -> str:
-    from datetime import date
-    today = date.today().strftime("%A, %B %d, %Y")
-    return _SYSTEM_PROMPT_TEMPLATE.format(today=today)
+    # India time, not the server's UTC date: between midnight and 05:30 IST the
+    # UTC date is still yesterday. Tomorrow is spelled out with its weekday
+    # because the model computed weekdays itself and got them wrong ("tomorrow
+    # (Monday, October 3)" on a Friday).
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    fmt = "%A, %B %d, %Y"
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        today=now.strftime(fmt), tomorrow=(now + timedelta(days=1)).strftime(fmt))
 
 
 def format_planner_prompt_section(planner_result: Optional[Any]) -> str:
@@ -406,7 +418,8 @@ class ChatbotService:
                             "origin": {"type": "string", "description": "3-letter IATA origin airport code (e.g., DEL)"},
                             "destination": {"type": "string", "description": "3-letter IATA destination airport code (e.g., BOM)"},
                             "departure_date": {"type": "string", "description": "Departure date in YYYY-MM-DD format"},
-                            "cabin_class": {"type": "string", "default": "ECONOMY"}
+                            "cabin_class": {"type": "string", "default": "ECONOMY"},
+                            "airline": {"type": "string", "description": "Only this airline's flights, if the user named one (e.g. \"Air India\", \"IndiGo\")"}
                         },
                         "required": ["origin", "destination", "departure_date"]
                     }
@@ -537,7 +550,10 @@ class ChatbotService:
             try:
                 if any(payload.get(k) for k in ("cheapest", "fastest", "best_value")):
                     return ChatResponseBuilder.build_recommendations_summary(payload)
+                note = payload.get("note")
                 flights = payload.get("flights")
+                if note and not flights:
+                    return note
                 if flights:
                     shown = []
                     for f in flights[:5]:
@@ -546,9 +562,10 @@ class ChatbotService:
                         if isinstance(price, (int, float)) and (f.get("currency") in (None, "INR")):
                             f.setdefault("price_display", f"₹{price:,.0f}")
                         shown.append(f)
-                    return ChatResponseBuilder.build_flight_search_summary(
+                    table = ChatResponseBuilder.build_flight_search_summary(
                         shown, context.origin or "", context.destination or ""
                     )
+                    return f"{note}\n\n{table}" if note else table
             except Exception as e:  # the builder is a convenience, never a failure
                 logger.warning(f"[ChatbotService] Verified summary failed: {e}")
         return None
