@@ -129,12 +129,24 @@ class ChatResponseValidator:
         re.IGNORECASE,
     )
 
+    # A sentence that sends the user to check a detail is not asserting it:
+    # "Check the airline's baggage policy before you fly" is advice. That tip,
+    # which the model adds to most flight answers, used to get the whole answer
+    # thrown out and replaced by the bare fallback table.
+    _ADVISORY = re.compile(
+        r"\b(?:check|confirm|verify|review|policy|policies|varies|vary|may|might|"
+        r"depend(?:s|ing)?|subject to|airline'?s|airline’s|website|app|before (?:you )?(?:fly|book))\b",
+        re.IGNORECASE,
+    )
+
     @classmethod
     def _asserts_unverified_detail(cls, text: str) -> Optional[str]:
         for sentence in re.split(r"(?<=[.!?\n])\s+", text):
             lowered = sentence.lower()
             for word in cls.HALLUCINATION_TRIGGERS:
-                if re.search(r"\b" + word, lowered) and not cls._NEGATION.search(sentence):
+                if (re.search(r"\b" + word, lowered)
+                        and not cls._NEGATION.search(sentence)
+                        and not cls._ADVISORY.search(sentence)):
                     return word
         return None
 

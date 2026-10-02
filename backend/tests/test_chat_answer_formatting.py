@@ -40,3 +40,31 @@ def test_recommendations_summary_formats_price_and_skips_missing_flight_number()
     assert "Air India, departs 06:10 at **₹6,913**" in out
     assert "Air India Express IX 1234 at **₹7,017**" in out
     assert "None" not in out and "6913.0" not in out
+
+
+@pytest.mark.parametrize("text", [
+    "The cheapest is AI 2671 at ₹6,913. Check the airline's baggage policy before you fly.",
+    "IndiGo at ₹7,017. Baggage allowance may vary by fare type.",
+    "AI 2671 at ₹6,913. Confirm your terminal on the boarding pass.",
+])
+def test_advice_to_check_a_detail_is_not_an_invented_detail(text):
+    assert V.validate_llm_response(text, TOOL) is True
+
+
+@pytest.mark.parametrize("text", [
+    "AI 2671 at ₹6,913 includes 15 kg free baggage.",
+    "AI 2671 at ₹6,913 departs from Terminal 3, gate 12.",
+    "Book AI 2671 at ₹6,913 and get a 10% discount.",
+])
+def test_asserted_details_are_still_rejected(text):
+    assert V.validate_llm_response(text, TOOL) is False
+
+
+def test_table_drops_columns_that_are_empty_on_every_row_and_shows_arrival():
+    f = {"primary_airline_name": "IndiGo", "price": 11992, "itineraries": [{"duration": "PT385M", "segments": [
+        {"departure_time": "2026-10-03T20:20:00", "arrival_time": "2026-10-04T02:45:00", "stops": 1}]}]}
+    table = ChatResponseBuilder.build_flight_search_summary([f], "BBI", "DEL")
+    header, row = table.splitlines()[2], table.splitlines()[-1]
+    assert header == "| Airline | Departs | Arrives | Duration | Stops | Price |"
+    assert row == "| IndiGo | 20:20 | 02:45 +1 | 6h 25m | 1 | ₹11,992 |"
+    assert "N/A" not in table and "MONITOR" not in table

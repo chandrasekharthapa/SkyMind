@@ -9,35 +9,30 @@ from typing import List, Dict, Any, Optional
 class ChatResponseBuilder:
     @staticmethod
     def build_flight_search_summary(flights: List[Dict[str, Any]], origin: str, destination: str) -> str:
-        """Format flight search results into a clean markdown table list."""
+        """Format flight search results into a compact markdown table.
+
+        Columns that would be empty for every row are left out: Google Flights
+        publishes no flight numbers, so "Flight No" read "N/A" on every line,
+        and "Recommendation" said "MONITOR" on every line. Arrival is shown
+        instead, which the scraper does provide.
+        """
         if not flights:
             return f"No flights found from {origin} to {destination}."
 
-        lines = [
-            f"### Available flights from {origin} to {destination}:",
-            "",
-            "| Airline | Flight No | Departure | Duration | Stops | Price | Recommendation |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
-        ]
-
+        rows = []
         for f in flights:
             airline = f.get("primary_airline_name") or f.get("primary_airline") or "Unknown"
-            flight_num = f.get("flight_number") or "N/A"
-            price_str = f.get("price_display") or f.get("price") or "N/A"
-            
-            # Extract duration and departure from segment if available
-            duration = "N/A"
-            departure = "N/A"
-            stops = 0
-            stops = "N/A"
+            flight_num = f.get("flight_number") or ""
+            price_str = ChatResponseBuilder._price_text(f) or "N/A"
+            duration, departure, arrival, stops = "N/A", "N/A", "", "N/A"
             if f.get("itineraries") and f["itineraries"]:
                 itin = f["itineraries"][0]
                 duration = ChatResponseBuilder.format_duration(itin.get("duration")) or "N/A"
                 if itin.get("segments") and itin["segments"]:
                     seg = itin["segments"][0]
-                    departure = seg.get("departure_time") or "N/A"
-                    if "T" in departure:
-                        departure = departure.split("T")[1][:5]
+                    departure = ChatResponseBuilder._clock(seg.get("departure_time")) or "N/A"
+                    last = itin["segments"][-1]
+                    arrival = ChatResponseBuilder._clock(last.get("arrival_time"), departure_iso=seg.get("departure_time")) or ""
                     # The scraper reports stops on the segment. Counting segments
                     # gave 0 for every flight (there is one segment per card), so
                     # a 5-hour connection was listed as non-stop.
@@ -47,14 +42,41 @@ class ChatResponseBuilder:
                         stops = len(itin["segments"]) - 1
             if stops == 0:
                 stops = "Non-stop"
+            rows.append((airline, flight_num, departure, arrival, duration, str(stops), price_str))
 
-            rec_label = "Monitor"
-            if f.get("metadata") and isinstance(f["metadata"], dict):
-                rec_label = f["metadata"].get("recommendation") or "Monitor"
-
-            lines.append(f"| {airline} | {flight_num} | {departure} | {duration} | {stops} | {price_str} | {rec_label} |")
-
+        show_number = any(r[1] for r in rows)
+        show_arrival = any(r[3] for r in rows)
+        header = ["Airline"] + (["Flight"] if show_number else []) + ["Departs"] + (["Arrives"] if show_arrival else []) \
+            + ["Duration", "Stops", "Price"]
+        lines = [f"### Flights from {origin} to {destination}", "",
+                 "| " + " | ".join(header) + " |", "|" + " :--- |" * len(header)]
+        for airline, num, dep, arr, dur, stops, price in rows:
+            cells = [airline] + ([num or "—"] if show_number else []) + [dep] + ([arr or "—"] if show_arrival else []) \
+                + [dur, stops, price]
+            lines.append("| " + " | ".join(cells) + " |")
         return "\n".join(lines)
+
+    @staticmethod
+    def _clock(iso: Optional[str], departure_iso: Optional[str] = None) -> Optional[str]:
+        """"2026-10-03T06:10:00" -> "06:10", with "+1" when it lands on a later
+        day than `departure_iso`."""
+        if not iso or not isinstance(iso, str):
+            return None
+        text = iso.replace(" ", "T")
+        if "T" not in text:
+            return None
+        day, clock = text.split("T", 1)
+        out = clock[:5]
+        if departure_iso and isinstance(departure_iso, str):
+            dep_day = departure_iso.replace(" ", "T").split("T", 1)[0]
+            try:
+                from datetime import date
+                diff = (date.fromisoformat(day) - date.fromisoformat(dep_day)).days
+                if diff > 0:
+                    out += f" +{diff}"
+            except ValueError:
+                pass
+        return out
 
     @staticmethod
     def format_duration(iso: Optional[str]) -> Optional[str]:
