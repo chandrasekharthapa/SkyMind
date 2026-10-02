@@ -177,6 +177,19 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
+@app.get("/", include_in_schema=False)
+async def root() -> dict:
+    """What someone opening the API's address in a browser sees. It answered a
+    bare 404, which reads as "the deploy is broken" when it is only the API."""
+    return {
+        "service": "SkyMind API",
+        "status": "ok",
+        "health": "/health",
+        "docs": "/docs",
+        "app": "https://skymind-gray.vercel.app",
+    }
+
+
 @app.get("/health", tags=["System"])
 async def health() -> dict:
     """The unprefixed liveness probe, delegating to the one implementation.
