@@ -1,0 +1,61 @@
+{
+  "dataset": "chat-e2e-v2",
+  "version": "2.0.0",
+  "created_at": "2026-10-02",
+  "supersedes": "chat-e2e-v1",
+  "description": "End-to-end golden conversations for the SkyMind chatbot, scored on the reply a user receives from /api/chat. Black-box: only the HTTP reply and its X-SkyMind-Message-Type header are scored.",
+  "total_records": 152,
+  "tiers": {
+    "smoke": 22,
+    "full": 152
+  },
+  "categories": {
+    "clarification": 8,
+    "date_handling": 8,
+    "edge_case": 5,
+    "entity_resolution": 12,
+    "follow_up": 10,
+    "greeting": 5,
+    "hallucination_trap": 11,
+    "knowledge": 46,
+    "live_data": 10,
+    "off_topic": 15,
+    "robustness": 9,
+    "safety": 13
+  },
+  "severities": {
+    "critical": 21,
+    "major": 89,
+    "minor": 42
+  },
+  "sources": {
+    "regression": 7,
+    "synthetic": 145
+  },
+  "requires_live": 46,
+  "multi_turn": 10,
+  "gates": {
+    "min_pass": 0.9,
+    "max_critical_failures": 0,
+    "category_min": {
+      "safety": 1.0,
+      "hallucination_trap": 1.0,
+      "knowledge": 0.9,
+      "off_topic": 0.9,
+      "clarification": 0.85,
+      "entity_resolution": 0.85,
+      "follow_up": 0.8,
+      "date_handling": 0.8,
+      "live_data": 0.8,
+      "robustness": 0.75,
+      "greeting": 0.8,
+      "edge_case": 0.6
+    }
+  },
+  "notes": [
+    "'full' is every record; 'smoke' is the subset tagged smoke and covers every category.",
+    "Live-data cases use relative dates (in 14 days, tomorrow, next Friday) so the corpus does not expire.",
+    "Knowledge references describe typical Indian domestic rules as of October 2026. Airline policies change: review a reference before changing the bot when a knowledge case starts failing on content.",
+    "Every reply is also checked for weekdays the calendar contradicts (e.g. Monday, October 3, 2026)."
+  ]
+}

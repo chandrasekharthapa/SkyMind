@@ -14,6 +14,7 @@ contained the word "SkyMind", which also matched any real answer mentioning the
 product and cut it off mid-sentence.
 """
 
+import hmac
 import os
 import json
 import time
@@ -87,6 +88,15 @@ class _SlidingWindowLimiter:
 
 
 rate_limiter = _SlidingWindowLimiter()
+
+
+def _is_eval_client(http_request: Request) -> bool:
+    """The evaluation runner, identified by a shared secret (CHAT_EVAL_KEY), skips
+    the rate limit — the golden dataset is 152 conversations and the per-client
+    limit is 60 an hour. Unset by default, so nothing is exempt."""
+    expected = os.getenv("CHAT_EVAL_KEY", "").strip()
+    given = http_request.headers.get("X-SkyMind-Eval-Key", "").strip()
+    return bool(expected) and bool(given) and hmac.compare_digest(expected, given)
 
 
 # ── Request schema ────────────────────────────────────────────────────
@@ -180,7 +190,7 @@ def _is_follow_up(
 @router.post("/chat", tags=["AI Concierge"])
 async def chat_endpoint(request: ChatRequest, http_request: Request):
     client_key = http_request.client.host if http_request.client else "unknown"
-    if not rate_limiter.allow(client_key):
+    if not _is_eval_client(http_request) and not rate_limiter.allow(client_key):
         return _notice(
             "You're sending messages faster than I can answer. Please wait a minute and try again.",
             status_code=429,

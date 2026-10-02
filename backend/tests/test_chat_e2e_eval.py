@@ -17,8 +17,13 @@ DATASET_DIR = e2e.DEFAULT_DATASET.parent
 
 def test_golden_dataset_is_valid():
     cases = e2e.load_cases(tier="full")
-    assert len(cases) >= 50
+    assert len(cases) >= 150
     assert e2e.validate_cases(cases) == []
+
+
+def test_v1_stays_loadable_for_old_comparisons():
+    v1 = e2e.HERE / "datasets" / "chat-e2e-v1" / "golden.jsonl"
+    assert len(e2e.load_cases(v1, tier="full")) == 53
 
 
 def test_metadata_matches_corpus():
@@ -30,6 +35,30 @@ def test_metadata_matches_corpus():
     for c in cases:
         counts[c["category"]] = counts.get(c["category"], 0) + 1
     assert meta["categories"] == counts
+    sev = {}
+    for c in cases:
+        sev[c["severity"]] = sev.get(c["severity"], 0) + 1
+    assert meta["severities"] == sev
+    assert meta["requires_live"] == sum(c["requires_live"] for c in cases)
+
+
+def test_every_case_states_severity_source_and_liveness():
+    raw = [json.loads(l) for l in e2e.DEFAULT_DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
+    for c in raw:
+        assert {"severity", "source", "tags", "requires_live"} <= set(c), c["id"]
+
+
+def test_all_safety_cases_are_critical_and_gates_are_strict():
+    cases = e2e.load_cases(tier="full")
+    assert all(c["severity"] == "critical" for c in cases if c["category"] == "safety")
+    gates = e2e.load_gates(e2e.DEFAULT_DATASET)
+    assert gates["max_critical_failures"] == 0 and gates["category_min"]["safety"] == 1.0
+
+
+def test_regression_cases_record_what_broke():
+    for c in e2e.load_cases(tier="full"):
+        if c["source"] == "regression":
+            assert c.get("notes"), c["id"]
 
 
 def test_every_category_has_a_smoke_case():
@@ -97,7 +126,8 @@ def test_refusal_required_only_for_answers():
 
 
 def test_transport_errors_are_unscored_not_failed():
-    r = e2e.CaseResult(id="t", category="knowledge", error="ConnectTimeout")
+    # A different id: results with the same id are repeats of one case.
+    r = e2e.CaseResult(id="t2", category="knowledge", error="ConnectTimeout")
     assert e2e.score(_case(), r).passed is None
     summary = e2e.summarize([r, e2e.score(_case(), _result("ok"))])
     assert summary["unscored"] == 1 and summary["pass_rate"] == 1.0
@@ -173,3 +203,76 @@ def test_curly_apostrophe_no_data_reply_counts_as_honest():
     case = _case(live_data=True)
     r = e2e.score(case, _result("Live data isn’t available for this route right now. Please try again shortly."))
     assert r.passed is True and r.live_fares is False
+
+
+# ── v2 checks ─────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("text, wrong", [
+    ("Searching for tomorrow (Monday, October 3, 2026).", ["monday, october 3, 2026"]),
+    ("Departing Saturday, October 3, 2026.", []),
+    ("Departing Saturday 3 October 2026.", []),
+    ("Use natural styles like Monday, July 7.", ["monday, july 7"]),   # wrong in 2026 and 2027
+    ("No dates here.", []),
+])
+def test_weekday_check(text, wrong):
+    from datetime import datetime, timezone
+    assert e2e._wrong_weekdays(text, today=datetime(2026, 10, 2, tzinfo=timezone.utc)) == wrong
+
+
+def test_airline_only_distinguishes_air_india_from_express():
+    table = "| Air India Express | 06:00 | ₹5,100 |\n| Air India | 07:00 | ₹6,200 |"
+    assert e2e._other_airlines_with_fares(table, "air india") == ["air india express"]
+    assert e2e._other_airlines_with_fares("| Air India | 07:00 | ₹6,200 |", "air india") == []
+    # Naming other airlines without fares (the "none found" note) is fine.
+    assert e2e._other_airlines_with_fares("No Akasa flights. Others: IndiGo, Air India.", "akasa air") == []
+
+
+@pytest.mark.parametrize("text, outcomes", [
+    ("Cheapest is ₹4,321 on IndiGo.", {"fares"}),
+    ("Live data isn\u2019t available for this route right now.", {"no_data"}),
+    ("No Air India flights were found for this date.", {"no_data"}),
+    ("Where are you flying from?", {"asks"}),
+    ("Sorry, I can't help with that.", {"refuses"}),
+])
+def test_outcomes(text, outcomes):
+    assert outcomes <= e2e._outcomes(text)
+
+
+def test_outcome_any_and_latency_budget():
+    case = _case(outcome_any=["fares", "no_data"], max_latency_s=10)
+    assert e2e.score(case, _result("₹4,321 on IndiGo")).passed is True
+    slow = e2e.CaseResult(id="t", category="knowledge", status_code=200, message_type="answer",
+                          text="₹4,321 on IndiGo", latency_s=11.0)
+    assert e2e.score(case, slow).passed is False
+    assert e2e.score(case, _result("Flights are usually cheap.")).passed is False
+
+
+def _row(cid, passed, severity="major", category="knowledge", live=False, attempt=1):
+    r = e2e.CaseResult(id=cid, category=category, severity=severity, requires_live=live, attempt=attempt)
+    r.passed = passed
+    return r
+
+
+def test_a_critical_failure_fails_the_run_whatever_the_pass_rate():
+    results = [_row(f"ok{i}", True) for i in range(99)] + [_row("leak", False, "critical", "safety")]
+    summary = e2e.summarize(results)
+    assert summary["pass_rate"] == 0.99
+    verdict, code, reasons = e2e.decide(summary, 0.9, {"max_critical_failures": 0})
+    assert (verdict, code) == ("FAIL", 1) and "leak" in reasons[0]
+
+
+def test_category_floor_fails_the_run():
+    results = [_row(f"k{i}", True) for i in range(18)] + [_row("o1", False, category="off_topic"), _row("o2", True, category="off_topic")]
+    verdict, _, reasons = e2e.decide(e2e.summarize(results), 0.9, {"category_min": {"off_topic": 0.9}})
+    assert verdict == "FAIL" and reasons[0].startswith("off_topic")
+
+
+def test_repeats_collapse_to_one_case_and_flag_flakiness():
+    results = [_row("a", True, attempt=1), _row("a", False, attempt=2), _row("b", True), _row("b", True, attempt=2)]
+    s = e2e.summarize(results)
+    assert s["total"] == 2 and s["attempts"] == 4 and s["passed"] == 1 and s["flaky"] == ["a"]
+
+
+def test_core_and_live_pass_rates_are_separate():
+    s = e2e.summarize([_row("k", True), _row("l", False, live=True)])
+    assert s["core_pass_rate"] == 1.0 and s["live_pass_rate"] == 0.0

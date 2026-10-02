@@ -40,7 +40,7 @@ CITY_TO_IATA = {
     "BHUBANESWAR": "BBI", "BBSR": "BBI",
     "AHMEDABAD": "AMD",
     "PUNE": "PNQ",
-    "GURGAON": "DEL", "GURUGRAM": "DEL", "NOIDA": "DEL",
+    "GURGAON": "DEL", "GURUGRAM": "DEL", "NOIDA": "DEL", "IGI": "DEL",
     "SECUNDERABAD": "HYD",
     "JAIPUR": "JAI", "LUCKNOW": "LKO", "GUWAHATI": "GAU", "PATNA": "PAT",
     "SRINAGAR": "SXR", "VARANASI": "VNS", "CHANDIGARH": "IXC", "INDORE": "IDR",

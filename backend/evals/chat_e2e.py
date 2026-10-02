@@ -19,11 +19,15 @@ user actually receives. This runner sends each golden conversation to a live
 Usage:
     python -m backend.evals.chat_e2e --base-url https://skymind.onrender.com --tier smoke
     python -m backend.evals.chat_e2e --base-url http://localhost:8000 --tier full --judge
+    python -m backend.evals.chat_e2e --tier full --repeat 3          # flakiness
+    python -m backend.evals.chat_e2e --tags regression               # one slice
 
 The endpoint rate-limits each client (CHAT_RATE_LIMIT_PER_MINUTE, default 10;
 per hour, 60), so the runner paces requests (--delay, default 7 s) and backs off
-once on HTTP 429. The full tier is 53 conversations; against the free-tier
-deployment allow 10-20 minutes, most of it live scrapes.
+once on HTTP 429. The default dataset is chat-e2e-v2: 152 conversations (smoke:
+22). Against the free-tier deployment allow about 10 minutes for smoke and over
+an hour for full — 46 cases are live scrapes, and the per-hour limit of 60
+requests applies. Release gates are read from the dataset's metadata.json.
 
 Exit codes follow backend.evals.run:
     0 PASS     pass rate >= --min-pass and every case produced a scorable reply
@@ -54,18 +58,47 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_DATASET = HERE / "datasets" / "chat-e2e-v1" / "golden.jsonl"
+DEFAULT_DATASET = HERE / "datasets" / "chat-e2e-v2" / "golden.jsonl"
 DEFAULT_RESULTS = HERE / "results"
 
 CATEGORIES = {
     "knowledge", "live_data", "clarification", "follow_up", "off_topic",
     "safety", "hallucination_trap", "greeting",
+    # chat-e2e-v2
+    "entity_resolution", "date_handling", "robustness", "edge_case",
 }
 TYPES = {"answer", "notice", "any"}
 TIERS = {"smoke", "full"}
+SEVERITIES = ("critical", "major", "minor")
+SOURCES = {"synthetic", "regression", "production"}
+OUTCOMES = {"fares", "no_data", "asks", "refuses"}
 
 # Replies the backend gives when it has no data or an error. Matched loosely.
-NO_DATA_MARKERS = ("live data isn't available", "live data is not available", "couldn't verify")
+NO_DATA_MARKERS = (
+    "live data isn't available", "live data is not available", "couldn't verify",
+    "isn't supported", "is not supported", "not supported on skymind", "only covers domestic",
+    "only domestic", "domestic routes only",
+)
+# "No Air India flights were found for this date", "no flights found".
+NO_DATA_RE = re.compile(r"\bno\b[^.\n]{0,40}\bflights?\b[^.\n]{0,30}\b(found|available)\b")
+
+# Indian domestic carriers by the names replies use, longest first so "Air India
+# Express" is not read as "Air India".
+AIRLINE_NAMES = {
+    "air india express": "IX", "air india": "AI", "indigo": "6E", "spicejet": "SG",
+    "akasa air": "QP", "akasa": "QP", "alliance air": "9I", "star air": "S5", "vistara": "AI",
+}
+_AIRLINE_RE = re.compile(
+    r"\b(" + "|".join(re.escape(n) for n in sorted(AIRLINE_NAMES, key=len, reverse=True)) + r")\b")
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august",
+           "september", "october", "november", "december"]
+_WD = "(" + "|".join(_WEEKDAYS) + ")"
+_MO = "(" + "|".join(_MONTHS) + "|" + "|".join(m[:3] for m in _MONTHS) + r")\.?"
+# "Friday, October 2, 2026" / "Friday 2 October 2026" / "Fri, Oct 2"
+_DATE_MDY = re.compile(_WD + r",?\s+" + _MO + r"\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?")
+_DATE_DMY = re.compile(_WD + r",?\s+(\d{1,2})(?:st|nd|rd|th)?\s+" + _MO + r"(?:,?\s+(\d{4}))?")
 ERROR_MARKERS = ("something went wrong",)
 REFUSAL_MARKERS = (
     "can't", "cannot", "can not", "unable", "won't", "not able", "not something i",
@@ -83,6 +116,12 @@ def load_cases(path: Path = DEFAULT_DATASET, tier: str = "full", ids: Optional[L
     errors = validate_cases(cases)
     if errors:
         raise ValueError("Golden dataset failed validation:\n  " + "\n  ".join(errors))
+    for c in cases:
+        # Defaults keep the frozen v1 corpus loadable; v2 states every field.
+        c.setdefault("severity", "major")
+        c.setdefault("source", "synthetic")
+        c.setdefault("tags", [])
+        c.setdefault("requires_live", bool(c.get("expect", {}).get("live_data")))
     if tier == "smoke":
         cases = [c for c in cases if c["tier"] == "smoke"]
     if ids:
@@ -123,6 +162,26 @@ def validate_cases(cases: List[Dict[str, Any]]) -> List[str]:
                 errors.append(f"{cid}: must_mention_any groups must be non-empty lists")
         if c.get("category") == "knowledge" and not c.get("reference"):
             errors.append(f"{cid}: knowledge cases need a reference answer for the judge")
+        if "severity" in c and c["severity"] not in SEVERITIES:
+            errors.append(f"{cid}: severity must be one of {list(SEVERITIES)}")
+        if "source" in c and c["source"] not in SOURCES:
+            errors.append(f"{cid}: source must be one of {sorted(SOURCES)}")
+        if "tags" in c and not (isinstance(c["tags"], list) and all(isinstance(t, str) for t in c["tags"])):
+            errors.append(f"{cid}: tags must be a list of strings")
+        for pattern in exp.get("must_match", []):
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                errors.append(f"{cid}: bad regex {pattern!r}: {e}")
+        bad_outcomes = set(exp.get("outcome_any", [])) - OUTCOMES
+        if bad_outcomes:
+            errors.append(f"{cid}: unknown outcome(s) {sorted(bad_outcomes)}")
+        if exp.get("airline_only") and exp["airline_only"].lower() not in AIRLINE_NAMES:
+            errors.append(f"{cid}: airline_only {exp['airline_only']!r} is not a known airline name")
+        if "max_latency_s" in exp and not isinstance(exp["max_latency_s"], (int, float)):
+            errors.append(f"{cid}: max_latency_s must be a number")
+        if c.get("source") == "regression" and not c.get("notes"):
+            errors.append(f"{cid}: regression cases need notes saying what broke")
     return errors
 
 
@@ -132,6 +191,10 @@ def validate_cases(cases: List[Dict[str, Any]]) -> List[str]:
 class CaseResult:
     id: str
     category: str
+    severity: str = "major"
+    tags: List[str] = field(default_factory=list)
+    requires_live: bool = False
+    attempt: int = 1
     status_code: Optional[int] = None
     message_type: Optional[str] = None
     text: str = ""
@@ -180,6 +243,61 @@ def _asks(text: str) -> bool:
     return any(marker in lowered for marker in _REQUEST_MARKERS)
 
 
+def _outcomes(text: str) -> set:
+    """Which kinds of reply this is: real fares, an honest no-data, a question,
+    a refusal. A reply can be more than one."""
+    lowered = _normalize(text)
+    found = set()
+    if FARE_RE.search(text):
+        found.add("fares")
+    if any(m in lowered for m in NO_DATA_MARKERS) or NO_DATA_RE.search(lowered):
+        found.add("no_data")
+    if _asks(text):
+        found.add("asks")
+    if any(m in lowered for m in REFUSAL_MARKERS):
+        found.add("refuses")
+    return found
+
+
+def _wrong_weekdays(text: str, today: Optional[datetime] = None) -> List[str]:
+    """Dates written with a weekday that the calendar contradicts, e.g. "Monday,
+    October 3, 2026" (a Saturday). Without a year, it is wrong only if it is
+    wrong in both this year and next."""
+    import calendar
+    from datetime import date as _date
+    year = (today or datetime.now(timezone.utc)).year
+    lowered = _normalize(text)
+    bad = []
+    for regex, order in ((_DATE_MDY, "mdy"), (_DATE_DMY, "dmy")):
+        for m in regex.finditer(lowered):
+            wd = m.group(1)
+            mo_raw, day_raw = (m.group(2), m.group(3)) if order == "mdy" else (m.group(3), m.group(2))
+            mo = next(i for i, name in enumerate(_MONTHS, 1) if mo_raw.startswith(name[:3]))
+            years = [int(m.group(4))] if m.group(4) else [year, year + 1]
+            ok = False
+            for y in years:
+                try:
+                    ok = ok or _WEEKDAYS[_date(y, mo, int(day_raw)).weekday()] == wd
+                except ValueError:
+                    pass
+            if not ok:
+                bad.append(m.group(0))
+    return bad
+
+
+def _other_airlines_with_fares(text: str, wanted: str) -> List[str]:
+    """Airlines other than `wanted` named on a line that quotes a fare."""
+    want = AIRLINE_NAMES[wanted.lower()]
+    others = []
+    for line in _normalize(text).splitlines():
+        if not FARE_RE.search(line):
+            continue
+        for name in _AIRLINE_RE.findall(line):
+            if AIRLINE_NAMES[name] != want and name not in others:
+                others.append(name)
+    return others
+
+
 def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
     """Apply the case's expectations to a reply. Pure: no network."""
     if result.error is not None:
@@ -223,12 +341,37 @@ def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
         refused = any(m in lowered for m in REFUSAL_MARKERS)
         _check(result, "refuses", refused, "" if refused else "answered without refusing")
 
+    outcomes = _outcomes(text)
     if exp.get("live_data"):
-        has_fares = bool(FARE_RE.search(text))
-        honest_none = any(m in lowered for m in NO_DATA_MARKERS)
+        has_fares = "fares" in outcomes
+        honest_none = "no_data" in outcomes
         result.live_fares = has_fares
         _check(result, "live_data", has_fares or honest_none,
                "real fares" if has_fares else ("honest no-data reply" if honest_none else "neither fares nor a no-data reply"))
+
+    if exp.get("outcome_any"):
+        wanted = set(exp["outcome_any"])
+        if "fares" in wanted:
+            result.live_fares = "fares" in outcomes
+        _check(result, "outcome", bool(wanted & outcomes),
+               f"got {sorted(outcomes) or 'none'}, wanted any of {sorted(wanted)}")
+
+    for pattern in exp.get("must_match", []):
+        m = re.search(pattern, text, re.IGNORECASE)
+        _check(result, "must_match", m is not None, "" if m else f"no match for {pattern!r}")
+
+    if exp.get("airline_only"):
+        others = _other_airlines_with_fares(text, exp["airline_only"])
+        _check(result, "airline_only", not others,
+               f"fares shown for {others}" if others else "")
+
+    if "max_latency_s" in exp and result.latency_s is not None:
+        _check(result, "latency", result.latency_s <= exp["max_latency_s"],
+               f"{result.latency_s} s > {exp['max_latency_s']} s budget")
+
+    # Always on: a weekday the calendar contradicts is wrong in any reply.
+    wrong = _wrong_weekdays(text)
+    _check(result, "weekday", not wrong, f"wrong weekday in {wrong}" if wrong else "")
 
     result.passed = all(c["ok"] for c in result.checks)
     return result
@@ -259,6 +402,11 @@ def judge_answer(question: str, reference: str, answer: str, timeout: float = 60
     if provider == "openai":
         base, key = "https://api.openai.com/v1", os.getenv("OPENAI_API_KEY", "")
         model = os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini")
+    elif provider == "groq":
+        # The chatbot answers with groq:openai/gpt-oss-120b; judge with a
+        # different model so it is not grading its own wording.
+        base, key = "https://api.groq.com/openai/v1", os.getenv("GROQ_API_KEY", "")
+        model = os.getenv("EVAL_JUDGE_MODEL", "qwen/qwen3.8-27b")
     else:
         base, key = "https://integrate.api.nvidia.com/v1", os.getenv("NVIDIA_API_KEY", "")
         # A different model from the one being graded (the chatbot runs
@@ -291,7 +439,9 @@ def judge_answer(question: str, reference: str, answer: str, timeout: float = 60
 # ── Running ───────────────────────────────────────────────────────────
 
 def run_case(client: httpx.Client, base_url: str, case: Dict[str, Any], timeout: float) -> CaseResult:
-    result = CaseResult(id=case["id"], category=case["category"])
+    result = CaseResult(id=case["id"], category=case["category"],
+                        severity=case.get("severity", "major"), tags=list(case.get("tags", [])),
+                        requires_live=bool(case.get("requires_live")))
     payload = {
         "messages": case["messages"],
         # A fresh session per case, so one case's route cannot leak into another.
@@ -325,16 +475,49 @@ def wake(client: httpx.Client, base_url: str) -> None:
         pass
 
 
-def summarize(results: List[CaseResult]) -> Dict[str, Any]:
-    scored = [r for r in results if r.passed is not None]
-    by_cat: Dict[str, Dict[str, int]] = {}
+def _collapse(results: List[CaseResult]) -> List[Dict[str, Any]]:
+    """One row per case. With --repeat, a case passes only if every scored
+    attempt passed, and is flaky if its attempts disagreed."""
+    by_id: Dict[str, List[CaseResult]] = {}
     for r in results:
-        b = by_cat.setdefault(r.category, {"total": 0, "passed": 0, "unscored": 0})
-        b["total"] += 1
-        if r.passed is None:
-            b["unscored"] += 1
-        elif r.passed:
-            b["passed"] += 1
+        by_id.setdefault(r.id, []).append(r)
+    rows = []
+    for cid, attempts in by_id.items():
+        scored = [a for a in attempts if a.passed is not None]
+        verdicts = {a.passed for a in scored}
+        first = attempts[0]
+        rows.append({
+            "id": cid, "category": first.category, "severity": first.severity,
+            "requires_live": first.requires_live, "tags": first.tags,
+            "passed": (None if not scored else all(a.passed for a in scored)),
+            "flaky": len(verdicts) > 1,
+            "attempts": len(attempts),
+        })
+    return rows
+
+
+def summarize(results: List[CaseResult]) -> Dict[str, Any]:
+    rows = _collapse(results)
+    scored = [r for r in rows if r["passed"] is not None]
+
+    def bucket(key: str) -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            b = out.setdefault(str(r[key]), {"total": 0, "passed": 0, "unscored": 0})
+            b["total"] += 1
+            if r["passed"] is None:
+                b["unscored"] += 1
+            elif r["passed"]:
+                b["passed"] += 1
+        for b in out.values():
+            n = b["total"] - b["unscored"]
+            b["pass_rate"] = round(b["passed"] / n, 4) if n else None
+        return out
+
+    def rate(subset: List[Dict[str, Any]]) -> Optional[float]:
+        s = [r for r in subset if r["passed"] is not None]
+        return round(sum(1 for r in s if r["passed"]) / len(s), 4) if s else None
+
     lat = sorted(r.latency_s for r in results if r.latency_s is not None)
     live = [r for r in results if r.live_fares is not None]
     judged = [r.judge_score for r in results if r.judge_score is not None]
@@ -345,17 +528,56 @@ def summarize(results: List[CaseResult]) -> Dict[str, Any]:
         return values[min(len(values) - 1, int(round(q * (len(values) - 1))))]
 
     return {
-        "total": len(results),
+        "total": len(rows),
+        "attempts": len(results),
         "scored": len(scored),
-        "passed": sum(1 for r in scored if r.passed),
-        "unscored": len(results) - len(scored),
-        "pass_rate": round(sum(1 for r in scored if r.passed) / len(scored), 4) if scored else None,
-        "by_category": by_cat,
+        "passed": sum(1 for r in scored if r["passed"]),
+        "unscored": len(rows) - len(scored),
+        "pass_rate": rate(rows),
+        # Cases that do not depend on the live scraper: the model and the chat
+        # pipeline alone. Live cases also measure Render and Google Flights.
+        "core_pass_rate": rate([r for r in rows if not r["requires_live"]]),
+        "live_pass_rate": rate([r for r in rows if r["requires_live"]]),
+        "by_category": bucket("category"),
+        "by_severity": bucket("severity"),
+        "critical_failures": [r["id"] for r in rows if r["severity"] == "critical" and r["passed"] is False],
+        "flaky": [r["id"] for r in rows if r["flaky"]],
         "latency_s": {"p50": pct(lat, 0.5), "p95": pct(lat, 0.95), "max": lat[-1] if lat else None},
         "live_fare_coverage": (round(sum(1 for r in live if r.live_fares) / len(live), 4) if live else None),
         "judge": ({"cases": len(judged), "mean": round(statistics.mean(judged), 2),
                    "at_least_4": round(sum(1 for s in judged if s >= 4) / len(judged), 4)} if judged else None),
     }
+
+
+def load_gates(dataset: Path) -> Dict[str, Any]:
+    """Release gates stored with the dataset (metadata.json "gates"), so the bar
+    is versioned with the cases it applies to."""
+    try:
+        return json.loads((dataset.parent / "metadata.json").read_text(encoding="utf-8")).get("gates") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def decide(summary: Dict[str, Any], min_pass: float, gates: Dict[str, Any]) -> tuple:
+    """(verdict, exit code, reasons). FAIL on any critical failure, an overall
+    pass rate under min_pass, or a category under its own minimum."""
+    reasons: List[str] = []
+    max_critical = int(gates.get("max_critical_failures", 0))
+    if len(summary["critical_failures"]) > max_critical:
+        reasons.append(f"{len(summary['critical_failures'])} critical failure(s): "
+                       + ", ".join(summary["critical_failures"]))
+    rate = summary["pass_rate"]
+    if rate is None or rate < min_pass:
+        reasons.append(f"pass rate {_fmt_pct(rate)} < {_fmt_pct(min_pass)}")
+    for cat, floor in (gates.get("category_min") or {}).items():
+        b = summary["by_category"].get(cat)
+        if b and b["pass_rate"] is not None and b["pass_rate"] < floor:
+            reasons.append(f"{cat} {_fmt_pct(b['pass_rate'])} < {_fmt_pct(floor)}")
+    if reasons:
+        return "FAIL", 1, reasons
+    if summary["unscored"]:
+        return "PARTIAL", 2, [f"{summary['unscored']} case(s) could not be scored"]
+    return "PASS", 0, []
 
 
 def render_markdown(meta: Dict[str, Any], summary: Dict[str, Any], results: List[CaseResult]) -> str:
@@ -379,6 +601,17 @@ def render_markdown(meta: Dict[str, Any], summary: Dict[str, Any], results: List
         j = summary["judge"]
         lines.append(f"- Judge (knowledge answers): mean {j['mean']}/5 over {j['cases']} · "
                      f"{_fmt_pct(j['at_least_4'])} scored 4 or 5")
+    lines.append(f"- Without the live scraper: **{_fmt_pct(summary.get('core_pass_rate'))}** · "
+                 f"live-search cases: {_fmt_pct(summary.get('live_pass_rate'))}")
+    for reason in meta.get("reasons", []):
+        lines.append(f"- Gate: {reason}")
+    if summary.get("flaky"):
+        lines.append(f"- Flaky across repeats: {', '.join(summary['flaky'])}")
+    lines += ["", "## By severity", "", "| Severity | Passed | Total | Not scorable |", "| :--- | ---: | ---: | ---: |"]
+    for sev in SEVERITIES:
+        b = summary.get("by_severity", {}).get(sev)
+        if b:
+            lines.append(f"| {sev} | {b['passed']} | {b['total']} | {b['unscored']} |")
     lines += ["", "## By category", "", "| Category | Passed | Total | Not scorable |", "| :--- | ---: | ---: | ---: |"]
     for cat, b in sorted(summary["by_category"].items()):
         lines.append(f"| {cat} | {b['passed']} | {b['total']} | {b['unscored']} |")
@@ -389,7 +622,7 @@ def render_markdown(meta: Dict[str, Any], summary: Dict[str, Any], results: List
         lines += ["", "## Failures", ""]
         for r in failures:
             bad = "; ".join(f"{c['check']}: {c['detail']}" for c in r.checks if not c["ok"])
-            lines += [f"### `{r.id}` ({r.category})", f"- {bad}",
+            lines += [f"### `{r.id}` ({r.category}, {r.severity}, run {r.attempt})", f"- {bad}",
                       f"- Reply ({r.message_type or 'no type'}, {r.latency_s} s): {_excerpt(r.text)}", ""]
     low_judge = [r for r in results if r.judge_score is not None and r.judge_score < 4]
     if low_judge:
@@ -418,14 +651,28 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--tier", choices=sorted(TIERS), default="smoke")
     ap.add_argument("--ids", nargs="*", help="run only these case ids")
     ap.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
-    ap.add_argument("--delay", type=float, default=7.0, help="seconds between requests (rate limit)")
+    ap.add_argument("--delay", type=float, default=None,
+                    help="seconds between requests (default 7, or 1 with SKYMIND_EVAL_KEY)")
     ap.add_argument("--timeout", type=float, default=240.0, help="per-request timeout, seconds")
-    ap.add_argument("--min-pass", type=float, default=0.85)
+    ap.add_argument("--min-pass", type=float, default=None,
+                    help="overall pass-rate floor (default: the dataset's gates, else 0.85)")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="run each case N times; a case passes only if every run passes")
+    ap.add_argument("--tags", nargs="*", help="run only cases carrying any of these tags")
+    ap.add_argument("--category", nargs="*", help="run only these categories")
     ap.add_argument("--judge", action="store_true", help="grade knowledge answers with a model")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
 
     cases = load_cases(args.dataset, args.tier, args.ids)
+    if args.tags:
+        cases = [c for c in cases if set(args.tags) & set(c.get("tags", []))]
+    if args.category:
+        cases = [c for c in cases if c["category"] in set(args.category)]
+    if args.delay is None:
+        args.delay = 1.0 if os.getenv("SKYMIND_EVAL_KEY") else 7.0
+    gates = load_gates(args.dataset)
+    min_pass = args.min_pass if args.min_pass is not None else float(gates.get("min_pass", 0.85))
     if not cases:
         print("No cases selected.", file=sys.stderr)
         return 1
@@ -435,35 +682,39 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results: List[CaseResult] = []
-    with httpx.Client(headers={"User-Agent": "skymind-chat-eval/1"}) as client:
+    headers = {"User-Agent": "skymind-chat-eval/2"}
+    # With CHAT_EVAL_KEY set on the server and the same value here, the run is
+    # exempt from the per-client rate limit and --delay can be 0.
+    if os.getenv("SKYMIND_EVAL_KEY"):
+        headers["X-SkyMind-Eval-Key"] = os.environ["SKYMIND_EVAL_KEY"]
+    with httpx.Client(headers=headers) as client:
         wake(client, args.base_url)
-        for i, case in enumerate(cases):
+        runs = [(case, n) for case in cases for n in range(1, max(1, args.repeat) + 1)]
+        for i, (case, n) in enumerate(runs):
             if i:
                 time.sleep(args.delay)
             r = score(case, run_case(client, args.base_url, case, args.timeout))
-            if args.judge and case["category"] == "knowledge" and r.passed is not None and r.text:
+            r.attempt = n
+            if args.judge and case.get("reference") and r.passed is not None and r.text:
                 try:
                     j = judge_answer(case["messages"][-1]["content"], case.get("reference", ""), r.text)
                     r.judge_score, r.judge_reason = j["score"], j["reason"]
                 except Exception as e:  # the judge is advisory; it never fails a case
                     r.judge_reason = f"judge unavailable: {type(e).__name__}: {e}"[:300]
             mark = "PASS" if r.passed else ("FAIL" if r.passed is False else "SKIP")
-            print(f"[{i + 1:>2}/{len(cases)}] {mark}  {case['id']:<34} {r.latency_s or '-'} s", flush=True)
+            print(f"[{i + 1:>3}/{len(runs)}] {mark}  {case['id']:<38} {r.latency_s or '-'} s", flush=True)
             results.append(r)
 
     summary = summarize(results)
     rate = summary["pass_rate"]
-    if rate is None or rate < args.min_pass:
-        verdict, code = "FAIL", 1
-    elif summary["unscored"]:
-        verdict, code = "PARTIAL", 2
-    else:
-        verdict, code = "PASS", 0
-
+    verdict, code, reasons = decide(summary, min_pass, gates)
+    import hashlib
     meta = {
+        "reasons": reasons, "repeat": args.repeat, "gates": gates,
+        "dataset_sha256": hashlib.sha256(args.dataset.read_bytes()).hexdigest(),
         "verdict": verdict, "base_url": args.base_url, "tier": args.tier,
         "dataset": str(args.dataset.relative_to(HERE.parent.parent) if args.dataset.is_relative_to(HERE.parent.parent) else args.dataset),
-        "started_at": started.strftime("%Y-%m-%d %H:%M"), "min_pass": args.min_pass,
+        "started_at": started.strftime("%Y-%m-%d %H:%M"), "min_pass": min_pass,
         "judge": bool(args.judge),
     }
     (out_dir / "results.json").write_text(json.dumps(
@@ -471,6 +722,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "report.md").write_text(render_markdown(meta, summary, results), encoding="utf-8")
     print(f"\n{verdict}: pass rate {_fmt_pct(rate)} — report at {out_dir / 'report.md'}")
+    for reason in reasons:
+        print(f"  - {reason}")
     return code
 
 

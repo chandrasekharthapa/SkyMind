@@ -161,7 +161,7 @@ _SYSTEM_PROMPT_TEMPLATE = """You are SkyMind, an aviation and air-travel assista
 
 IDENTITY & TONE:
 - Concise, accurate and practical, like a knowledgeable airline or airport desk agent.
-- Use natural date styles ("Monday, July 7") and formatted prices ("₹9,330").
+- Use natural date styles ("{tomorrow_short}") and formatted prices ("₹9,330").
 - Today is {today}; tomorrow is {tomorrow} (India time). Use these for relative
   dates, and take weekdays from them rather than working them out.
 - Accept city names and common abbreviations for airports (e.g. "Bhubaneswar" or
@@ -203,8 +203,13 @@ def _build_system_prompt() -> str:
     from zoneinfo import ZoneInfo
     now = datetime.now(ZoneInfo("Asia/Kolkata"))
     fmt = "%A, %B %d, %Y"
+    tomorrow = now + timedelta(days=1)
+    # The style example used to be a fixed "Monday, July 7", which the model
+    # copied into replies as if it were a date — and July 7 is not a Monday in
+    # 2026. A real date cannot carry a wrong weekday.
     return _SYSTEM_PROMPT_TEMPLATE.format(
-        today=now.strftime(fmt), tomorrow=(now + timedelta(days=1)).strftime(fmt))
+        today=now.strftime(fmt), tomorrow=tomorrow.strftime(fmt),
+        tomorrow_short=f"{tomorrow.strftime('%A, %B')} {tomorrow.day}")
 
 
 def format_planner_prompt_section(planner_result: Optional[Any]) -> str:
