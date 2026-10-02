@@ -1,5 +1,5 @@
 const BaseProvider = require('./BaseProvider');
-const { parseStops, parseDurationLine } = require('./cardParsing');
+const { parseStops, parseDurationLine, parseDayOffset } = require('./cardParsing');
 
 function envMs(name, fallback) {
     const value = Number.parseInt(process.env[name] || '', 10);
@@ -259,13 +259,19 @@ class GoogleFlightsProvider extends BaseProvider {
                     // day is now added to the date half of the string, which keeps
                     // both fields in the one naive-local convention the Python side
                     // parses.
+                    //
+                    // The card's own "+1"/"+2" marker wins when present: a connection
+                    // landing the next day at a later clock time than it left would
+                    // otherwise pass the clock test as a same-day arrival.
                     let finalArrivalTime = arrivalTime;
                     if (departureTime && arrivalTime) {
                         const depClock = departureTime.slice(11);
                         const arrClock = arrivalTime.slice(11);
-                        if (arrClock <= depClock) {
+                        const stated = parseDayOffset(lines);
+                        const offset = stated !== null ? stated : (arrClock <= depClock ? 1 : 0);
+                        if (offset > 0) {
                             const nextDay = new Date(`${arrivalTime.slice(0, 10)}T00:00:00Z`);
-                            nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+                            nextDay.setUTCDate(nextDay.getUTCDate() + offset);
                             finalArrivalTime =
                                 `${nextDay.toISOString().slice(0, 10)}T${arrClock}`;
                         }
