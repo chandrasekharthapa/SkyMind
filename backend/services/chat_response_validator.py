@@ -16,6 +16,11 @@ class ChatResponseValidator:
         re.IGNORECASE,
     )
 
+    # Two-character IATA airline code (letters, or a letter and a digit such as
+    # 6E, 9W, I5) followed by a 1-4 digit flight number. Case-sensitive: codes
+    # are written in capitals, and "in 2134" must not match.
+    _FLIGHT_NUMBER = re.compile(r"\b(?:[A-Z]{2}|[A-Z]\d|\d[A-Z])[\s-]?\d{1,4}\b")
+
     @staticmethod
     def extract_prices(text: str) -> List[float]:
         """Extract fare-like amounts from the output text.
@@ -43,7 +48,12 @@ class ChatResponseValidator:
         masked = list(text)
         for a, b in spans:
             masked[a:b] = " " * (b - a)
-        cleaned = re.sub(r"(?<=\d),(?=\d)", "", "".join(masked))
+        # Flight numbers ("6E 2134", "AI-2671", "QP1407") are not fares. Their
+        # digits used to be read as unverified prices, so any data answer that
+        # named a flight was rejected and replaced by the bare fallback summary.
+        masked_text = ChatResponseValidator._FLIGHT_NUMBER.sub(
+            lambda m: " " * len(m.group(0)), "".join(masked))
+        cleaned = re.sub(r"(?<=\d),(?=\d)", "", masked_text)
         for match in re.finditer(r"\b(\d+(?:\.\d+)?)\b", cleaned):
             try:
                 val = float(match.group(1))

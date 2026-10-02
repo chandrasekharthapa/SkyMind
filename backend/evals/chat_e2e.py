@@ -149,11 +149,12 @@ def _check(result: CaseResult, name: str, ok: bool, detail: str = "") -> None:
 
 
 _HYPHENS = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), "-")
+_HYPHENS.update(dict.fromkeys(map(ord, "\u2018\u2019\u02bc"), "'"))  # curly apostrophes
 
 
 def _normalize(text: str) -> str:
-    """Lower-cased, with every Unicode space as a plain space and every dash as
-    "-". gpt-oss writes "7\u202fkg" (narrow no-break space) and "cabin\u2011baggage"
+    """Lower-cased, with every Unicode space as a plain space, every dash as "-"
+    and curly apostrophes straight ("isn’t" -> "isn't"). gpt-oss writes "7\u202fkg" (narrow no-break space) and "cabin\u2011baggage"
     (non-breaking hyphen); a reader sees "7 kg", and so must the checks."""
     text = "".join(
         " " if unicodedata.category(ch) == "Zs" else ch

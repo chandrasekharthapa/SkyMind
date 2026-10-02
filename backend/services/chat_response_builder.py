@@ -90,19 +90,48 @@ class ChatResponseBuilder:
         return "\n".join(lines)
 
     @staticmethod
+    def _price_text(flight: Dict[str, Any]) -> Optional[str]:
+        """"₹6,913" for a rupee fare. It printed the raw float ("6913.0")."""
+        if flight.get("price_display"):
+            return str(flight["price_display"])
+        price = flight.get("price")
+        if isinstance(price, dict):
+            price = price.get("total")
+        if isinstance(price, (int, float)) and flight.get("currency") in (None, "INR"):
+            return f"₹{price:,.0f}"
+        return str(price) if price is not None else None
+
+    @staticmethod
+    def _departure_text(flight: Dict[str, Any]) -> Optional[str]:
+        dep = flight.get("departure_time")
+        if not dep:
+            for itin in flight.get("itineraries") or []:
+                for seg in itin.get("segments") or []:
+                    dep = seg.get("departure_time")
+                    break
+                break
+        if isinstance(dep, str) and "T" in dep:
+            return dep.split("T")[1][:5]
+        return dep or None
+
+    @staticmethod
     def build_recommendations_summary(recs: Dict[str, Any]) -> str:
         """Construct highlights list for Cheapest, Fastest, and Best Value flights."""
         lines = ["### Highlight Recommendations:"]
-        
+
         has_recs = False
         for category in ["cheapest", "fastest", "best_value"]:
             flight = recs.get(category)
             if flight:
                 has_recs = True
-                price_str = flight.get("price_display") or flight.get("price")
-                airline = flight.get("primary_airline_name") or flight.get("primary_airline")
-                flight_num = flight.get("flight_number")
-                lines.append(f"- **{category.replace('_', ' ').title()} Option**: {airline} ({flight_num}) at **{price_str}**")
+                airline = flight.get("primary_airline_name") or flight.get("primary_airline") or "Unknown airline"
+                # Google Flights cards often carry no flight number; it printed "(None)".
+                label = f"{airline} {flight['flight_number']}" if flight.get("flight_number") else airline
+                departure = ChatResponseBuilder._departure_text(flight)
+                if departure:
+                    label += f", departs {departure}"
+                price_str = ChatResponseBuilder._price_text(flight) or "price unavailable"
+                lines.append(f"- **{category.replace('_', ' ').title()} Option**: {label} at **{price_str}**")
 
         if not has_recs:
             return "No specific flight recommendations available at the moment."

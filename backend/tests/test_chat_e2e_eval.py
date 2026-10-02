@@ -167,3 +167,9 @@ def test_soft_hyphens_are_invisible_to_the_checks():
 def test_asks_question_accepts_requests_without_a_question_mark(text, asked):
     case = _case(asks_question=True)
     assert e2e.score(case, _result(text)).passed is asked
+
+
+def test_curly_apostrophe_no_data_reply_counts_as_honest():
+    case = _case(live_data=True)
+    r = e2e.score(case, _result("Live data isn’t available for this route right now. Please try again shortly."))
+    assert r.passed is True and r.live_fares is False
