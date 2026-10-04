@@ -740,6 +740,10 @@ class PricePredictor:
 
         trained_horizons: List[int] = []
         rejected: Dict[int, str] = {}
+        # Horizons refused only because the corpus is too young: no curve has yet
+        # been observed again `h` days later. Expected for the first week of
+        # collection and not a fault, unlike every other rejection below.
+        too_little_history: set = set()
         # Largest raw observation count this run saw, across horizons. Assigned
         # to self.dataset_size after the loop so that a run which found nothing
         # records 0 rather than silently keeping a stale earlier figure.
@@ -790,6 +794,7 @@ class PricePredictor:
                 rejected[h] = (
                     f"observations={report.observation_count}, shifted_rows={report.shifted_rows}"
                 )
+                too_little_history.add(h)
                 logger.warning(
                     f"Skipping training for horizon {h}d due to dataset quality policy rejection. "
                     f"Observation count: {report.observation_count}, Shifted rows: {report.shifted_rows}. "
@@ -1071,6 +1076,7 @@ class PricePredictor:
                     "only %d training row(s) after a %.1f day label embargo"
                     % (n_train, embargo_days)
                 )
+                too_little_history.add(h)
                 continue
             # The gate above is the one that fires when the purge is too wide for the
             # corpus. This one is the backstop for the cases it cannot see: an empty
@@ -1468,6 +1474,10 @@ class PricePredictor:
         return {
             "trained_horizons": trained_horizons,
             "rejected_horizons": rejected,
+            # True when nothing trained and every refusal was for lack of history,
+            # so the pipeline can report "not yet" instead of a failure.
+            "insufficient_history": (not self.models and bool(rejected)
+                                     and set(rejected) <= too_little_history),
             "models_available": sorted(self.models.keys()),
             "trained": bool(self.models),
             "dataset_size": self.dataset_size,

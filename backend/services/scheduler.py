@@ -80,7 +80,7 @@ async def _collect_popular_routes_async() -> None:
 
     # Load configuration
     batches = route_catalog_config.create_route_batches()
-    departure_horizons = route_catalog_config.get_departure_buckets()
+    departure_horizons = route_catalog_config.get_departure_offsets(datetime.now(timezone.utc).date())
     max_retries = route_catalog_config.get_retry_attempts()
     backoff_seconds = route_catalog_config.get_retry_backoff_seconds()
 

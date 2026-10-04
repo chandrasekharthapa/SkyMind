@@ -195,6 +195,43 @@ class RouteCatalogConfig:
             return list(DEFAULT_DEPARTURE_BUCKETS)
         return buckets
 
+    def get_departure_offsets(self, today) -> List[int]:
+        """Days ahead to search on `today`, per the collector's schedule.
+
+        `departure_schedule.mode: anchored` (the default in routes.yaml) collects
+        every day of the next `daily_window` days, plus fixed calendar *anchor*
+        dates — every `anchor_every_days`-th day counted from 1 Jan 1970 — out to
+        `max_days`. Because the anchors are calendar dates and not offsets, each
+        one is searched again every day until it departs.
+
+        That is the point. A training label is the same flight's fare h days
+        later, so a departure must be observed on day t and again on day t+h.
+        With the old fixed offsets (1, 2, 3, 5, 7, 10, 14, 21, 30, 45, 60, 75,
+        90 days ahead) each day searched a *different* set of departure dates;
+        only the few pairs of offsets exactly h apart ever lined up, and nothing
+        30+ days out could ever be labelled. The anchored plan costs about the
+        same number of searches (7 + ~6 per route).
+
+        `mode: buckets` keeps the old fixed offsets.
+        """
+        sched = self.get_collector_config().get("departure_schedule") or {}
+        if not isinstance(sched, dict) or sched.get("mode", "buckets") != "anchored":
+            return self.get_departure_buckets()
+
+        def _int(key: str, default: int, lo: int, hi: int) -> int:
+            v = sched.get(key, default)
+            return v if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi else default
+
+        window = _int("daily_window", 7, 0, 60)
+        # 13, not 14: a multiple of 7 would put every anchor on the same weekday,
+        # and the model would only ever see long-range fares for, say, Sundays.
+        every = _int("anchor_every_days", 13, 2, 60)
+        horizon = _int("max_days", 90, 1, 330)
+        base = today.toordinal()
+        offsets = list(range(1, min(window, horizon) + 1))
+        offsets += [k for k in range(window + 1, horizon + 1) if (base + k) % every == 0]
+        return offsets
+
     def get_batch_size(self) -> int:
         """Returns batch size for automatic route chunking."""
         collector = self.get_collector_config()

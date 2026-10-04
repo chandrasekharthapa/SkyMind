@@ -5,6 +5,16 @@ collector:
   max_workers: 4
   retry_attempts: 3
   retry_backoff_seconds: 30
+  # Which departure dates to search each day. "anchored": the next
+  # daily_window days, plus fixed calendar dates every anchor_every_days out to
+  # max_days, so the same departures are re-observed daily and every observation
+  # can be labelled with the fare 1, 3 and 7 days later. "buckets": the fixed
+  # offsets below (each day searches different dates; few are ever re-observed).
+  departure_schedule:
+    mode: anchored
+    daily_window: 7
+    anchor_every_days: 13   # not a multiple of 7, so anchors fall on different weekdays
+    max_days: 90
   departure_buckets:
     - 1
     - 2

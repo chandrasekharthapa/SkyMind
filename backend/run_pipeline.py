@@ -79,7 +79,18 @@ def run_retraining() -> bool:
         from backend.database.database import database as db
 
         predictor = get_predictor()
-        predictor.train()
+        summary = predictor.train() or {}
+
+        if summary.get("insufficient_history"):
+            # Not a failure: the label for horizon h is the same flight's fare h
+            # days later, so nothing is learnable until the collector has watched
+            # the same departures for several days. Logged loudly, exit 0, and
+            # any previously uploaded model stays in place.
+            logger.warning(
+                "Retraining skipped: not enough history yet. Every horizon needs the "
+                "same flights observed again 1/3/7 days later. %s",
+                summary.get("rejected_horizons"))
+            return True
 
         logger.info(">>> TASK 4: Uploading Model to Supabase Storage...")
         if not os.path.exists(MODEL_PATH):

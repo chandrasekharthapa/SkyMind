@@ -208,6 +208,10 @@ def _one_route(monkeypatch, *, buckets=(7,)):
                         MagicMock(return_value=[[("DEL", "BOM")]]))
     monkeypatch.setattr(route_catalog_config, "get_departure_buckets",
                         MagicMock(return_value=list(buckets)))
+    # The collector asks the schedule, which is anchored by default; pin it to
+    # the buckets this test is about.
+    monkeypatch.setattr(route_catalog_config, "get_departure_offsets",
+                        MagicMock(return_value=list(buckets)))
     monkeypatch.setattr(route_catalog_config, "get_retry_attempts", MagicMock(return_value=2))
     monkeypatch.setattr(route_catalog_config, "get_retry_backoff_seconds",
                         MagicMock(return_value=0))
