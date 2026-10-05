@@ -263,7 +263,7 @@ export default function DashboardPage() {
                 <div className="sidebar-card" style={{ padding: 0 }}>
                   <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)", background: "#000", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontFamily: "var(--fm)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em" }}>PRICE ALERTS</span>
-                    <span className="badge" style={{ background: "var(--red)", color: "var(--white)" }}>{alerts.length} ACTIVE</span>
+                    <span className="badge" style={{ background: "var(--red-solid)", color: "#fff" }}>{alerts.length} ACTIVE</span>
                   </div>
                   <div style={{ padding: "8px 0" }}>
                     {alerts.length === 0 && !loading && (
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                       <div key={a.id} style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                           <div style={{ fontWeight: 700, fontSize: "14px" }}>{a.origin_code} → {a.destination_code}</div>
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.triggered_count > 0 ? "var(--green)" : "#f59e0b" }} />
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.triggered_count > 0 ? "var(--green)" : "var(--warn)" }} />
                         </div>
                         <div style={{ fontSize: "11px", color: "var(--grey3)", marginBottom: 12, fontFamily: "var(--fm)" }}>DEPARTURE: {a.departure_date}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -291,7 +291,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         {a.triggered_count > 0 && (
-                          <div style={{ marginTop: 12, padding: "8px", background: "#dcfce7", color: "#166534", fontSize: "11px", fontWeight: 700, textAlign: "center", borderRadius: 4 }}>
+                          <div style={{ marginTop: 12, padding: "8px", background: "var(--ok-bg)", color: "var(--ok-ink)", fontSize: "11px", fontWeight: 700, textAlign: "center", borderRadius: 4 }}>
                             TARGET REACHED — FARE IS AT OR BELOW YOUR PRICE
                           </div>
                         )}

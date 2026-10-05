@@ -41,7 +41,7 @@ export default function ForecastTimeline({ forecast, currentFare, recommendedHor
                 minWidth: "150px",
                 padding: "16px",
                 background: isRecommended ? "rgba(22, 163, 74, 0.04)" : "var(--white)",
-                border: isRecommended ? "2px solid #16a34a" : "1px solid var(--grey1)",
+                border: isRecommended ? "2px solid var(--ok)" : "1px solid var(--grey1)",
                 borderRadius: "12px",
                 display: "flex",
                 flexDirection: "column",
@@ -49,7 +49,7 @@ export default function ForecastTimeline({ forecast, currentFare, recommendedHor
               }}
             >
               <div>
-                <div style={{ fontSize: "12px", fontWeight: 600, color: isRecommended ? "#16a34a" : "var(--black)" }}>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: isRecommended ? "var(--ok)" : "var(--black)" }}>
                   {formatDate(point.date)}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--grey3)", marginTop: "2px" }}>

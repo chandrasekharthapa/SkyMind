@@ -41,7 +41,7 @@ export default function HomePage() {
           .then(p => {
             // `p.trend` does not exist on the response — see trendFromDecision.
             const trend = api.trendFromDecision(p.recommendation?.decision);
-            const color = trend === "RISING" ? "var(--red)" : trend === "FALLING" ? "#16a34a" : "#2563eb";
+            const color = trend === "RISING" ? "var(--red)" : trend === "FALLING" ? "var(--ok)" : "var(--info)";
             const badgeClass = trend === "RISING" ? "badge-red" : trend === "FALLING" ? "badge-green" : "badge-off";
             const confPct = formatConfidence(p.confidence);
             return {

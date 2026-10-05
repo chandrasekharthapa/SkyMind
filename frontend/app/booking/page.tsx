@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import DemoNotice from "@/components/ui/DemoNotice";
+import Link from "next/link";
 import NavBar from "@/components/layout/NavBar";
 import { createBooking, formatDuration } from "@/lib/api";
 import type { FlightOffer, Passenger } from "@/types";
@@ -12,6 +13,7 @@ function BookingContent() {
   const [flight, setFlight] = useState<FlightOffer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checked, setChecked] = useState(false);
   const [form, setForm] = useState({
     email: "", phone: "",
     first_name: "", last_name: "",
@@ -26,6 +28,7 @@ function BookingContent() {
         try { setFlight(JSON.parse(saved)); } catch { /* ignore */ }
       }
     }
+    setChecked(true);
   }, []);
 
   const itin = flight?.itineraries?.[0];
@@ -99,7 +102,21 @@ function BookingContent() {
     setLoading(false);
   };
 
-  if (!flight) return <div className="ui-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}><div className="ui-label">DATA_LOAD_ERROR...</div></div>;
+  if (!flight) {
+    if (!checked) return <div style={{ minHeight: "100vh", background: "var(--off)" }}><NavBar /></div>;
+    return (
+      <div style={{ background: "var(--off)", minHeight: "100vh" }}>
+        <NavBar />
+        <div style={{ paddingTop: 160, paddingBottom: 100, textAlign: "center" }}>
+          <h1 style={{ fontFamily: "var(--fd)", fontSize: "3rem", lineHeight: .95, marginBottom: 16 }}>NO FLIGHT SELECTED</h1>
+          <p style={{ color: "var(--grey4)", maxWidth: 420, margin: "0 auto 32px", lineHeight: 1.6 }}>
+            Pick a flight from the search results and press Book now to start a booking.
+          </p>
+          <Link href="/flights" className="ui-btn ui-btn-red">Search flights</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ui-page" style={{ background: "var(--off)" }}>

@@ -1,12 +1,13 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   /* COLORS */
   --white: #ffffff;
   --off: #f8f9fa;
   --grey1: #f1f3f5;
   --grey2: #e9ecef;
-  --grey3: #adb5bd;
+  --grey3: #868e96; /* was #adb5bd: too faint to read as text on white */
   --grey4: #495057;
   --black: #000000;
   --red: #e03131;
@@ -21,6 +22,35 @@
   --text-main: var(--black);
   --text-muted: var(--grey4);
   --border-color: var(--grey1);
+
+  /* Semantic tokens for pages that used to hardcode light-only colours.
+     Each has a dark-mode value below, so text, borders and status colours
+     stay readable in both themes. */
+  --surface: var(--card-bg);
+  --surface-2: #f8f9fa;
+  --line: #eaeaea;
+  --ink: #111111;
+  --ink-2: #444444;
+  --ink-3: #666666;
+  --ink-4: #868e96;
+  --ok: #16a34a;
+  --ok-ink: #166534;
+  --ok-bg: #dcfce7;
+  --warn: #d97706;
+  --warn-ink: #92400e;
+  --warn-bg: #fffbeb;
+  --warn-line: #fcd34d;
+  --bad: #dc2626;
+  --bad-bg: #fff5f5;
+  --bad-line: #fca5a5;
+  --info: #2563eb;
+  --info-ink: #3730a3;
+  --info-bg: #e0e7ff;
+  --overlay-ink: #ffffff; /* text on the always-dark hero and on red buttons */
+  /* Filled red buttons. Kept the same in both themes so white text on them
+     stays readable; --red itself lightens in dark mode for text and accents. */
+  --red-solid: #e03131;
+  --red-solid-hover: #c92a2a;
 }
 
 [data-theme="dark"] {
@@ -43,6 +73,30 @@
   --text-main: #ffffff;
   --text-muted: #adb5bd;
   --border-color: #2c2e33;
+
+  --green: #51cf66;
+  --surface-2: #25262b;
+  --line: #2c2e33;
+  --ink: #f1f3f5;
+  --ink-2: #c1c2c5;
+  --ink-3: #a6a7ab;
+  --ink-4: #8a8d93;
+  --ok: #4ade80;
+  --ok-ink: #86efac;
+  --ok-bg: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-ink: #fcd34d;
+  --warn-bg: rgba(251, 191, 36, 0.10);
+  --warn-line: rgba(251, 191, 36, 0.35);
+  --bad: #f87171;
+  --bad-bg: rgba(248, 113, 113, 0.10);
+  --bad-line: rgba(248, 113, 113, 0.35);
+  --info: #60a5fa;
+  --info-ink: #a5b4fc;
+  --info-bg: rgba(96, 165, 250, 0.14);
+  --red-solid: #e03131;
+  --red-solid-hover: #f03e3e;
+  color-scheme: dark;
 }
   
 :root {
@@ -110,14 +164,19 @@ body {
 .ui-btn:active { transform: scale(0.98); }
 .ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.ui-btn-red { background: var(--red); color: var(--white); }
-.ui-btn-red:hover { background: var(--red-d); box-shadow: 0 8px 20px rgba(224, 49, 49, 0.2); transform: translateY(-1px); }
+.ui-btn-red { background: var(--red-solid); color: #fff; }
+.ui-btn-red:hover { background: var(--red-solid-hover); box-shadow: 0 8px 20px rgba(224, 49, 49, 0.2); transform: translateY(-1px); }
 
 .ui-btn-white { background: var(--white); color: var(--black); border-color: var(--grey2); }
+/* Inverse button: black in light mode, white in dark mode. */
+.ui-btn-black { background: var(--black); color: var(--white); border-color: var(--black); }
+.ui-btn-black:hover { opacity: 0.88; }
 .ui-btn-white:hover { background: var(--off); border-color: var(--grey3); }
 
-.ui-btn-outline { background: transparent; color: var(--white); border-color: rgba(255,255,255,0.2); }
-.ui-btn-outline:hover { border-color: var(--white); background: rgba(255,255,255,0.05); }
+/* Only used on always-black sections (hero, CTA band), so its colours don't
+   follow the theme: white text and border in both. */
+.ui-btn-outline { background: transparent; color: #fff; border-color: rgba(255,255,255,0.3); }
+.ui-btn-outline:hover { border-color: #fff; background: rgba(255,255,255,0.06); }
 
 .ui-input { 
   display: block;
@@ -312,7 +371,7 @@ input[type="date"].ui-input {
 .dest-img-wrap img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(0.2, 1, 0.3, 1); }
 .dest-card:hover .dest-img-wrap img { transform: scale(1.08); }
 .dest-img-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); }
-.dest-img-label { position: absolute; bottom: 20px; left: 24px; color: var(--white); }
+.dest-img-label { position: absolute; bottom: 20px; left: 24px; color: #fff; }
 .dest-img-city { font-family: var(--fd); font-size: 2rem; letter-spacing: 0.02em; line-height: 1; margin-bottom: 4px; }
 .dest-img-code { font-family: var(--fm); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; }
 
@@ -603,7 +662,7 @@ input[type="date"].ui-input {
 .auth-btn-primary {
   width: 100%;
   height: 52px;
-  background: var(--red);
+  background: var(--red-solid);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -730,7 +789,7 @@ input[type="date"].ui-input {
 .price-total-label { font-family: var(--fd); font-size: 1.5rem; color: #fff; }
 .price-total-val { font-family: var(--fd); font-size: 3rem; color: var(--red); line-height: 1; }
 
-.pay-btn { width: 100%; height: 60px; background: var(--red); color: #fff; border: none; border-radius: 12px; margin-top: 32px; font-family: var(--fb); font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.pay-btn { width: 100%; height: 60px; background: var(--red-solid); color: #fff; border: none; border-radius: 12px; margin-top: 32px; font-family: var(--fb); font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 12px; }
 .pay-btn:hover { background: var(--red-d); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(224,49,49,0.3); }
 .pay-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -1054,3 +1113,7 @@ html, body {
   .copilot-fab { width: 52px; height: 52px !important; padding: 0 !important; justify-content: center; bottom: 16px !important; right: 16px !important; border-radius: 50% !important; }
   .copilot-fab .copilot-fab-text { display: none; }
 }
+
+/* The CTA band is black in both themes, so its white button stays white. */
+.cta-band .ui-btn-white { background: #fff; color: #000; border-color: #fff; }
+.cta-band .ui-btn-white:hover { background: #f1f3f5; }

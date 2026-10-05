@@ -4,9 +4,9 @@ import React, { useMemo } from "react";
 import type { ForecastPoint, ForecastDay, Trend } from "@/types";
 
 const TREND_COLOURS: Record<Trend|string, { line:string; fill:string; dash:string }> = {
-  RISING:  { line:"#e8191a", fill:"rgba(232,25,26,0.07)",  dash:"rgba(232,25,26,0.22)" },
-  FALLING: { line:"#16a34a", fill:"rgba(22,163,74,0.07)",  dash:"rgba(22,163,74,0.22)" },
-  STABLE:  { line:"#2563eb", fill:"rgba(37,99,235,0.07)",  dash:"rgba(37,99,235,0.22)" },
+  RISING:  { line:"var(--red)", fill:"rgba(232,25,26,0.07)",  dash:"rgba(232,25,26,0.22)" },
+  FALLING: { line:"var(--ok)", fill:"rgba(22,163,74,0.07)",  dash:"rgba(22,163,74,0.22)" },
+  STABLE:  { line:"var(--info)", fill:"rgba(37,99,235,0.07)",  dash:"rgba(37,99,235,0.22)" },
 };
 
 function lerp(v:number,a:number,b:number,c:number,d:number):number {
@@ -100,20 +100,20 @@ export function PriceChart({ forecast, trend, height=240 }: Props) {
         {paths.dots.map((d,i) => (
           <g key={i}>
             <circle cx={d.cx} cy={d.cy} r={5} fill={colours.line} opacity={0.12}/>
-            <circle cx={d.cx} cy={d.cy} r={3} fill={colours.line} stroke="white" strokeWidth={1.5}/>
+            <circle cx={d.cx} cy={d.cy} r={3} fill={colours.line} stroke="var(--surface)" strokeWidth={1.5}/>
           </g>
         ))}
 
         {/* Min marker (green) */}
         <g>
-          <circle cx={paths.minPt.cx} cy={paths.minPt.cy} r={6} fill="#dcfce7" stroke="#16a34a" strokeWidth={2}/>
-          <text x={paths.minPt.cx} y={paths.minPt.cy-12} textAnchor="middle" fontSize={9} fill="#16a34a" fontWeight="700">{fmtINR(paths.minPt.price)}</text>
+          <circle cx={paths.minPt.cx} cy={paths.minPt.cy} r={6} fill="var(--ok-bg)" stroke="var(--ok)" strokeWidth={2}/>
+          <text x={paths.minPt.cx} y={paths.minPt.cy-12} textAnchor="middle" fontSize={9} fill="var(--ok)" fontWeight="700">{fmtINR(paths.minPt.price)}</text>
         </g>
 
         {/* Max marker (red) */}
         <g>
-          <circle cx={paths.maxPt.cx} cy={paths.maxPt.cy} r={5} fill="#fee2e2" stroke="#e8191a" strokeWidth={2}/>
-          <text x={paths.maxPt.cx} y={paths.maxPt.cy+20} textAnchor="middle" fontSize={9} fill="#e8191a" fontWeight="700">{fmtINR(paths.maxPt.price)}</text>
+          <circle cx={paths.maxPt.cx} cy={paths.maxPt.cy} r={5} fill="var(--bad-bg)" stroke="var(--red)" strokeWidth={2}/>
+          <text x={paths.maxPt.cx} y={paths.maxPt.cy+20} textAnchor="middle" fontSize={9} fill="var(--red)" fontWeight="700">{fmtINR(paths.maxPt.price)}</text>
         </g>
 
         {/* Axes */}
@@ -122,12 +122,12 @@ export function PriceChart({ forecast, trend, height=240 }: Props) {
 
         {/* X labels */}
         {paths.xTicks.map((t,i) => (
-          <text key={i} x={t.x} y={PAD.top+iH+16} textAnchor="middle" fontSize={9} fill="var(--grey3,#9b9890)">{t.label}</text>
+          <text key={i} x={t.x} y={PAD.top+iH+16} textAnchor="middle" fontSize={9} fill="var(--ink-3)">{t.label}</text>
         ))}
 
         {/* Y labels */}
         {paths.yTicks.map((t,i) => (
-          <text key={i} x={PAD.left-8} y={t.y+4} textAnchor="end" fontSize={9} fill="var(--grey3,#9b9890)">{fmtINR(t.value)}</text>
+          <text key={i} x={PAD.left-8} y={t.y+4} textAnchor="end" fontSize={9} fill="var(--ink-3)">{fmtINR(t.value)}</text>
         ))}
 
         {/* Removed hardcoded SVG legend */}
@@ -136,19 +136,19 @@ export function PriceChart({ forecast, trend, height=240 }: Props) {
       <div style={{ display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: "24px", flexWrap: "wrap", marginTop: "16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <div style={{ width: "16px", height: "3px", backgroundColor: colours.line }} />
-          <span style={{ fontSize: "11px", color: "var(--grey3,#9b9890)" }}>Forecast Price</span>
+          <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Forecast Price</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <div style={{ width: "16px", height: "0", borderTop: `2px dashed ${colours.dash}` }} />
-          <span style={{ fontSize: "11px", color: "var(--grey3,#9b9890)" }}>Confidence Interval</span>
+          <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Confidence Interval</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#dcfce7", border: "1.5px solid #16a34a" }} />
-          <span style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600 }}>Best Price</span>
+          <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "var(--ok-bg)", border: "1.5px solid var(--ok)" }} />
+          <span style={{ fontSize: "11px", color: "var(--ok)", fontWeight: 600 }}>Best Price</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#fee2e2", border: "1.5px solid #e8191a" }} />
-          <span style={{ fontSize: "11px", color: "#e8191a", fontWeight: 600 }}>Peak Price</span>
+          <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "var(--bad-bg)", border: "1.5px solid var(--red)" }} />
+          <span style={{ fontSize: "11px", color: "var(--red)", fontWeight: 600 }}>Peak Price</span>
         </div>
       </div>
     </div>

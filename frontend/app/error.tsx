@@ -16,7 +16,7 @@ export default function Error({
   return (
     <div style={{ padding: "80px 24px", textAlign: "center", fontFamily: "sans-serif" }}>
       <h2 style={{ fontSize: "1.5rem", marginBottom: 16 }}>Something went wrong!</h2>
-      <p style={{ color: "#666", marginBottom: 24 }}>{error.message || "An unexpected error occurred."}</p>
+      <p style={{ color: "var(--ink-3)", marginBottom: 24 }}>{error.message || "An unexpected error occurred."}</p>
       <button
         onClick={() => reset()}
         style={{

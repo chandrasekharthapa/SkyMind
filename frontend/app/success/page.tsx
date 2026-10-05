@@ -7,6 +7,7 @@ import NavBar from "@/components/layout/NavBar";
 export default function SuccessPage() {
   const [booking, setBooking] = useState<any>(null);
   const [payment, setPayment] = useState<any>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -15,9 +16,12 @@ export default function SuccessPage() {
       if (b) { try { setBooking(JSON.parse(b)); } catch { /* ignore */ } }
       if (p) { try { setPayment(JSON.parse(p)); } catch { /* ignore */ } }
     }
+    setLoaded(true);
   }, []);
 
-  const ref = booking?.booking_reference || "SKY-DEMO-123";
+  // No invented reference or payment ID: if there is no booking in this
+  // browser session, the page says so instead.
+  const ref = booking?.booking_reference || "—";
   const price = booking?.total_price
     ? `INR ${Math.round(booking.total_price).toLocaleString("en-IN")}`
     : "INR 0";
@@ -33,7 +37,25 @@ export default function SuccessPage() {
     }
   } catch { /* keep default */ }
 
-  const paymentId = payment?.razorpay_payment_id || `pay_v2_${Date.now().toString(36)}`;
+  const paymentId = payment?.razorpay_payment_id || "—";
+
+  if (loaded && !booking) {
+    return (
+      <div style={{ background:"var(--off)", minHeight:"100vh" }}>
+        <NavBar />
+        <div style={{ paddingTop: 160, paddingBottom: 100, textAlign: "center" }}>
+          <h1 style={{ fontFamily:"var(--fd)", fontSize:"3rem", lineHeight:.95, marginBottom:16 }}>NO BOOKING TO SHOW</h1>
+          <p style={{ color:"var(--grey4)", maxWidth:420, margin:"0 auto 32px", lineHeight:1.6 }}>
+            This page shows a booking right after checkout. Your past bookings are under Your trips.
+          </p>
+          <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap" }}>
+            <Link href="/dashboard" className="ui-btn ui-btn-red">View my trips</Link>
+            <Link href="/flights" className="ui-btn ui-btn-white">Search flights</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ background:"var(--off)", minHeight:"100vh" }}>
@@ -44,7 +66,7 @@ export default function SuccessPage() {
             
             {/* Cinematic Icon */}
             <div style={{ 
-              width:80, height:80, background:"var(--red)", borderRadius:"50%", 
+              width:80, height:80, background:"var(--red-solid)", borderRadius:"50%", 
               display:"flex", alignItems:"center", justifyContent:"center", 
               margin:"0 auto 32px", boxShadow:"0 12px 32px var(--red-mist)",
               animation:"fadeUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both"
@@ -69,9 +91,9 @@ export default function SuccessPage() {
               boxShadow:"var(--shadow-lg)", border:"1px solid var(--grey1)",
               textAlign:"left", animation:"fadeUp 0.6s 0.3s both"
             }}>
-              <div style={{ background:"var(--black)", padding:"20px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span className="label" style={{ color: "var(--white)", opacity: 0.5 }}>CONFIRMATION PASS</span>
-                <span style={{ fontFamily:"var(--fm)", fontSize:".7rem", color:"var(--red)", fontWeight:700 }}>SKY-INTEL v4</span>
+              <div style={{ background:"#000", padding:"20px 32px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span className="label" style={{ color: "#fff", opacity: 0.6 }}>CONFIRMATION PASS</span>
+                <span style={{ fontFamily:"var(--fm)", fontSize:".7rem", color:"var(--red)", fontWeight:700 }}>TEST MODE</span>
               </div>
               
               <div style={{ padding:32 }}>
@@ -82,7 +104,7 @@ export default function SuccessPage() {
                   </div>
                   <div>
                     <div className="label" style={{ color:"var(--grey3)", marginBottom:8 }}>STATUS</div>
-                    <div style={{ fontFamily:"var(--fd)", fontSize:"1.8rem", color:"var(--green)" }}>VERIFIED</div>
+                    <div style={{ fontFamily:"var(--fd)", fontSize:"1.8rem", color:"var(--green)" }}>{payment?.razorpay_payment_id ? "PAID (TEST)" : "CONFIRMED"}</div>
                   </div>
                 </div>
 
@@ -105,13 +127,13 @@ export default function SuccessPage() {
               
               {/* Barcode-ish footer */}
               <div style={{ background:"var(--off)", padding:24, borderTop:"1px solid var(--grey1)", display:"flex", justifyContent:"center" }}>
-                <div style={{ height:32, width:"100%", background:"repeating-linear-gradient(90deg, #131210, #131210 2px, transparent 2px, transparent 4px)", opacity:.2 }} />
+                <div style={{ height:32, width:"100%", background:"repeating-linear-gradient(90deg, var(--black), var(--black) 2px, transparent 2px, transparent 4px)", opacity:.2 }} />
               </div>
             </div>
 
             <div style={{ marginTop:48, display:"flex", gap:16, justifyContent:"center", animation:"fadeUp 0.6s 0.4s both" }}>
-              <Link href="/dashboard" className="btn-red-full" style={{ padding:"14px 32px" }}>VIEW MY TRIPS</Link>
-              <Link href="/" className="btn-outline" style={{ padding:"14px 32px" }}>GO HOME</Link>
+              <Link href="/dashboard" className="ui-btn ui-btn-red">View my trips</Link>
+              <Link href="/" className="ui-btn ui-btn-white">Go home</Link>
             </div>
 
           </div>

@@ -42,9 +42,9 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ evidence }) => {
       className="evidence-drawer"
       style={{
         marginTop: "8px",
-        border: "1px solid var(--grey1, #e2e8f0)",
+        border: "1px solid var(--grey1, var(--line))",
         borderRadius: "8px",
-        background: "#fafafa",
+        background: "var(--surface-2)",
         fontSize: "0.78rem"
       }}
     >
@@ -60,18 +60,18 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ evidence }) => {
           background: "transparent",
           border: "none",
           cursor: "pointer",
-          color: "var(--black, #0f172a)",
+          color: "var(--black, var(--ink))",
           fontWeight: 500
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <ShieldCheck size={14} style={{ color: "#16a34a" }} />
+          <ShieldCheck size={14} style={{ color: "var(--ok)" }} />
           <span>{status || "Sources"}</span>
           {confidence != null && (
             <span
               style={{
-                background: "#dcfce7",
-                color: "#15803d",
+                background: "var(--ok-bg)",
+                color: "var(--ok-ink)",
                 padding: "2px 6px",
                 borderRadius: "10px",
                 fontSize: "0.7rem",
@@ -89,8 +89,8 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ evidence }) => {
         <div
           style={{
             padding: "8px 10px 10px",
-            borderTop: "1px solid var(--grey1, #e2e8f0)",
-            color: "#475569",
+            borderTop: "1px solid var(--grey1, var(--line))",
+            color: "var(--ink-2)",
             display: "flex",
             flexDirection: "column",
             gap: "6px"

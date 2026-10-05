@@ -116,7 +116,7 @@ export default function SettingsPage() {
       // The process is up and answering; the model is not serving. Rendering
       // this as "OFFLINE" (which `status === "ok" ? … : …` did) mislabels a
       // backend that is still serving search, airports and the chatbot.
-      : { text: "ONLINE / DEGRADED", color: "#ca8a04" };
+      : { text: "ONLINE / DEGRADED", color: "var(--warn)" };
 
   // "failed" and "lazy" were one bucket, both drawn as "LAZY / UNTRAINED".
   // They call for opposite responses: lazy means the model loads on first use,
@@ -124,7 +124,7 @@ export default function SettingsPage() {
   const inference =
     health.model === "ready" ? { text: "ACTIVE / LOADED", color: "var(--green)" }
     : health.model === "failed" ? { text: "LOAD FAILED", color: "var(--red)" }
-    : health.model === "lazy" ? { text: "NOT LOADED YET", color: "#ca8a04" }
+    : health.model === "lazy" ? { text: "NOT LOADED YET", color: "var(--warn)" }
     : { text: "UNKNOWN", color: "var(--grey3)" };
 
   const refused = health.refused_artifacts.length
@@ -219,12 +219,12 @@ export default function SettingsPage() {
                     value={refused.length
                       ? `${refused.length} ARTIFACT(S) REFUSED`
                       : info.trained ? "LOADED, NONE REFUSED" : "NO ARTIFACT LOADED"}
-                    color={refused.length ? "var(--red)" : info.trained ? "var(--green)" : "#ca8a04"}
+                    color={refused.length ? "var(--red)" : info.trained ? "var(--green)" : "var(--warn)"}
                   />
                   <Row
                     label="Pipeline validation status"
                     value={info.validation_status}
-                    color={info.validation_status === "PASS" ? "var(--green)" : "#ca8a04"}
+                    color={info.validation_status === "PASS" ? "var(--green)" : "var(--warn)"}
                   />
                   <Row
                     label="Last validated"
@@ -241,7 +241,7 @@ export default function SettingsPage() {
                   <Row
                     label="Data Source Origin"
                     value={SOURCE_LABEL[health.data_source] ?? health.data_source}
-                    color={health.data_source === "trained_model" ? "var(--green)" : "#ca8a04"}
+                    color={health.data_source === "trained_model" ? "var(--green)" : "var(--warn)"}
                     last
                   />
                 </div>

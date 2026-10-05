@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 // Fonts are bundled with the app instead of loaded from Google Fonts, so the
 // page doesn't wait on (or break without) a third-party stylesheet.
 import "@fontsource/bebas-neue/400.css";
@@ -16,8 +16,16 @@ import "@fontsource/martian-mono/700.css";
 import "./globals.css";
 import { Toaster } from "sonner";
 import QueryProvider from "@/components/providers/QueryProvider";
-import { ThemeProvider } from "@/context/ThemeContext";
+import { ThemeProvider, THEME_INIT_SCRIPT } from "@/context/ThemeContext";
 import Chatbot from "@/components/Chat/Chatbot";
+
+// Colours the phone's browser bar to match the page in each theme.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0c0d" },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://skymind.app"),
@@ -47,6 +55,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Set the theme before first paint so dark mode doesn't flash white. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>

@@ -94,7 +94,7 @@ export default function CheckoutPage() {
           email: booking?.contact_email || "",
           contact: booking?.contact_phone || "",
         },
-        theme: { color: "#e03131" },
+        theme: { color: "var(--red)" },
       };
 
       const rzp = new window.Razorpay(options);
@@ -151,7 +151,7 @@ export default function CheckoutPage() {
               <div className="form-block-body">
                 <DemoNotice style={{ marginBottom: 16 }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px", background: "var(--off)", borderRadius: "12px", border: "1px solid var(--grey1)", marginBottom: 24 }}>
-                  <div style={{ width: 48, height: 48, background: "#2563eb", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: "10px" }}>RZP</div>
+                  <div style={{ width: 48, height: 48, background: "var(--info)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: "10px" }}>RZP</div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: "14px" }}>Razorpay (test mode)</div>
                     <div style={{ fontSize: "12px", color: "var(--grey4)" }}>UPI, cards and netbanking</div>

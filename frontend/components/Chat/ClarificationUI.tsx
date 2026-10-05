@@ -27,12 +27,12 @@ export const ClarificationUI: React.FC<ClarificationUIProps> = ({ onSelect, type
               alignItems: "center",
               gap: "4px",
               padding: "4px 10px",
-              background: "#fff",
-              border: "1px solid #cbd5e1",
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
               borderRadius: "16px",
               fontSize: "0.75rem",
               cursor: "pointer",
-              color: "#334155",
+              color: "var(--ink-2)",
               fontWeight: 500,
               transition: "all 0.15s ease"
             }}
@@ -63,12 +63,12 @@ export const ClarificationUI: React.FC<ClarificationUIProps> = ({ onSelect, type
               alignItems: "center",
               gap: "4px",
               padding: "4px 10px",
-              background: "#fff",
-              border: "1px solid #cbd5e1",
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
               borderRadius: "16px",
               fontSize: "0.75rem",
               cursor: "pointer",
-              color: "#334155",
+              color: "var(--ink-2)",
               fontWeight: 500
             }}
           >

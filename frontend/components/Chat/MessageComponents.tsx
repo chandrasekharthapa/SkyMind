@@ -5,7 +5,7 @@ import AirlineLogo from "../flights/AirlineLogo";
 // ─── Typing Message ──────────────────────────────────────────────────
 export const TypingMessage: React.FC = () => (
   <div style={{ display: "flex", gap: "12px", alignSelf: "flex-start" }}>
-    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--red)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--red-solid)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <Bot size={14} />
     </div>
     <div style={{ background: "var(--white)", border: "1px solid var(--grey1)", borderRadius: "12px", padding: "10px 14px", display: "flex", alignItems: "center", gap: 4 }}>

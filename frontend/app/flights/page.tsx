@@ -23,9 +23,9 @@ const REC_LABEL: Record<string, string> = {
 };
 
 const REC_COLOR: Record<string, string> = {
-  BOOK_NOW: "#16a34a",
-  WAIT: "#d97706",
-  MONITOR: "#666666"
+  BOOK_NOW: "var(--ok)",
+  WAIT: "var(--warn)",
+  MONITOR: "var(--ink-3)"
 };
 
 function FlightsContent() {
@@ -176,10 +176,10 @@ function FlightsContent() {
     : null;
 
   return (
-    <div style={{ background: "#fff", minHeight: "100vh", paddingTop: 80 }}>
+    <div style={{ background: "var(--body-bg)", minHeight: "100vh", paddingTop: 80 }}>
       
       {/* Search Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #EAEAEA", padding: "24px 0" }}>
+      <div style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)", padding: "24px 0" }}>
         <div className="page-wrap">
           <div>
             <FlightSearchForm 
@@ -244,7 +244,7 @@ function FlightsContent() {
 
         {!searched && !loading && (
           <div className="card" style={{ padding: "40px 24px", textAlign: "center" }}>
-            <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#111", marginBottom: 8 }}>Where are you flying?</h2>
+            <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--ink)", marginBottom: 8 }}>Where are you flying?</h2>
             <p className="metadata" style={{ fontSize: "14px", maxWidth: 460, margin: "0 auto" }}>
               Choose a route and date above and press Search flights. Live fares take up to
               half a minute to load; you&apos;ll also see a forecast for the route.
@@ -256,7 +256,7 @@ function FlightsContent() {
         {/* Results Toolbar */}
         <div className="toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
-            <h1 className="route-title" style={{ fontSize: "24px", fontWeight: 600, color: "#111", margin: 0 }}>
+            <h1 className="route-title" style={{ fontSize: "24px", fontWeight: 600, color: "var(--ink)", margin: 0 }}>
               {searchParams.origin} → {searchParams.destination}
             </h1>
             <div className="metadata" style={{ marginTop: 4 }}>
@@ -268,7 +268,7 @@ function FlightsContent() {
           
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span className="card-label" style={{ marginBottom: 0 }}>SORT BY</span>
-            <div style={{ display: "flex", background: "#F5F5F5", padding: "3px", borderRadius: "8px" }}>
+            <div style={{ display: "flex", background: "var(--surface-2)", padding: "3px", borderRadius: "8px" }}>
               {["Price", "Duration", "Departure"].map(s => (
                 <button 
                   key={s} 
@@ -279,8 +279,8 @@ function FlightsContent() {
                     fontWeight: 500,
                     borderRadius: "6px",
                     border: "none",
-                    background: sort === s ? "#fff" : "transparent",
-                    color: sort === s ? "#111" : "#666",
+                    background: sort === s ? "var(--surface)" : "transparent",
+                    color: sort === s ? "var(--ink)" : "var(--ink-3)",
                     cursor: "pointer",
                     boxShadow: sort === s ? "0 1px 3px rgba(0,0,0,0.08)" : "none"
                   }}
@@ -311,11 +311,11 @@ function FlightsContent() {
                 padding: "12px 14px",
                 cursor: "pointer",
                 textAlign: "left",
-                borderColor: timeFilter === f.id ? "#16a34a" : "#EAEAEA",
-                background: timeFilter === f.id ? "rgba(22,163,74,0.03)" : "#fff"
+                borderColor: timeFilter === f.id ? "var(--ok)" : "var(--line)",
+                background: timeFilter === f.id ? "rgba(22,163,74,0.03)" : "var(--surface)"
               }}
             >
-              <div style={{ fontSize: "13px", fontWeight: 500, color: timeFilter === f.id ? "#16a34a" : "#111" }}>{f.label}</div>
+              <div style={{ fontSize: "13px", fontWeight: 500, color: timeFilter === f.id ? "var(--ok)" : "var(--ink)" }}>{f.label}</div>
               <div className="metadata" style={{ marginTop: 2 }}>{f.sub || "Anytime"}</div>
             </button>
           ))}
@@ -324,11 +324,11 @@ function FlightsContent() {
 
         {/* Search Result Status */}
         {!loading && searchResult?.status === "degraded" && (
-          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "#FCD34D", background: "#FFFBEB" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: "#92400E", marginBottom: 4 }}>
+          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "var(--warn-line)", background: "var(--warn-bg)" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--warn-ink)", marginBottom: 4 }}>
               CACHED RESULTS — LIVE PROVIDER UNAVAILABLE
             </div>
-            <div style={{ fontSize: "13px", color: "#78350F" }}>
+            <div style={{ fontSize: "13px", color: "var(--warn-ink)" }}>
               These fares are authentic observations from an earlier collection, not a live quote for this search.
               {searchResult.provider_error_kind ? ` Provider failure: ${searchResult.provider_error_kind}.` : ""}
             </div>
@@ -336,11 +336,11 @@ function FlightsContent() {
         )}
 
         {!loading && searchResult?.status === "empty" && (
-          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "#CBD5E1", background: "#F8FAFC" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+          <div className="card" style={{ padding: 16, marginBottom: 20, borderColor: "var(--line)", background: "var(--surface-2)" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink-2)", marginBottom: 4 }}>
               SEARCH COMPLETED — NO FARES RETURNED
             </div>
-            <div style={{ fontSize: "13px", color: "#475569" }}>
+            <div style={{ fontSize: "13px", color: "var(--ink-2)" }}>
               The provider completed the search, but neither it nor the exact-route cache returned a usable fare.
             </div>
           </div>
@@ -348,9 +348,9 @@ function FlightsContent() {
 
         {/* Error State */}
         {error && (
-          <div className="card" style={{ padding: 32, textAlign: "center", borderColor: "#FCA5A5", background: "#FFF8F8" }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>COULDN&apos;T LOAD FLIGHTS</div>
-            <div role="alert" style={{ fontSize: "14px", color: "#444", marginBottom: 16, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>{error}</div>
+          <div className="card" style={{ padding: 32, textAlign: "center", borderColor: "var(--bad-line)", background: "var(--bad-bg)" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--bad)", marginBottom: 8 }}>COULDN&apos;T LOAD FLIGHTS</div>
+            <div role="alert" style={{ fontSize: "14px", color: "var(--ink-2)", marginBottom: 16, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>{error}</div>
             <button className="btn-secondary" onClick={() => doSearch(searchParams)}>Try again</button>
           </div>
         )}
@@ -360,7 +360,7 @@ function FlightsContent() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="card" style={{ height: "120px", padding: "20px", display: "flex", alignItems: "center" }}>
-                <div style={{ width: "100%", height: "32px", background: "#F5F5F5", borderRadius: 6 }} />
+                <div style={{ width: "100%", height: "32px", background: "var(--surface-2)", borderRadius: 6 }} />
               </div>
             ))}
           </div>
@@ -415,23 +415,23 @@ function FlightsContent() {
                 className="card flight-card" 
                 style={{ 
                   padding: 20, 
-                  borderColor: isCheapest ? "#16a34a" : "#EAEAEA",
-                  background: "#fff",
+                  borderColor: isCheapest ? "var(--ok)" : "var(--line)",
+                  background: "var(--surface)",
                   position: "relative"
                 }}
               >
                 {/* Visual Top Badges Row */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
                   {isCheapest && (
-                    <span style={{ fontSize: "11px", fontWeight: 700, background: "#DCFCE7", color: "#15803D", padding: "2px 8px", borderRadius: 4, letterSpacing: "0.5px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 700, background: "var(--ok-bg)", color: "var(--ok-ink)", padding: "2px 8px", borderRadius: 4, letterSpacing: "0.5px" }}>
                       CHEAPEST FARE
                     </span>
                   )}
                   <span style={{
                     fontSize: "11px",
                     fontWeight: 600,
-                    background: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#EFF6FF" : "#F3F4F6",
-                    color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#1D4ED8" : "#4B5563",
+                    background: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "var(--info-bg)" : "var(--surface-2)",
+                    color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "var(--info)" : "var(--ink-2)",
                     padding: "2px 8px",
                     borderRadius: 4
                   }}>
@@ -447,13 +447,13 @@ function FlightsContent() {
                   
                   {/* Airline Info */}
                   <div className="col-airline">
-                    <div style={{ width: 42, height: 42, borderRadius: 8, background: "#F8FAFC", border: "1px solid #E2E8F0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 8, background: "var(--surface-2)", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <AirlineLogo code={airlineCode} name={airlineName} />
                     </div>
                     <div>
-                      <div style={{ fontSize: "15px", fontWeight: 600, color: "#0F172A" }}>{airlineName}</div>
+                      <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--ink)" }}>{airlineName}</div>
                       {flNumStr && (
-                        <div className="metadata" style={{ fontSize: "12px", color: "#64748B" }}>{flNumStr}</div>
+                        <div className="metadata" style={{ fontSize: "12px", color: "var(--ink-3)" }}>{flNumStr}</div>
                       )}
                     </div>
                   </div>
@@ -461,29 +461,29 @@ function FlightsContent() {
                   {/* Flight Times & Duration */}
                   <div className="col-timeline">
                     <div style={{ textAlign: "left" }}>
-                      <div style={{ fontSize: dep === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: dep === "Time not listed" ? "#64748B" : "#0F172A" }}>{dep}</div>
-                      <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>{seg?.origin}</div>
+                      <div style={{ fontSize: dep === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: dep === "Time not listed" ? "var(--ink-3)" : "var(--ink)" }}>{dep}</div>
+                      <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink-2)" }}>{seg?.origin}</div>
                     </div>
                     
                     <div style={{ flex: 1, textAlign: "center", padding: "0 16px" }}>
-                      <div className="metadata" style={{ marginBottom: 4, fontSize: "12px", fontWeight: 500, color: "#64748B" }}>{dur}</div>
-                      <div style={{ height: 2, background: "#CBD5E1", position: "relative" }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#16a34a", position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }} />
+                      <div className="metadata" style={{ marginBottom: 4, fontSize: "12px", fontWeight: 500, color: "var(--ink-3)" }}>{dur}</div>
+                      <div style={{ height: 2, background: "var(--line)", position: "relative" }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ok)", position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }} />
                       </div>
-                      <div className="metadata" style={{ marginTop: 4, fontSize: "12px", fontWeight: 600, color: stops === 0 ? "#16a34a" : "#475569" }}>
+                      <div className="metadata" style={{ marginTop: 4, fontSize: "12px", fontWeight: 600, color: stops === 0 ? "var(--ok)" : "var(--ink-2)" }}>
                         {stops == null ? "Stops not listed" : stops === 0 ? "Non-stop" : `${stops} stop${stops > 1 ? "s" : ""}`}
                       </div>
                     </div>
 
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: arr === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: arr === "Time not listed" ? "#64748B" : "#0F172A" }}>{arr}</div>
-                      <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>{lastSeg?.destination}</div>
+                      <div style={{ fontSize: arr === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: arr === "Time not listed" ? "var(--ink-3)" : "var(--ink)" }}>{arr}</div>
+                      <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink-2)" }}>{lastSeg?.destination}</div>
                     </div>
                   </div>
 
                   {/* Price & Action Buttons */}
                   <div className="col-action">
-                    <div style={{ fontSize: "26px", fontWeight: 800, color: "#0F172A", marginBottom: 12, letterSpacing: "-0.5px" }}>
+                    <div style={{ fontSize: "26px", fontWeight: 800, color: "var(--ink)", marginBottom: 12, letterSpacing: "-0.5px" }}>
                       {formatFare(price, f.price.currency)}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -496,9 +496,9 @@ function FlightsContent() {
                           width: "100%",
                           height: 36,
                           borderRadius: 8,
-                          background: isExpanded ? "#F1F5F9" : "#fff",
-                          border: `1px solid ${isExpanded ? "#94A3B8" : "#CBD5E1"}`,
-                          color: isExpanded ? "#334155" : "#475569",
+                          background: isExpanded ? "var(--surface-2)" : "var(--surface)",
+                          border: `1px solid ${isExpanded ? "var(--line)" : "var(--line)"}`,
+                          color: isExpanded ? "var(--ink-2)" : "var(--ink-2)",
                           fontSize: "12px",
                           fontWeight: 600,
                           cursor: "pointer",
@@ -529,7 +529,7 @@ function FlightsContent() {
                           width: "100%",
                           height: 36,
                           borderRadius: 8,
-                          background: "#E11D48",
+                          background: "var(--red-solid)",
                           border: "none",
                           color: "#fff",
                           fontSize: "12px",
@@ -539,8 +539,8 @@ function FlightsContent() {
                           letterSpacing: "0.06em",
                           textTransform: "uppercase",
                         }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "#BE123C")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "#E11D48")}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--red-solid-hover)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "var(--red-solid)")}
                       >
                         Book Now
                       </button>
@@ -554,27 +554,27 @@ function FlightsContent() {
                   <div style={{
                     marginTop: 16,
                     paddingTop: 16,
-                    borderTop: "1px solid #E2E8F0",
-                    background: "#F8FAFC",
+                    borderTop: "1px solid var(--line)",
+                    background: "var(--surface-2)",
                     borderRadius: 8,
                     padding: 16,
                   }}>
                     {/* Segments breakdown */}
                     {segments.length > 0 && (
                       <div style={{ marginBottom: segments.length > 1 ? 16 : 0 }}>
-                        <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>FLIGHT SEGMENTS</div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>FLIGHT SEGMENTS</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {segments.map((s: any, idx: number) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "13px", background: "#fff", border: "1px solid #E2E8F0", borderRadius: 6, padding: "10px 14px" }}>
-                              <span style={{ fontWeight: 700, color: "#0F172A", minWidth: 60 }}>{s.airline_code || airlineCode} {s.flight_number || ""}</span>
-                              <span style={{ color: "#475569" }}>{s.origin} → {s.destination}</span>
-                              <span style={{ color: "#64748B", marginLeft: "auto" }}>
+                            <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "13px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 14px" }}>
+                              <span style={{ fontWeight: 700, color: "var(--ink)", minWidth: 60 }}>{s.airline_code || airlineCode} {s.flight_number || ""}</span>
+                              <span style={{ color: "var(--ink-2)" }}>{s.origin} → {s.destination}</span>
+                              <span style={{ color: "var(--ink-3)", marginLeft: "auto" }}>
                                 {s.departure_time ? new Date(s.departure_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "--:--"}
                                 {" → "}
                                 {s.arrival_time ? new Date(s.arrival_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "--:--"}
                               </span>
                               {s.duration && (
-                                <span style={{ color: "#94A3B8", fontSize: "11px" }}>{formatDuration(s.duration)}</span>
+                                <span style={{ color: "var(--ink-4)", fontSize: "11px" }}>{formatDuration(s.duration)}</span>
                               )}
                             </div>
                           ))}
@@ -585,9 +585,9 @@ function FlightsContent() {
                     {/* Metadata row */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginTop: segments.length > 0 ? 12 : 0 }}>
                       <div>
-                        <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>ROUTE & STOPS</div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#0F172A" }}>{seg?.origin} → {lastSeg?.destination}</div>
-                        <div style={{ fontSize: "12px", color: "#64748B" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>ROUTE & STOPS</div>
+                        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)" }}>{seg?.origin} → {lastSeg?.destination}</div>
+                        <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>
                           {stops == null
                             ? "Stops unavailable"
                             : stops === 0
@@ -596,15 +596,15 @@ function FlightsContent() {
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>DATA SOURCE & PROVENANCE</div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "#16a34a" : "#2563EB" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>DATA SOURCE & PROVENANCE</div>
+                        <div style={{ fontSize: "13px", fontWeight: 600, color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "var(--ok)" : "var(--info)" }}>
                           {f.provenance === "LIVE_GOOGLE_FLIGHTS"
                             ? "Live Google Flights fetch"
                             : f.provenance === "AUTHENTIC_PRICE_HISTORY"
                               ? "Cached authentic price observation"
                               : "Source not stated"}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#64748B" }}>
+                        <div style={{ fontSize: "12px", color: "var(--ink-3)" }}>
                           {f.provenance === "LIVE_GOOGLE_FLIGHTS"
                             ? "Fetched for this search through the Google Flights provider"
                             : f.provenance === "AUTHENTIC_PRICE_HISTORY"
@@ -632,8 +632,8 @@ function FlightsContent() {
         }
 
         .card {
-          background: #fff;
-          border: 1px solid #EAEAEA;
+          background: var(--surface);
+          border: 1px solid var(--line);
           border-radius: 12px;
           box-shadow: none;
         }
@@ -643,14 +643,14 @@ function FlightsContent() {
           font-weight: 500;
           text-transform: uppercase;
           letter-spacing: 0.04em;
-          color: #666;
+          color: var(--ink-3);
           margin-bottom: 4px;
         }
 
         .metadata {
           font-size: 11px;
           font-weight: 400;
-          color: #888;
+          color: var(--ink-4);
         }
 
         /* 4-Column Banner */
@@ -668,7 +668,7 @@ function FlightsContent() {
         .banner-value {
           font-size: 24px;
           font-weight: 600;
-          color: #111;
+          color: var(--ink);
           margin-bottom: 2px;
         }
 
@@ -722,7 +722,7 @@ export default function FlightsPage() {
   return (
     <>
       <NavBar />
-      <Suspense fallback={<div style={{ paddingTop: 120, textAlign: "center", color: "#666", fontSize: "13px" }}>Loading search results...</div>}>
+      <Suspense fallback={<div style={{ paddingTop: 120, textAlign: "center", color: "var(--ink-3)", fontSize: "13px" }}>Loading search results...</div>}>
         <FlightsContent />
       </Suspense>
     </>

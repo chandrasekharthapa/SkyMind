@@ -6,7 +6,7 @@ import { getValidationReport, getValidationHistory, getValidationReportByTimesta
 
 const BADGE_COLORS: Record<string, { bg: string, text: string }> = {
   PASS: { bg: "rgba(22, 163, 74, 0.1)", text: "var(--green)" },
-  WARNING: { bg: "rgba(202, 138, 4, 0.1)", text: "#ca8a04" },
+  WARNING: { bg: "rgba(202, 138, 4, 0.1)", text: "var(--warn)" },
   FAIL: { bg: "rgba(220, 38, 38, 0.1)", text: "var(--red)" }
 };
 
@@ -74,7 +74,7 @@ export default function AdminPage() {
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return "var(--green)";
-    if (score >= 60) return "#ca8a04";
+    if (score >= 60) return "var(--warn)";
     return "var(--red)";
   };
 
@@ -157,7 +157,7 @@ export default function AdminPage() {
                           </div>
                         ))}
                         {item.data.warnings.map((warn: string, i: number) => (
-                          <div key={i} style={{ display: "flex", gap: 8, fontSize: "0.8rem", color: "#ca8a04", fontWeight: 500 }}>
+                          <div key={i} style={{ display: "flex", gap: 8, fontSize: "0.8rem", color: "var(--warn)", fontWeight: 500 }}>
                             <span>⚠️</span>
                             <span>{warn}</span>
                           </div>

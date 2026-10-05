@@ -15,7 +15,7 @@ import ForecastDebugPanel from "@/components/debug/ForecastDebugPanel";
 
 const PriceChart = nextDynamic(() => import("@/components/charts/PriceChart"), {
   ssr: false,
-  loading: () => <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "#888", fontSize: "13px" }}>Loading forecast chart...</div>
+  loading: () => <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-4)", fontSize: "13px" }}>Loading forecast chart...</div>
 });
 
 const LOADING_STEPS = [
@@ -93,7 +93,9 @@ function PredictContent() {
     ? "NO FORECAST"
     : recDecision === "BOOK_NOW" || recHorizon === 0
       ? "BUY NOW"
-      : `WAIT ${recHorizon} DAY${(recHorizon ?? 0) > 1 ? "S" : ""}`;
+      : recHorizon == null
+        ? "WAIT"
+        : `WAIT ${recHorizon} DAY${recHorizon > 1 ? "S" : ""}`;
 
   const savings = cForecast ? cForecast.calculated_savings : (result?.optimal_booking?.estimated_savings ?? 0);
   const savingsPct = cForecast ? cForecast.percentage_savings.toFixed(1) : (result?.optimal_booking?.percentage_savings?.toFixed(1) ?? "0.0");
@@ -104,7 +106,9 @@ function PredictContent() {
       ? "No forecast is available for this route yet."
       : recHorizon === 0
         ? "Today's live fare is already the lowest expected price across all forecast horizons. Booking now minimises total cost."
-        : `The AI model forecasts the lowest fare in approximately ${recHorizon} day(s). Waiting is expected to save approximately ${formatCurrency(savings)}.`
+        : recHorizon == null
+          ? "The model expects the fare to come down, but didn't name a day for the lowest price."
+          : `The AI model forecasts the lowest fare in approximately ${recHorizon} day${recHorizon === 1 ? "" : "s"}. Waiting is expected to save approximately ${formatCurrency(savings)}.`
   );
 
   // Compute "savings vs waiting" — how much you save booking now vs predicted future minimum
@@ -123,7 +127,7 @@ function PredictContent() {
   // Low confidence" would report a measurement that does not exist.
   const confText = confPct == null ? "Not measured" : `${confPct}%`;
   const riskLevel = confPct == null ? "Unrated" : confPct >= 88 ? "Low" : confPct >= 70 ? "Medium" : "High";
-  const riskColor = confPct == null ? "#64748b" : confPct >= 88 ? "#16a34a" : confPct >= 70 ? "#d97706" : "#dc2626";
+  const riskColor = confPct == null ? "var(--ink-3)" : confPct >= 88 ? "var(--ok)" : confPct >= 70 ? "var(--warn)" : "var(--bad)";
 
   // Confidence label
   const confLabel = confPct == null
@@ -146,7 +150,7 @@ function PredictContent() {
   };
 
   return (
-    <div style={{ background: "#fff", minHeight: "100vh", paddingTop: 80 }}>
+    <div style={{ background: "var(--body-bg)", minHeight: "100vh", paddingTop: 80 }}>
       <div className="page-wrap">
         <div className="layout">
 
@@ -236,7 +240,7 @@ function PredictContent() {
               <div className="card state-card state-notice" role="status">
                 <div className="state-notice-label">Forecast Not Available Yet</div>
                 <div className="description" style={{ marginTop: 8 }}>{error}</div>
-                <div className="description" style={{ marginTop: 12, fontSize: "12px", color: "#777" }}>
+                <div className="description" style={{ marginTop: 12, fontSize: "12px", color: "var(--ink-3)" }}>
                   SkyMind refuses a forecast rather than showing an estimate it cannot
                   stand behind. Live fare search on the Search page is unaffected.
                 </div>
@@ -422,7 +426,7 @@ function PredictContent() {
                             <div className="metadata">Range: {formatCurrency(pt.lower)} – {formatCurrency(pt.upper)}</div>
                           )}
                           {divergent && (
-                            <div className="metadata" style={{ color: "#d97706", marginTop: 2 }}>Model estimate · live: {formatCurrency(lowestFare)}</div>
+                            <div className="metadata" style={{ color: "var(--warn)", marginTop: 2 }}>Model estimate · live: {formatCurrency(lowestFare)}</div>
                           )}
                         </div>
                       );
@@ -497,7 +501,7 @@ function PredictContent() {
         }
 
         .sidebar-section {
-          background: #fff;
+          background: transparent;
         }
 
         .section-label {
@@ -505,13 +509,13 @@ function PredictContent() {
           font-weight: 500;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          color: #666;
+          color: var(--ink-3);
           margin: 0 0 12px 0;
         }
 
         .card {
-          background: #fff;
-          border: 1px solid #EAEAEA;
+          background: var(--surface);
+          border: 1px solid var(--line);
           border-radius: 12px;
           padding: 20px;
           box-shadow: none;
@@ -520,7 +524,7 @@ function PredictContent() {
         .info-table {
           display: flex;
           flex-direction: column;
-          border: 1px solid #EAEAEA;
+          border: 1px solid var(--line);
           border-radius: 10px;
           overflow: hidden;
         }
@@ -530,69 +534,69 @@ function PredictContent() {
           justify-content: space-between;
           align-items: center;
           padding: 10px 14px;
-          border-bottom: 1px solid #F0F0F0;
+          border-bottom: 1px solid var(--line);
         }
         .info-row:last-child { border-bottom: none; }
-        .dev-row { background: #FAFAFA; }
+        .dev-row { background: var(--surface-2); }
 
         .info-key {
           font-size: 12px;
           font-weight: 400;
-          color: #666;
+          color: var(--ink-3);
         }
 
         .info-val {
           font-size: 12px;
           font-weight: 500;
-          color: #111;
+          color: var(--ink);
           text-align: right;
         }
-        .info-val.green { color: #16a34a; }
+        .info-val.green { color: var(--ok); }
 
         .btn-dev-toggle {
           margin-top: 8px;
           font-size: 11px;
           font-weight: 500;
-          color: #666;
+          color: var(--ink-3);
           background: none;
           border: none;
           cursor: pointer;
           padding: 4px 0;
           text-align: left;
         }
-        .btn-dev-toggle:hover { color: #111; text-decoration: underline; }
+        .btn-dev-toggle:hover { color: var(--ink); text-decoration: underline; }
 
         .card-label {
           font-size: 13px;
           font-weight: 500;
           text-transform: uppercase;
           letter-spacing: 0.04em;
-          color: #666;
+          color: var(--ink-3);
           margin-bottom: 4px;
         }
 
         .primary-price {
           font-size: 32px;
           font-weight: 700;
-          color: #111;
+          color: var(--ink);
           line-height: 1.1;
           margin-bottom: 4px;
         }
-        .primary-price.green { color: #16a34a; }
-        .primary-price.red-text { color: #dc2626; }
+        .primary-price.green { color: var(--ok); }
+        .primary-price.red-text { color: var(--bad); }
 
         .secondary-value {
           font-size: 15px;
           font-weight: 600;
-          color: #111;
+          color: var(--ink);
           line-height: 1.2;
         }
-        .secondary-value.green { color: #16a34a; }
+        .secondary-value.green { color: var(--ok); }
 
         .description {
           font-size: 14px;
           font-weight: 400;
-          color: #444;
+          color: var(--ink-2);
           line-height: 1.5;
           margin: 0;
         }
@@ -600,7 +604,7 @@ function PredictContent() {
         .metadata {
           font-size: 12px;
           font-weight: 400;
-          color: #888;
+          color: var(--ink-4);
         }
 
         .metric-grid {
@@ -629,7 +633,7 @@ function PredictContent() {
         }
 
         .rec-col.border-left {
-          border-left: 1px solid #F0F0F0;
+          border-left: 1px solid var(--line);
           padding-left: 20px;
           gap: 12px;
         }
@@ -640,13 +644,13 @@ function PredictContent() {
           line-height: 1.1;
           margin-bottom: 6px;
         }
-        .rec-title.green { color: #16a34a; }
-        .rec-title.amber { color: #d97706; }
+        .rec-title.green { color: var(--ok); }
+        .rec-title.amber { color: var(--warn); }
 
         .rec-explanation {
           font-size: 14px;
           font-weight: 400;
-          color: #444;
+          color: var(--ink-2);
           line-height: 1.5;
           max-width: 480px;
           margin: 0;
@@ -660,7 +664,7 @@ function PredictContent() {
         .today-badge {
           font-size: 12px;
           font-weight: 400;
-          color: #666;
+          color: var(--ink-3);
           margin-left: 4px;
         }
 
@@ -684,22 +688,22 @@ function PredictContent() {
         }
 
         .timeline-card.baseline {
-          background: #FAFAFA;
+          background: var(--surface-2);
         }
 
         .timeline-card.tl-selected {
-          border: 2px solid #16a34a;
+          border: 2px solid var(--ok);
           background: rgba(22, 163, 74, 0.03);
         }
 
         .tl-price {
           font-size: 20px;
           font-weight: 600;
-          color: #111;
+          color: var(--ink);
           margin-top: 4px;
           margin-bottom: 2px;
         }
-        .tl-price.green { color: #16a34a; }
+        .tl-price.green { color: var(--ok); }
 
         .why-card {
           padding: 20px;
@@ -716,7 +720,7 @@ function PredictContent() {
         .why-list li {
           font-size: 14px;
           font-weight: 400;
-          color: #333;
+          color: var(--ink-2);
           line-height: 1.5;
         }
 
@@ -729,27 +733,27 @@ function PredictContent() {
         }
 
         .state-error {
-          border-color: #FCA5A5;
-          background: #FFF8F8;
+          border-color: var(--bad-line);
+          background: var(--bad-bg);
         }
 
         .state-error-label {
           font-size: 12px;
           font-weight: 600;
-          color: #DC2626;
+          color: var(--bad);
           text-transform: uppercase;
         }
 
         /* Neutral, not alarming: a declined forecast is the design working. */
         .state-notice {
-          border-color: #E5E7EB;
-          background: #FAFAFA;
+          border-color: var(--line);
+          background: var(--surface-2);
         }
 
         .state-notice-label {
           font-size: 12px;
           font-weight: 600;
-          color: #52525B;
+          color: var(--ink-2);
           text-transform: uppercase;
         }
 
@@ -757,26 +761,26 @@ function PredictContent() {
           height: 40px;
           padding: 0 16px;
           border-radius: 8px;
-          background: #fff;
-          border: 1px solid #EAEAEA;
-          color: #333;
+          background: var(--surface);
+          border: 1px solid var(--line);
+          color: var(--ink-2);
           font-size: 13px;
           font-weight: 500;
           cursor: pointer;
         }
-        .btn-secondary:hover { background: #F9F9F9; }
+        .btn-secondary:hover { background: var(--surface-2); }
 
         .loading-label {
           font-size: 15px;
           font-weight: 600;
-          color: #111;
+          color: var(--ink);
           margin-bottom: 16px;
         }
 
         .progress-track {
           width: 220px;
           height: 3px;
-          background: #EAEAEA;
+          background: var(--line);
           border-radius: 100px;
           margin: 0 auto;
           overflow: hidden;
@@ -784,7 +788,7 @@ function PredictContent() {
 
         .progress-fill {
           height: 100%;
-          background: #E11D48;
+          background: var(--red);
           border-radius: 100px;
           transition: width 0.4s ease;
         }
@@ -795,13 +799,13 @@ function PredictContent() {
           border-radius: 10px;
           padding: 12px 16px;
           font-size: 13px;
-          color: #92400E;
+          color: var(--warn-ink);
         }
 
         @media (max-width: 1200px) {
           .metric-grid { grid-template-columns: repeat(2, 1fr); }
           .rec-card { grid-template-columns: 1fr; gap: 16px; }
-          .rec-col.border-left { border-left: none; padding-left: 0; border-top: 1px solid #F0F0F0; padding-top: 14px; }
+          .rec-col.border-left { border-left: none; padding-left: 0; border-top: 1px solid var(--line); padding-top: 14px; }
           .timeline-grid { grid-template-columns: repeat(3, 1fr); }
         }
 
@@ -824,7 +828,7 @@ export default function PredictPage() {
   return (
     <>
       <NavBar />
-      <Suspense fallback={<div style={{ paddingTop: 120, textAlign: "center", color: "#666", fontSize: "13px" }}>Loading forecast dashboard...</div>}>
+      <Suspense fallback={<div style={{ paddingTop: 120, textAlign: "center", color: "var(--ink-3)", fontSize: "13px" }}>Loading forecast dashboard...</div>}>
         <PredictContent />
       </Suspense>
     </>

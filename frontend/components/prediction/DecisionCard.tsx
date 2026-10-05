@@ -99,7 +99,7 @@ export default function DecisionCard({ result }: Props) {
           <div style={{ fontSize: "11px", color: "var(--grey3)", fontWeight: 500, marginBottom: "4px" }}>
             Potential Savings
           </div>
-          <div style={{ fontSize: "1.1rem", fontWeight: 600, color: estimatedSavings > 0 ? "#16a34a" : "var(--black)" }}>
+          <div style={{ fontSize: "1.1rem", fontWeight: 600, color: estimatedSavings > 0 ? "var(--ok)" : "var(--black)" }}>
             {savingsText}
           </div>
         </div>

@@ -108,7 +108,7 @@ export default function NavBar() {
             {user ? (
               <>
                 <Link href="/dashboard" className={`ui-nav-link ${pathname === '/dashboard' ? 'active' : ''}`}>
-                  <div style={{ width: 22, height: 22, borderRadius: "5px", background: "var(--red)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 800 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "5px", background: "var(--red-solid)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 800 }}>
                     {(profile?.display_name || user.email || "U")[0].toUpperCase()}
                   </div>
                   ACCOUNT

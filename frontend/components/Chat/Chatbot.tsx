@@ -265,7 +265,7 @@ function ChatbotContent() {
         >
           <Sparkles size={16} color="#E11D48" />
           <span className="copilot-fab-text">SkyMind Copilot</span>
-          <span className="copilot-fab-text" style={{ fontSize: "10px", color: "#888", background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 4 }}>Ctrl+K</span>
+          <span className="copilot-fab-text" style={{ fontSize: "10px", color: "var(--ink-4)", background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 4 }}>Ctrl+K</span>
         </button>
       )}
 
@@ -280,8 +280,8 @@ function ChatbotContent() {
           right: isOpen ? 24 : 24,
           width: "clamp(360px, 90vw, 500px)",
           height: "min(80vh, 720px)",
-          background: "#FFFFFF",
-          border: "1px solid #ECECEC",
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
           borderRadius: 16,
           boxShadow: "0 20px 48px rgba(0, 0, 0, 0.12)",
           zIndex: 10000,
@@ -294,15 +294,15 @@ function ChatbotContent() {
         }}
       >
         {/* Compact Header */}
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid #ECECEC", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff" }}>
-          <div style={{ fontSize: "18px", fontWeight: 600, color: "#111", letterSpacing: "-0.01em" }}>SkyMind Copilot</div>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--surface)" }}>
+          <div style={{ fontSize: "18px", fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.01em" }}>SkyMind Copilot</div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <button
               onClick={handleNewConversation}
               title="New Chat"
               aria-label="New Chat"
-              style={{ width: 32, height: 32, borderRadius: 6, border: "none", background: "transparent", color: "#666", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{ width: 32, height: 32, borderRadius: 6, border: "none", background: "transparent", color: "var(--ink-3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               <RotateCcw size={16} />
             </button>
@@ -310,7 +310,7 @@ function ChatbotContent() {
               onClick={() => setIsOpen(false)}
               title="Close (Esc)"
               aria-label="Close Copilot"
-              style={{ width: 32, height: 32, borderRadius: 6, border: "none", background: "transparent", color: "#666", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{ width: 32, height: 32, borderRadius: 6, border: "none", background: "transparent", color: "var(--ink-3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               <X size={18} />
             </button>
@@ -333,7 +333,7 @@ function ChatbotContent() {
           }}
         >
           {systemMessage && (
-            <div style={{ background: "rgba(224,49,49,0.05)", border: "1px solid rgba(224,49,49,0.15)", borderRadius: 8, padding: "10px 14px", fontSize: "12px", color: "#DC2626" }}>
+            <div style={{ background: "rgba(224,49,49,0.05)", border: "1px solid rgba(224,49,49,0.15)", borderRadius: 8, padding: "10px 14px", fontSize: "12px", color: "var(--bad)" }}>
               {systemMessage}
             </div>
           )}
@@ -342,9 +342,9 @@ function ChatbotContent() {
           {messages.length === 0 && (
             <div style={{ margin: "auto 0" }}>
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: "20px", fontWeight: 600, color: "#111", marginBottom: 6 }}>SkyMind Copilot</div>
-                <div style={{ fontSize: "14px", fontWeight: 500, color: "#444", marginBottom: 8 }}>Ask me about</div>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: "14px", color: "#666", lineHeight: 1.6 }}>
+                <div style={{ fontSize: "20px", fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>SkyMind Copilot</div>
+                <div style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink-2)", marginBottom: 8 }}>Ask me about</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: "14px", color: "var(--ink-3)", lineHeight: 1.6 }}>
                   <li>Flight prices</li>
                   <li>Booking recommendations</li>
                   <li>Fare forecasts</li>
@@ -356,7 +356,7 @@ function ChatbotContent() {
 
               {/* Suggestion Chips (Disappear after first message) */}
               <div>
-                <div style={{ fontSize: "11px", fontWeight: 500, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>SUGGESTED PROMPTS</div>
+                <div style={{ fontSize: "11px", fontWeight: 500, color: "var(--ink-4)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>SUGGESTED PROMPTS</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {SUGGESTION_CHIPS.map((chip, i) => (
                     <button
@@ -365,10 +365,10 @@ function ChatbotContent() {
                       style={{
                         padding: "6px 12px",
                         borderRadius: 8,
-                        background: "#FAFAFA",
-                        border: "1px solid #ECECEC",
+                        background: "var(--surface-2)",
+                        border: "1px solid var(--line)",
                         fontSize: "13px",
-                        color: "#333",
+                        color: "var(--ink-2)",
                         cursor: "pointer",
                         fontWeight: 400,
                         transition: "background-color 0.15s, border-color 0.15s"
@@ -409,9 +409,9 @@ function ChatbotContent() {
                       width: 28,
                       height: 28,
                       borderRadius: 6,
-                      background: "#FAFAFA",
-                      border: "1px solid #ECECEC",
-                      color: "#E11D48",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--line)",
+                      color: "var(--red)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -425,13 +425,13 @@ function ChatbotContent() {
                 {/* Message Bubble */}
                 <div
                   style={{
-                    background: msg.role === "user" ? "rgba(225, 29, 72, 0.04)" : "#F9F9F9",
-                    border: msg.role === "user" ? "1px solid rgba(225, 29, 72, 0.15)" : "1px solid #ECECEC",
+                    background: msg.role === "user" ? "var(--red-mist)" : "var(--surface-2)",
+                    border: "1px solid var(--line)",
                     borderRadius: 12,
                     padding: "14px 18px",
                     fontSize: "15px",
                     lineHeight: 1.6,
-                    color: "#111",
+                    color: "var(--ink)",
                     fontWeight: 400
                   }}
                 >
@@ -466,7 +466,7 @@ function ChatbotContent() {
         </div>
 
         {/* Compact Pinned Input */}
-        <form onSubmit={handleSubmit} style={{ padding: "14px 16px", borderTop: "1px solid #ECECEC", background: "#fff", display: "flex", gap: 10, alignItems: "center" }}>
+        <form onSubmit={handleSubmit} style={{ padding: "14px 16px", borderTop: "1px solid var(--line)", background: "var(--surface)", display: "flex", gap: 10, alignItems: "center" }}>
           <input
             type="text"
             placeholder="Ask anything about flights..."
@@ -478,9 +478,9 @@ function ChatbotContent() {
               height: 48,
               padding: "0 16px",
               borderRadius: 12,
-              border: "1px solid #ECECEC",
+              border: "1px solid var(--line)",
               fontSize: "15px",
-              color: "#111",
+              color: "var(--ink)",
               fontWeight: 400,
               outline: "none"
             }}
@@ -493,8 +493,8 @@ function ChatbotContent() {
               width: 44,
               height: 44,
               borderRadius: 10,
-              background: inputValue.trim() && !isLoading ? "#E11D48" : "#F0F0F0",
-              color: inputValue.trim() && !isLoading ? "#fff" : "#aaa",
+              background: inputValue.trim() && !isLoading ? "var(--red)" : "var(--surface-2)",
+              color: inputValue.trim() && !isLoading ? "#fff" : "var(--ink-4)",
               border: "none",
               cursor: inputValue.trim() && !isLoading ? "pointer" : "default",
               display: "flex",
