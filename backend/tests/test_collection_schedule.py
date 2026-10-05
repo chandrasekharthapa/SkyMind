@@ -78,3 +78,69 @@ def test_too_little_history_is_a_skip_not_a_failure():
 def test_other_training_refusals_still_fail_the_pipeline():
     assert _run_retraining_with({"trained": False, "insufficient_history": False,
                                  "rejected_horizons": {1: "timeline leakage audit failed"}}) is False
+
+
+# ── Model publishing: every horizon goes up, and the server pulls it down ──
+
+class _FakeBucket:
+    def __init__(self, files=None):
+        self.files = dict(files or {})
+
+    def upload(self, path, file, file_options=None):
+        self.files[path] = file
+
+    def download(self, name):
+        return self.files[name]
+
+    def list(self):
+        return [{"name": n} for n in self.files] + [{"name": "notes.txt"}]
+
+
+def _db_with(bucket):
+    from backend.database.database import Database
+    db = Database.__new__(Database)
+    db.supabase = MagicMock()
+    db.supabase.storage.from_.return_value = bucket
+    return db
+
+
+def test_bundle_upload_sends_every_horizon_and_its_metadata(tmp_path):
+    for name in ("fare_forecast_1d.pkl", "fare_forecast_1d.metadata.json",
+                 "fare_forecast_3d.pkl", "fare_forecast_3d.metadata.json", "global_model.pkl", "scratch.tmp"):
+        (tmp_path / name).write_bytes(b"x")
+    bucket = _FakeBucket()
+    uploaded = _db_with(bucket).upload_model_bundle(str(tmp_path))
+    assert uploaded == sorted(bucket.files) and "scratch.tmp" not in bucket.files
+    assert {"fare_forecast_3d.pkl", "fare_forecast_3d.metadata.json"} <= set(bucket.files)
+
+
+def test_bundle_download_writes_model_files_only(tmp_path):
+    bucket = _FakeBucket({"fare_forecast_1d.pkl": b"m", "fare_forecast_1d.metadata.json": b"{}"})
+    written = _db_with(bucket).download_model_bundle(str(tmp_path))
+    assert written == ["fare_forecast_1d.metadata.json", "fare_forecast_1d.pkl"]
+    assert not (tmp_path / "notes.txt").exists()
+
+
+def test_a_trained_run_publishes_the_bundle():
+    import backend.run_pipeline as rp
+    predictor = MagicMock()
+    predictor.train.return_value = {"trained": True, "trained_horizons": [1]}
+    db = MagicMock()
+    db.upload_model_bundle.return_value = ["fare_forecast_1d.pkl"]
+    with patch("backend.ml.price_model.get_predictor", return_value=predictor), \
+         patch("os.path.exists", return_value=True), \
+         patch("backend.database.database.database", db):
+        assert rp.run_retraining() is True
+    db.upload_model_bundle.assert_called_once()
+
+
+def test_server_sync_loads_what_it_downloaded_and_survives_storage_errors():
+    import backend.main as main
+    predictor = MagicMock()
+    with patch("backend.database.database.database") as db, \
+         patch.object(main, "get_predictor", return_value=predictor):
+        db.download_model_bundle.return_value = ["fare_forecast_1d.pkl"]
+        main._sync_models_from_storage()
+        predictor.load.assert_called_once()
+        db.download_model_bundle.side_effect = RuntimeError("bucket not found")
+        main._sync_models_from_storage()   # logs, does not raise

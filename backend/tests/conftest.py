@@ -4,7 +4,13 @@ Provides automatic test isolation for singleton services that maintain
 in-memory state (caches, counters, pending task queues) between test runs.
 """
 
+import os
+
 import pytest
+
+# The app fetches trained models from Supabase Storage at startup; tests must
+# not reach out to a real bucket.
+os.environ.setdefault("MODEL_SYNC_ON_START", "0")
 
 
 @pytest.fixture(autouse=True)

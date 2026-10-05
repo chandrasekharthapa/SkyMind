@@ -24,10 +24,56 @@ from backend.routers import alerts, auth, booking, flights, payment, predict, us
 load_dotenv()
 
 
+logger = logging.getLogger(__name__)
+
+
+def _sync_models_from_storage() -> None:
+    """Fetch the latest trained models from Supabase Storage and load them.
+
+    The daily pipeline trains on GitHub Actions and uploads there; this server
+    used to load only from its own disk, where no model ever existed, so
+    predictions were refused however many times the pipeline succeeded.
+    Never raises: no models (or no Storage) leaves prediction disabled, which
+    the prediction endpoints already report.
+    """
+    from backend.database.database import database
+    from backend.ml.price_model import MODEL_PATH
+    try:
+        names = database.download_model_bundle(os.path.dirname(MODEL_PATH))
+    except Exception as exc:
+        logger.warning("Model sync from Storage failed: %s: %s", type(exc).__name__, exc)
+        return
+    if not names:
+        logger.info("Model sync: Storage holds no trained model yet.")
+        return
+    try:
+        get_predictor().load()
+        logger.info("Model sync: loaded %s", ", ".join(names))
+    except Exception as exc:
+        logger.warning("Model sync downloaded %s but loading failed: %s", ", ".join(names), exc)
+
+
+async def _refresh_models_periodically(hours: float) -> None:
+    import asyncio
+    while True:
+        await asyncio.sleep(hours * 3600)
+        await asyncio.to_thread(_sync_models_from_storage)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
     get_predictor()
+    refresher = None
+    if os.getenv("MODEL_SYNC_ON_START", "1") != "0":
+        await asyncio.to_thread(_sync_models_from_storage)
+        hours = float(os.getenv("MODEL_SYNC_INTERVAL_HOURS", "6"))
+        if hours > 0:
+            # Picks up the model the daily pipeline publishes, without a redeploy.
+            refresher = asyncio.create_task(_refresh_models_periodically(hours))
     yield
+    if refresher:
+        refresher.cancel()
 
 
 app = FastAPI(

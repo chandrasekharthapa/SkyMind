@@ -93,18 +93,17 @@ def run_retraining() -> bool:
             return True
 
         logger.info(">>> TASK 4: Uploading Model to Supabase Storage...")
-        if not os.path.exists(MODEL_PATH):
+        if not summary.get("trained") or not os.path.exists(MODEL_PATH):
             # Was a bare `logger.error` with no effect on the exit status, so a
             # retrain that produced no artifact reported success. It is a failure:
             # either train() did not write, or it wrote somewhere else.
             logger.error(f"Model file not found after training: {MODEL_PATH}")
             return False
 
-        if not db.upload_model(MODEL_PATH):
-            logger.error("Model persistence failed.")
-            return False
-
-        logger.info("Model persistence successful.")
+        # Every horizon's pickle and metadata, not just the legacy global
+        # pickle: the serving path loads the per-horizon files.
+        uploaded = db.upload_model_bundle(os.path.dirname(MODEL_PATH))
+        logger.info("Model persistence successful: %s", ", ".join(uploaded))
         return True
     except Exception as e:
         logger.error(f"Retraining failed: {type(e).__name__}: {e}", exc_info=True)

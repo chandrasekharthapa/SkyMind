@@ -5,8 +5,9 @@ Strictly returns live data with no synthetic fallbacks.
 """
 
 import os
+import re
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Optional
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -593,6 +594,36 @@ class Database:
                 raise
             logger.debug(f"Model download failed (this is expected on first run): {exc}")
             return False
+
+
+    # The serving path loads one pickle and one metadata.json per horizon
+    # (fare_forecast_{h}d.*); global_model.pkl is only its legacy fallback, with
+    # the primary horizon alone. Uploading and downloading just global_model.pkl
+    # meant the per-horizon models never left the machine that trained them, and
+    # nothing on the web server ever downloaded even that one file.
+    MODEL_FILE_PATTERN = re.compile(r"^(?:fare_forecast_\d+d\.(?:pkl|metadata\.json)|global_model\.pkl)$")
+
+    def upload_model_bundle(self, model_dir: str) -> List[str]:
+        """Upload every model artifact in `model_dir`; returns the names uploaded.
+        Raises if any upload fails, so a half-published set is not reported as done."""
+        names = sorted(n for n in os.listdir(model_dir) if self.MODEL_FILE_PATTERN.match(n))
+        for name in names:
+            if not self.upload_model(os.path.join(model_dir, name), remote_name=name):
+                raise RuntimeError(f"upload of {name} failed")
+        return names
+
+    def download_model_bundle(self, model_dir: str) -> List[str]:
+        """Download every model artifact in Storage into `model_dir`; returns the
+        names written. An empty list means there was nothing to fetch."""
+        listing = self.supabase.storage.from_("models").list() or []
+        names = sorted(
+            item.get("name") for item in listing
+            if isinstance(item, dict) and self.MODEL_FILE_PATTERN.match(item.get("name") or ""))
+        written = []
+        for name in names:
+            if self.download_model(os.path.join(model_dir, name), remote_name=name):
+                written.append(name)
+        return written
 
 
 # ── Singleton ─────────────────────────────────────────────────────────
