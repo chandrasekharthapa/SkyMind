@@ -74,7 +74,7 @@ function FlightsContent() {
     const dst = resolveCityToIATA(f.destination);
 
     if (org === dst) {
-      setError("Origin and destination cannot be the same.");
+      setError("From and to are the same airport. Pick a different destination.");
       setFlights([]);
       setSearchResult(null);
       return;
@@ -116,17 +116,14 @@ function FlightsContent() {
       setFlights(sortFlights(res.flights, sort));
       setSearchResult(res);
       if (res.status === "error") {
-        const cacheNote = res.cache_error_kind
-          ? ` The cached-data lookup also failed (${res.cache_error_kind}).`
-          : "";
+        console.warn("Search provider error:", res.provider_error_kind, res.cache_error_kind);
         setError(
-          `The live flight provider could not complete this search` +
-          `${res.provider_error_kind ? ` (${res.provider_error_kind})` : ""}.` +
-          cacheNote
+          "Live fares for this route couldn't be loaded right now. " +
+          "This usually clears up within a few minutes; try again, or pick another date."
         );
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Search failed.");
+      setError(e instanceof Error ? e.message : "The search didn't complete. Please try again.");
       setFlights([]);
       setSearchResult(null);
     } finally {
@@ -184,7 +181,7 @@ function FlightsContent() {
       {/* Search Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #EAEAEA", padding: "24px 0" }}>
         <div className="page-wrap">
-          <div className="card" style={{ padding: "20px" }}>
+          <div>
             <FlightSearchForm 
               initialData={searchParams} 
               onSearch={(p) => {
@@ -245,6 +242,17 @@ function FlightsContent() {
           </div>
         )}
 
+        {!searched && !loading && (
+          <div className="card" style={{ padding: "40px 24px", textAlign: "center" }}>
+            <h2 style={{ fontSize: "18px", fontWeight: 600, color: "#111", marginBottom: 8 }}>Where are you flying?</h2>
+            <p className="metadata" style={{ fontSize: "14px", maxWidth: 460, margin: "0 auto" }}>
+              Choose a route and date above and press Search flights. Live fares take up to
+              half a minute to load; you&apos;ll also see a forecast for the route.
+            </p>
+          </div>
+        )}
+
+        {searched && (<>
         {/* Results Toolbar */}
         <div className="toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
@@ -253,8 +261,8 @@ function FlightsContent() {
             </h1>
             <div className="metadata" style={{ marginTop: 4 }}>
               {loading
-                ? "Searching flights..."
-                : `${filteredFlights.length} flight options found`}
+                ? "Searching live fares — this can take up to 30 seconds…"
+                : `${filteredFlights.length} ${filteredFlights.length === 1 ? "flight" : "flights"} found`}
             </div>
           </div>
           
@@ -296,6 +304,7 @@ function FlightsContent() {
             <button
               key={f.id}
               onClick={() => setTimeFilter(f.id)}
+              aria-pressed={timeFilter === f.id}
               className="card"
               style={{
                 flex: "0 0 140px",
@@ -311,6 +320,7 @@ function FlightsContent() {
             </button>
           ))}
         </div>
+        </>)}
 
         {/* Search Result Status */}
         {!loading && searchResult?.status === "degraded" && (
@@ -339,9 +349,9 @@ function FlightsContent() {
         {/* Error State */}
         {error && (
           <div className="card" style={{ padding: 32, textAlign: "center", borderColor: "#FCA5A5", background: "#FFF8F8" }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>SEARCH ERROR</div>
-            <div style={{ fontSize: "14px", color: "#444", marginBottom: 16 }}>{error}</div>
-            <button className="btn-secondary" onClick={() => doSearch(searchParams)}>Retry Search</button>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>COULDN&apos;T LOAD FLIGHTS</div>
+            <div role="alert" style={{ fontSize: "14px", color: "#444", marginBottom: 16, maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>{error}</div>
+            <button className="btn-secondary" onClick={() => doSearch(searchParams)}>Try again</button>
           </div>
         )}
 
@@ -374,9 +384,9 @@ function FlightsContent() {
             const lastSeg = segments[segments.length - 1];
             const stops = seg?.stops ?? null;
             
-            const dep = seg?.departure_time ? new Date(seg.departure_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Schedule Unavailable";
-            const arr = lastSeg?.arrival_time ? new Date(lastSeg.arrival_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Schedule Unavailable";
-            const dur = itin?.duration ? formatDuration(itin.duration) : "Duration Unavailable";
+            const dep = seg?.departure_time ? new Date(seg.departure_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Time not listed";
+            const arr = lastSeg?.arrival_time ? new Date(lastSeg.arrival_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Time not listed";
+            const dur = itin?.duration ? formatDuration(itin.duration) : "Duration not listed";
             
             const airlineCode = f.primary_airline || seg?.airline_code || "UNKNOWN";
             const airlineName = f.primary_airline_name || seg?.airline_name || (airlineCode !== "UNKNOWN" ? airlineCode : "Unknown Airline");
@@ -451,7 +461,7 @@ function FlightsContent() {
                   {/* Flight Times & Duration */}
                   <div className="col-timeline">
                     <div style={{ textAlign: "left" }}>
-                      <div style={{ fontSize: dep === "Schedule Unavailable" ? "13px" : "20px", fontWeight: 700, color: dep === "Schedule Unavailable" ? "#64748B" : "#0F172A" }}>{dep}</div>
+                      <div style={{ fontSize: dep === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: dep === "Time not listed" ? "#64748B" : "#0F172A" }}>{dep}</div>
                       <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>{seg?.origin}</div>
                     </div>
                     
@@ -461,12 +471,12 @@ function FlightsContent() {
                         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#16a34a", position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }} />
                       </div>
                       <div className="metadata" style={{ marginTop: 4, fontSize: "12px", fontWeight: 600, color: stops === 0 ? "#16a34a" : "#475569" }}>
-                        {stops == null ? "Stops Unavailable" : stops === 0 ? "Direct Flight" : `${stops} Stop`}
+                        {stops == null ? "Stops not listed" : stops === 0 ? "Non-stop" : `${stops} stop${stops > 1 ? "s" : ""}`}
                       </div>
                     </div>
 
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: arr === "Schedule Unavailable" ? "13px" : "20px", fontWeight: 700, color: arr === "Schedule Unavailable" ? "#64748B" : "#0F172A" }}>{arr}</div>
+                      <div style={{ fontSize: arr === "Time not listed" ? "13px" : "20px", fontWeight: 700, color: arr === "Time not listed" ? "#64748B" : "#0F172A" }}>{arr}</div>
                       <div className="metadata" style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }}>{lastSeg?.destination}</div>
                     </div>
                   </div>

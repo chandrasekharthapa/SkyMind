@@ -55,11 +55,12 @@ export default function SuccessPage() {
             </div>
 
             <h1 style={{ fontFamily:"var(--fd)", fontSize:"4rem", lineHeight:.9, marginBottom:16, animation:"fadeUp 0.6s 0.1s both" }}>
-              TICKET<br/><span style={{ color:"var(--red)" }}>SECURED.</span>
+              BOOKING<br/><span style={{ color:"var(--red)" }}>CONFIRMED.</span>
             </h1>
             
             <p style={{ color:"var(--grey4)", fontSize:"1rem", lineHeight:1.6, marginBottom:40, animation:"fadeUp 0.6s 0.2s both" }}>
-              Your journey with SkyMind has been confirmed. A digital itinerary and boarding instructions have been sent to your registered email.
+              Your booking is saved under Your trips. This was a test-mode booking: no payment was
+              taken and no airline ticket was issued, so you can&apos;t board with it.
             </p>
 
             {/* Boarding Pass Style Card */}

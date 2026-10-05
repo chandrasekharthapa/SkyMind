@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import DemoNotice from "@/components/ui/DemoNotice";
 import NavBar from "@/components/layout/NavBar";
 import { ShieldCheck, Lock, CreditCard, ChevronLeft, Plane, AlertTriangle, Zap } from "lucide-react";
 import { createRazorpayOrder, verifyPayment } from "@/lib/api";
@@ -99,7 +100,7 @@ export default function CheckoutPage() {
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (err: any) {
-      setPayError(err.message || "Protocol communication failure. Please retry.");
+      setPayError(err.message || "The payment window couldn't open. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -109,9 +110,9 @@ export default function CheckoutPage() {
     <div className="auth-page">
       <div className="auth-card" style={{ textAlign: "center" }}>
         <AlertTriangle color="var(--red)" size={48} style={{ margin: "0 auto 20px" }} />
-        <h2 className="auth-logo">SESSION EXPIRED</h2>
-        <p className="auth-subtitle">Booking identifier not found in local cache.</p>
-        <button onClick={() => router.push("/flights")} className="auth-btn-primary" style={{ marginTop: 24 }}>Return to Search</button>
+        <h2 className="auth-logo">BOOKING NOT FOUND</h2>
+        <p className="auth-subtitle">This checkout link has expired or was opened in another browser. Start again from a flight search.</p>
+        <button onClick={() => router.push("/flights")} className="auth-btn-primary" style={{ marginTop: 24 }}>Search flights</button>
       </div>
     </div>
   );
@@ -145,14 +146,15 @@ export default function CheckoutPage() {
                 <div className="form-block-num" style={{ background: "var(--black)", borderColor: "var(--black)", color: "var(--white)" }}>
                   <CreditCard size={14} />
                 </div>
-                <h2 className="form-block-title">Secure Payment Protocol</h2>
+                <h2 className="form-block-title">Payment</h2>
               </div>
               <div className="form-block-body">
+                <DemoNotice style={{ marginBottom: 16 }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px", background: "var(--off)", borderRadius: "12px", border: "1px solid var(--grey1)", marginBottom: 24 }}>
                   <div style={{ width: 48, height: 48, background: "#2563eb", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: "10px" }}>RZP</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: "14px" }}>Razorpay Payment Gateway</div>
-                    <div style={{ fontSize: "12px", color: "var(--grey3)" }}>Encrypted UPI, Cards, and Netbanking</div>
+                    <div style={{ fontWeight: 700, fontSize: "14px" }}>Razorpay (test mode)</div>
+                    <div style={{ fontSize: "12px", color: "var(--grey4)" }}>UPI, cards and netbanking</div>
                   </div>
                   <div style={{ marginLeft: "auto" }}>
                     <ShieldCheck size={20} color="var(--green)" />
@@ -239,9 +241,8 @@ export default function CheckoutPage() {
                   )}
                 </button>
 
-                <div style={{ marginTop: 20, textAlign: "center", fontSize: "10px", color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
-                  By clicking Pay, you authorize SkyMind to process <br /> 
-                  this secure transaction via Razorpay.
+                <div style={{ marginTop: 20, textAlign: "center", fontSize: "11px", color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
+                  Test mode: no real payment is taken.
                 </div>
               </div>
             </div>

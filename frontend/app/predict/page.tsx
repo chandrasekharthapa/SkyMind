@@ -167,8 +167,8 @@ function PredictContent() {
               <div className="info-table">
                 <div className="info-row">
                   <span className="info-key">Historical Accuracy</span>
-                  <span className="info-val green">
-                    {devMetrics?.mape != null ? `${(100 - devMetrics.mape).toFixed(1)}%` : "—"}
+                  <span className={`info-val ${devMetrics?.mape != null ? "green" : ""}`}>
+                    {devMetrics?.mape != null ? `${(100 - devMetrics.mape).toFixed(1)}%` : "Not measured yet"}
                   </span>
                 </div>
                 <div className="info-row">
@@ -176,17 +176,17 @@ function PredictContent() {
                   <span className="info-val">
                     {result?.search_metadata?.snapshot_age != null
                       ? `${Math.round(result.search_metadata.snapshot_age)} mins ago`
-                      : "—"}
+                      : result ? "Not reported" : "Shown after a forecast"}
                   </span>
                 </div>
                 <div className="info-row">
                   <span className="info-key">Data Provider</span>
-                  <span className="info-val">{result?.search_metadata?.provider || "—"}</span>
+                  <span className="info-val">{result?.search_metadata?.provider || (result ? "Not reported" : "Shown after a forecast")}</span>
                 </div>
                 <div className="info-row">
                   <span className="info-key">Last Updated</span>
                   <span className="info-val">
-                    {devMetrics?.training_date ? formatDate(devMetrics.training_date) : "—"}
+                    {devMetrics?.training_date ? formatDate(devMetrics.training_date) : "Not available"}
                   </span>
                 </div>
 
@@ -246,17 +246,34 @@ function PredictContent() {
             {/* Error State */}
             {error && !refusedByDesign && !loading && (
               <div className="card state-card state-error">
-                <div className="state-error-label">Inference Session Error</div>
+                <div className="state-error-label">Couldn&apos;t get a forecast</div>
                 <div className="description" style={{ marginTop: 8 }}>{error}</div>
-                <button onClick={reset} className="btn-secondary" style={{ marginTop: 16 }}>Retry Inference</button>
+                <button onClick={reset} className="btn-secondary" style={{ marginTop: 16 }}>Try again</button>
               </div>
             )}
 
             {/* Standby State */}
             {!result && !loading && !error && (
-              <div className="card state-card" style={{ textAlign: "center", padding: "48px 24px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#111", marginBottom: 8 }}>Enter Search Parameters</h3>
-                <p className="description">Select origin and destination airports to run the AI forecast model.</p>
+              <div className="card state-card" style={{ padding: "40px 32px" }}>
+                <div style={{ fontFamily: "var(--fm)", fontSize: "0.65rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--red)", marginBottom: 10 }}>Fare forecast</div>
+                <h3 style={{ fontFamily: "var(--fd)", fontSize: "2.2rem", lineHeight: 1, color: "var(--black)", marginBottom: 12 }}>BOOK NOW, OR WAIT?</h3>
+                <p className="description" style={{ maxWidth: 520, marginBottom: 24 }}>
+                  Pick a route and a departure date on the left, then press Get AI Forecast. You&apos;ll get:
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
+                  {[
+                    ["Predicted fare", "Where the fare for your date is likely to be, with a range around it."],
+                    ["A recommendation", "Book now, wait, or keep watching, with the reasons behind it."],
+                    ["Confidence", "How sure the model is. Routes with little history get a wider range."],
+                  ].map(([t, d]) => (
+                    <li key={t} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+                      <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--red)", flexShrink: 0, transform: "translateY(-2px)" }} />
+                      <span style={{ fontSize: "0.95rem", color: "var(--grey4)", lineHeight: 1.5 }}>
+                        <strong style={{ color: "var(--black)" }}>{t}.</strong> {d}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

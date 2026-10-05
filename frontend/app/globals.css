@@ -1022,3 +1022,35 @@ html, body {
 }
 
 
+
+/* ── UX fixes (keeps the existing look) ───────────────────────────────── */
+/* Sections had no vertical padding, so each eyebrow sat flush against the
+   block above it. */
+.ui-section { padding: 96px 0; }
+.ui-section-white { background: var(--white); }
+.ui-section-off { background: var(--off); }
+@media (max-width: 768px) { .ui-section { padding: 64px 0; } }
+
+/* Muted text was #adb5bd on white (about 2:1 contrast); this keeps the same
+   grey family but is readable. */
+:root:not([data-theme="dark"]) .ui-text-muted,
+:root:not([data-theme="dark"]) .footer-copy { color: #6c757d; }
+
+/* Visible keyboard focus everywhere. */
+:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Small grey text on the auth card was below readable contrast in light mode. */
+:root:not([data-theme="dark"]) .auth-label,
+:root:not([data-theme="dark"]) .auth-subtitle,
+:root:not([data-theme="dark"]) .auth-footer { color: #6c757d; }
+
+/* On phones the copilot button shrinks to an icon so it doesn't sit on top of
+   form fields. */
+@media (max-width: 768px) {
+  .copilot-fab { width: 52px; height: 52px !important; padding: 0 !important; justify-content: center; bottom: 16px !important; right: 16px !important; border-radius: 50% !important; }
+  .copilot-fab .copilot-fab-text { display: none; }
+}

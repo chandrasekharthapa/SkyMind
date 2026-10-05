@@ -71,6 +71,35 @@ export default function DashboardPage() {
   const totalSpent = bookings.reduce((a,b)=>a+(b.total_price||0),0);
   const confirmedTrips = bookings.filter(b=>b.status==="CONFIRMED").length;
 
+  // Signed-out visitors used to get the full dashboard addressed to
+  // "OPERATOR", with a Gold Tier badge and points they never earned. Show
+  // them what the page is for and a way in instead.
+  if (!loading && !user) {
+    return (
+      <div style={{ background: "var(--off)", minHeight: "100vh" }}>
+        <NavBar />
+        <div className="ui-wrap" style={{ paddingTop: 140, paddingBottom: 100 }}>
+          <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center", background: "var(--white)", border: "1px solid var(--grey1)", borderRadius: 20, padding: "56px 32px", boxShadow: "var(--shadow-sm)" }}>
+            <div style={{ fontFamily: "var(--fm)", fontSize: ".65rem", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--grey4)", marginBottom: 12 }}>
+              Your trips
+            </div>
+            <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.4rem, 6vw, 3.4rem)", lineHeight: 0.95, textTransform: "uppercase", marginBottom: 16 }}>
+              Sign in to see your <em style={{ fontStyle: "normal", color: "var(--red)" }}>bookings</em>
+            </h1>
+            <p style={{ color: "var(--grey4)", fontSize: "0.95rem", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 28px" }}>
+              Your bookings and price alerts are saved to your account. Searching flights
+              and checking forecasts works without one.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link href="/auth" className="ui-btn ui-btn-red">Sign in</Link>
+              <Link href="/flights" className="ui-btn ui-btn-white">Search flights</Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: "var(--off)", minHeight: "100vh" }}>
       <NavBar />
@@ -86,17 +115,11 @@ export default function DashboardPage() {
                 </div>
                 <h1 className="dash-title" style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.8rem, 6vw, 4.5rem)", lineHeight: 0.9, textTransform: "uppercase" }}>
                   WELCOME<br />BACK, <em style={{ fontStyle: "normal", color: "var(--red)" }}>
-                    {(profile?.display_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || user?.phone || "OPERATOR").split(" ")[0].toUpperCase()}.
+                    {(profile?.display_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || user?.phone || "TRAVELLER").split(" ")[0].toUpperCase()}.
                   </em>
                 </h1>
-                <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 12 }}>
-                  <span className="badge badge-black" style={{ padding: "6px 12px", background: "var(--black)", color: "var(--white)" }}>Gold Tier</span>
-                  <span style={{ fontSize: "12px", fontWeight: 700, fontFamily: "var(--fm)", color: "var(--grey4)" }}>
-                    {confirmedTrips * 1200} SkyMind Points
-                  </span>
-                </div>
               </div>
-              <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "16px 32px", fontSize: "0.95rem" }}>+ Plan New Trip</Link>
+              <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "16px 32px", fontSize: "0.95rem" }}>+ Plan a new trip</Link>
             </div>
           </div>
         </div>
@@ -107,9 +130,9 @@ export default function DashboardPage() {
             <div className="dash-stats-grid ui-glass">
               {[
                 { icon: <PlaneIcon />, val: String(bookings.length), label: "Total Bookings" },
-                { icon: <WalletIcon />, val: `₹${(totalSpent / 1000).toFixed(1)}k`, label: "Total Spent" },
+                { icon: <WalletIcon />, val: totalSpent >= 1000 ? `₹${(totalSpent / 1000).toFixed(1)}k` : `₹${Math.round(totalSpent)}`, label: "Total (test mode)" },
                 { icon: <BellIcon />, val: String(alerts.length), label: "Active Alerts" },
-                { icon: <TrophyIcon />, val: String(confirmedTrips * 1200), label: "SkyPoints" },
+                { icon: <TrophyIcon />, val: String(confirmedTrips), label: "Confirmed Trips" },
               ].map((s, idx) => (
                 <div key={s.label} className="dash-stat-item">
                   <div className="stat-icon">{s.icon}</div>
@@ -128,7 +151,7 @@ export default function DashboardPage() {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                   <h2 style={{ fontFamily: "var(--fd)", fontSize: "2rem", letterSpacing: "0.04em" }}>YOUR ITINERARIES</h2>
                   <div style={{ height: 1, flex: 1, background: "var(--grey1)", margin: "0 20px" }} />
-                  <span style={{ fontSize: "12px", color: "var(--grey4)", fontFamily: "var(--fm)" }}>{bookings.length} Items</span>
+                  <span style={{ fontSize: "12px", color: "var(--grey4)", fontFamily: "var(--fm)" }}>{bookings.length} {bookings.length === 1 ? "booking" : "bookings"}</span>
                 </div>
 
                 {loading ? (
@@ -142,8 +165,8 @@ export default function DashboardPage() {
                     <div style={{ color:"var(--red)", marginBottom:20, display: "flex", justifyContent: "center", opacity: 0.5 }}>
                       <PlaneIcon />
                     </div>
-                    <div style={{ fontSize: "1.5rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>No active itineraries</div>
-                    <div style={{ fontSize: "14px", color: "var(--grey4)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>You haven&apos;t booked any flights yet. Use our AI to find the perfect fare.</div>
+                    <div style={{ fontSize: "1.5rem", fontFamily: "var(--fd)", color: "var(--black)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>No bookings yet</div>
+                    <div style={{ fontSize: "14px", color: "var(--grey4)", marginBottom: 32, maxWidth: 300, margin: "0 auto 32px" }}>Search a route, check the forecast, and your bookings will show up here.</div>
                     <Link href="/flights" className="ui-btn ui-btn-red" style={{ padding: "14px 40px" }}>Search Flights</Link>
                   </div>
                 ) : (
@@ -215,15 +238,15 @@ export default function DashboardPage() {
                             <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
                               <div>
                                 <div style={{ fontSize: "10px", color: "var(--grey3)", fontWeight: 700, marginBottom: 4, letterSpacing: "0.05em" }}>PAYMENT METHOD</div>
-                                <div style={{ fontSize: "12px", fontWeight: 600 }}>Razorpay / UPI</div>
+                                <div style={{ fontSize: "12px", fontWeight: 600 }}>{b.payment_method ? `Razorpay · ${b.payment_method}` : "Razorpay (test)"}</div>
                               </div>
                               <div>
                                 <div style={{ fontSize: "10px", color: "var(--grey3)", fontWeight: 700, marginBottom: 4, letterSpacing: "0.05em" }}>PASSENGERS</div>
-                                <div style={{ fontSize: "12px", fontWeight: 600 }}>1 Adult, 0 Children</div>
+                                <div style={{ fontSize: "12px", fontWeight: 600 }}>{b.num_passengers || 1} {(b.num_passengers || 1) === 1 ? "passenger" : "passengers"}</div>
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: "11px", color: "var(--grey4)", fontWeight: 700, marginBottom: 4 }}>TOTAL PAID</div>
+                              <div style={{ fontSize: "11px", color: "var(--grey4)", fontWeight: 700, marginBottom: 4 }}>{b.payment_status === "PAID" ? "TOTAL PAID" : "TOTAL"}</div>
                               <div style={{ fontFamily: "var(--fd)", fontSize: "2rem", color: "var(--black)", lineHeight: 1 }}>₹{Math.round(b.total_price || 0).toLocaleString("en-IN")}</div>
                             </div>
                           </div>
@@ -247,29 +270,29 @@ export default function DashboardPage() {
                       <div style={{ padding: 32, textAlign: "center", background: "var(--off)" }}>
                         <div style={{ color:"var(--grey2)", marginBottom:12, display: "flex", justifyContent: "center" }}><BellIcon /></div>
                         <div style={{ fontSize: "14px", fontFamily: "var(--fb)", fontWeight: 600, color: "var(--black)", marginBottom: 4 }}>NO ALERTS SET</div>
-                        <div style={{ fontSize: "12px", color: "var(--grey4)" }}>Track routes to get notified.</div>
+                        <div style={{ fontSize: "12px", color: "var(--grey4)" }}>Open a forecast and set a target price to get notified when the fare drops.</div>
                       </div>
                     )}
                     {alerts.map(a => (
                       <div key={a.id} style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                          <div style={{ fontWeight: 700, fontSize: "14px" }}>{a.origin_code}  {a.destination_code}</div>
+                          <div style={{ fontWeight: 700, fontSize: "14px" }}>{a.origin_code} → {a.destination_code}</div>
                           <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.triggered_count > 0 ? "var(--green)" : "#f59e0b" }} />
                         </div>
                         <div style={{ fontSize: "11px", color: "var(--grey3)", marginBottom: 12, fontFamily: "var(--fm)" }}>DEPARTURE: {a.departure_date}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div>
                             <div style={{ fontSize: "10px", color: "var(--grey3)", marginBottom: 2 }}>TARGET</div>
-                            <div style={{ fontWeight: 700 }}>{Math.round(a.target_price).toLocaleString("en-IN")}</div>
+                            <div style={{ fontWeight: 700 }}>₹{Math.round(a.target_price).toLocaleString("en-IN")}</div>
                           </div>
                           <div style={{ textAlign: "right" }}>
                             <div style={{ fontSize: "10px", color: "var(--grey3)", marginBottom: 2 }}>CURRENT</div>
-                            <div style={{ fontWeight: 700, color: a.triggered_count > 0 ? "var(--green)" : "var(--black)" }}>{Math.round(a.last_price).toLocaleString("en-IN")}</div>
+                            <div style={{ fontWeight: 700, color: a.triggered_count > 0 ? "var(--green)" : "var(--black)" }}>{a.last_price != null ? `₹${Math.round(a.last_price).toLocaleString("en-IN")}` : "Not checked yet"}</div>
                           </div>
                         </div>
                         {a.triggered_count > 0 && (
                           <div style={{ marginTop: 12, padding: "8px", background: "#dcfce7", color: "#166534", fontSize: "11px", fontWeight: 700, textAlign: "center", borderRadius: 4 }}>
-                            TARGET REACHED! BOOK NOW
+                            TARGET REACHED — FARE IS AT OR BELOW YOUR PRICE
                           </div>
                         )}
                       </div>
@@ -287,9 +310,9 @@ export default function DashboardPage() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column" }}>
                     {[
-                      { label: "Search Flights", href: "/flights", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> },
-                      { label: "AI Fare Prediction", href: "/predict", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
-                      { label: "Account Settings", href: "/dashboard", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
+                      { label: "Search flights", href: "/flights", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg> },
+                      { label: "Fare forecast", href: "/predict", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+                      { label: "Account settings", href: "/settings", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
                     ].map((q, i) => (
                       <Link key={q.label} href={q.href} style={{ 
                         display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", 

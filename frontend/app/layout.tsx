@@ -1,4 +1,18 @@
 import type { Metadata } from "next";
+// Fonts are bundled with the app instead of loaded from Google Fonts, so the
+// page doesn't wait on (or break without) a third-party stylesheet.
+import "@fontsource/bebas-neue/400.css";
+import "@fontsource/dm-serif-display/400.css";
+import "@fontsource/dm-serif-display/400-italic.css";
+import "@fontsource/instrument-sans/400.css";
+import "@fontsource/instrument-sans/500.css";
+import "@fontsource/instrument-sans/600.css";
+import "@fontsource/instrument-sans/700.css";
+import "@fontsource/instrument-sans/400-italic.css";
+import "@fontsource/martian-mono/300.css";
+import "@fontsource/martian-mono/400.css";
+import "@fontsource/martian-mono/500.css";
+import "@fontsource/martian-mono/700.css";
 import "./globals.css";
 import { Toaster } from "sonner";
 import QueryProvider from "@/components/providers/QueryProvider";
@@ -9,11 +23,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://skymind.app"),
   title: "SkyMind - AI Flight Intelligence",
   description:
-    "ML-powered flight price prediction, hidden route discovery, and seamless booking for Indian and international flights.",
+    "Search domestic flights in India, see how fares have moved, and get a forecast of whether to book now or wait.",
   openGraph: {
     title: "SkyMind - AI Flight Intelligence",
     description:
-      "Book smarter with AI-powered price forecasts and hidden route discovery.",
+      "Domestic flight fares across India, tracked daily, with a forecast of where they are heading.",
     type: "website",
     images: [
       {
@@ -33,18 +47,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Martian+Mono:wght@300;400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <QueryProvider>{children}</QueryProvider>

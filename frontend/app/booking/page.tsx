@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import DemoNotice from "@/components/ui/DemoNotice";
 import NavBar from "@/components/layout/NavBar";
 import { createBooking, formatDuration } from "@/lib/api";
 import type { FlightOffer, Passenger } from "@/types";
@@ -119,6 +120,7 @@ function BookingContent() {
       </div>
 
       <div className="ui-wrap" style={{ padding: "40px 0 100px" }}>
+        <DemoNotice style={{ marginBottom: 24 }} />
         <div className="booking-layout">
           
           <div style={{ display: "flex", flexDirection: "column", gap: "24px", flex: 1 }}>

@@ -242,6 +242,7 @@ function ChatbotContent() {
           onClick={() => setIsOpen(true)}
           aria-label="Open SkyMind Copilot"
           title="Open SkyMind Copilot (Ctrl+K)"
+          className="copilot-fab"
           style={{
             position: "fixed",
             bottom: 24,
@@ -263,8 +264,8 @@ function ChatbotContent() {
           }}
         >
           <Sparkles size={16} color="#E11D48" />
-          <span>SkyMind Copilot</span>
-          <span style={{ fontSize: "10px", color: "#888", background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 4 }}>Ctrl+K</span>
+          <span className="copilot-fab-text">SkyMind Copilot</span>
+          <span className="copilot-fab-text" style={{ fontSize: "10px", color: "#888", background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: 4 }}>Ctrl+K</span>
         </button>
       )}
 

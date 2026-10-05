@@ -160,14 +160,21 @@ async function apiRequest<T>(
   try {
     res = await fetch(url, { ...options, headers });
   } catch {
+    // The address is useful to a developer, not to someone searching flights.
+    console.error(`Network error: cannot reach API at ${base}`);
     throw new ApiError(
-      `Network error — cannot reach API at ${base}. Make sure the backend is running.`,
+      "Can't reach the SkyMind server. It may be waking up after a quiet spell, which takes up to a minute. Please try again shortly.",
       0
     );
   }
 
   if (!res.ok) {
-    let message = `Request failed — HTTP ${res.status}`;
+    let message =
+      res.status === 429
+        ? "Too many requests in a short time. Wait a few seconds and try again."
+        : res.status >= 502 && res.status <= 504
+          ? "The SkyMind server is busy or restarting. Please try again in a minute."
+          : `Something went wrong on our side (error ${res.status}). Please try again.`;
     let detail: unknown;
     try {
       const body = await res.json();

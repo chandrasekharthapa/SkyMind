@@ -52,6 +52,42 @@ def _resolve_iata(code: str) -> str:
 # GET /flights/search
 # ══════════════════════════════════════════════════════════════════════
 
+# ── Fare board ─────────────────────────────────────────────────────────
+# The lowest fare per route from the last day and a half of collection, for the
+# home page. Read from the route_fare_board view (migration 004) and cached for
+# ten minutes: it changes once a day, when the pipeline runs.
+_FARE_BOARD_CACHE: Dict[str, Any] = {"at": 0.0, "rows": None}
+_FARE_BOARD_TTL = 600.0
+
+
+def _load_fare_board() -> List[Dict[str, Any]]:
+    from backend.database.database import database as db
+    res = (db.supabase.table("route_fare_board")
+           .select("origin_code,destination_code,departure_date,airline_code,price,stops,recorded_at")
+           .order("price").limit(60).execute())
+    return list(res.data or [])
+
+
+@router.get("/fare-board")
+async def fare_board():
+    """Today's cheapest collected fare on each tracked route.
+
+    `available: false` (with no rows) when the view is missing or the database
+    is unreachable, so the page can leave the board out instead of erroring."""
+    import asyncio
+    import time as _time
+    now = _time.monotonic()
+    if _FARE_BOARD_CACHE["rows"] is not None and now - _FARE_BOARD_CACHE["at"] < _FARE_BOARD_TTL:
+        return {"available": True, "rows": _FARE_BOARD_CACHE["rows"]}
+    try:
+        rows = await asyncio.to_thread(_load_fare_board)
+    except Exception as exc:
+        logger.warning("Fare board unavailable: %s: %s", type(exc).__name__, exc)
+        return {"available": False, "rows": []}
+    _FARE_BOARD_CACHE.update(at=now, rows=rows)
+    return {"available": True, "rows": rows}
+
+
 @router.get("/search")
 async def search_flights(
     origin: str = Query(...),

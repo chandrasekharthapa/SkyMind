@@ -8,16 +8,17 @@ import PopularDestinations from "@/components/flights/PopularDestinations";
 import FlightSearchForm from "@/components/flights/FlightSearchForm";
 import { formatConfidence } from "@/lib/formatters";
 
+// Every item here describes something the product actually does.
 const TICKER_ITEMS = [
-  "Real-time Price Intelligence",
+  "Fares collected every day",
   "XGBoost Prediction Engine",
-  "Market Volatility Analysis",
-  "11+ Global Hubs",
-  "Smart Fare Tracking",
-  "30-day Price Trajectory",
-  "Priority Fare Alerts",
-  "Confidence-weighted Signals",
-  "Autonomous Booking Intelligence"
+  "56 domestic routes tracked",
+  "14 Indian airports",
+  "1, 3 and 7-day fare forecasts",
+  "Book now or wait signals",
+  "Price history per route",
+  "Target-price alerts",
+  "Confidence shown on every forecast"
 ];
 
 export default function HomePage() {
@@ -92,7 +93,7 @@ export default function HomePage() {
       {/* ══════════════════════════════════════════
           HERO — cinematic, left-aligned, premium
           ══════════════════════════════════════════ */}
-      <section style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
+      <section className="home-hero" style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
         {/* Background video */}
         <video
           autoPlay muted loop playsInline
@@ -122,7 +123,7 @@ export default function HomePage() {
 
               {/* Subtitle */}
               <p style={{ fontFamily: "var(--fb)", fontSize: "clamp(0.95rem, 2vw, 1.15rem)", color: "rgba(255,255,255,0.6)", lineHeight: 1.65, maxWidth: 420, marginBottom: 40 }}>
-                India&apos;s first XGBoost-powered flight intelligence platform. Know when prices will rise — before they do.
+                Domestic flight fares across India, collected every day and forecast with XGBoost. Know when prices will rise — before they do.
               </p>
 
               {/* CTAs */}
@@ -144,18 +145,20 @@ export default function HomePage() {
                   the permanent values. "Avg Savings" is gone entirely because
                   nothing in the backend measures a saving; the slot now shows
                   mean absolute error, which the model does report. */}
+              {metrics && (metrics.training_samples || metrics.mape != null || metrics.mae != null) && (
               <div className="hero-stats-row" style={{ display: "flex", gap: 32, marginTop: 56, paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
                 {[
                   { val: metrics?.training_samples ? `${(metrics.training_samples / 1000).toFixed(1)}K` : "—", label: "Training Rows" },
                   { val: metrics?.mape != null ? `${(100 - metrics.mape).toFixed(1)}%` : "—", label: "Accuracy (100−MAPE)" },
                   { val: metrics?.mae != null ? `₹${Math.round(metrics.mae).toLocaleString("en-IN")}` : "—", label: "Mean Abs. Error" },
-                ].map(s => (
+                ].filter(s => s.val !== "—").map(s => (
                   <div key={s.label}>
                     <div style={{ fontFamily: "var(--fd)", fontSize: "clamp(1.4rem, 4vw, 2.2rem)", color: "#fff", lineHeight: 1 }}>{s.val}</div>
-                    <div style={{ fontFamily: "var(--fm)", fontSize: "0.6rem", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>{s.label}</div>
+                    <div style={{ fontFamily: "var(--fm)", fontSize: "0.6rem", color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 4 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
             {/* RIGHT: search form (desktop only) */}
@@ -172,8 +175,7 @@ export default function HomePage() {
       <div className="hero-form-mobile" style={{ background: "var(--off)", borderBottom: "1px solid var(--grey1)" }}>
         <div className="ui-wrap" style={{ padding: "28px var(--ui-space-md)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontFamily: "var(--fm)", fontSize: "0.6rem", color: "var(--grey3)", letterSpacing: "0.1em" }}>
-            <div className="status-dot" />
-            XGBOOST ANALYTICS ACTIVE
+            SEARCH FLIGHTS
           </div>
           <FlightSearchForm onSearch={handleSearch} />
         </div>
@@ -208,14 +210,14 @@ export default function HomePage() {
             <div>
               <h2 className="ui-title-lg" style={{ marginBottom: 20 }}>NOT<br />JUST<br />SEARCH.</h2>
               <p className="ui-text-main" style={{ maxWidth: 340, marginBottom: 32 }}>
-                SkyMind layers XGBoost inference on top of fares scraped from a
-                consumer booking site through an MCP transport, and records every
-                observation so the model trains on prices that were really quoted.
+                SkyMind keeps every fare it sees and trains an XGBoost model on
+                them, so forecasts are built from prices that were really quoted,
+                not from estimates.
               </p>
               {[
-                { n: "01", title: "Scraped fare stream", desc: "A headless-browser MCP transport reads listed retail fares for a route and date, and each observation is written to the price history with the time it was seen." },
-                { n: "02", title: "XGBoost inference", desc: "900-estimator gradient boosting model. Urgency, seasonality, day-of-week, and demand scoring produce a confidence-weighted price signal." },
-                { n: "03", title: "30-day trajectory", desc: "Deterministic forecast with statistical confidence intervals. See the best and peak price windows before you commit." },
+                { n: "01", title: "Daily fare collection", desc: "Every morning SkyMind looks up fares on 56 domestic routes, for the coming week and for dates up to three months out, and saves each price with the time it was seen." },
+                { n: "02", title: "XGBoost inference", desc: "A gradient-boosted model learns how fares on a route move as departure gets closer, by weekday and by season, and returns a price with a confidence score." },
+                { n: "03", title: "30-day trajectory", desc: "For your date, see where the fare is likely heading, with a range around it, and whether booking now or waiting looks better." },
               ].map((s, i) => (
                 <div key={s.n} className={`how-step a${i + 1}`}>
                   <span className="how-step-number">{s.n}</span>
@@ -229,8 +231,18 @@ export default function HomePage() {
 
             <div>
               <div className="ui-label" style={{ marginBottom: 14 }}>Sample XGBoost predictions</div>
+              {samples.length > 0 && samples.every(x => !x.available) ? (
+                <div className="ui-card" style={{ padding: "var(--ui-space-lg)", marginBottom: 16, cursor: "default" }}>
+                  <div className="ui-title-md" style={{ marginBottom: 8 }}>Forecasts are warming up</div>
+                  <p className="ui-text-muted" style={{ marginBottom: 20 }}>
+                    The prediction server takes up to a minute to wake after a quiet spell.
+                    Try a route of your own on the forecast page.
+                  </p>
+                  <Link href="/predict" className="ui-btn ui-btn-red">Open fare forecast</Link>
+                </div>
+              ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                {(samples.length > 0 ? samples : [
+                {(samples.length > 0 ? samples.filter(x => x.available) : [
                   // Placeholders shown only until the live calls resolve. These
                   // used to carry concrete prices and "95% confidence", which
                   // was indistinguishable from a real prediction.
@@ -267,7 +279,9 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+              )}
 
+              {metrics && (metrics.model_name || metrics.mape != null || metrics.training_samples != null) && (
               <div style={{ display: "flex", gap: 1, background: "var(--grey1)", borderRadius: "var(--ui-radius-lg)", overflow: "hidden", border: "1px solid var(--grey1)" }}>
                 {/* Was: "Avg saving INR 1,200", "XGBoost acc. 93.2%", "Routes 240+".
                     No component measures a saving, the accuracy fallback always
@@ -285,6 +299,7 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -302,10 +317,10 @@ export default function HomePage() {
           </div>
           <div className="feat-grid" style={{ marginTop: "var(--ui-space-2xl)" }}>
             {[
-              { n: "01 / INTELLIGENCE", title: "ML Price Intelligence", desc: "XGBoost trained on thousands of proprietary and real-world market signals. Real-time confidence scores and market status.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg> },
-              { n: "02 / FORECAST", title: "30-Day Price Forecast", desc: "Full trajectory with confidence bands. See the best and worst booking windows before you commit.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
-              { n: "03 / ALERTS", title: "Smart Price Alerts", desc: "Set a target price. Our scheduler monitors 24/7 and notifies you the moment it's reached.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg> },
-              { n: "04 / BOOKING", title: "Seamless Booking", desc: "Razorpay checkout for UPI, cards, and netbanking. Instant confirmation with email notifications.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg> },
+              { n: "01 / INTELLIGENCE", title: "ML Price Intelligence", desc: "XGBoost trained on fares collected every day from live listings. Every prediction comes with a confidence score.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg> },
+              { n: "02 / FORECAST", title: "30-Day Price Forecast", desc: "Fare trajectory for your date with confidence bands. See the cheaper and pricier booking windows before you commit.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
+              { n: "03 / ALERTS", title: "Smart Price Alerts", desc: "Set a target price for a route. SkyMind checks the fare every day and lets you know once it drops below your target.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg> },
+              { n: "04 / BOOKING", title: "Demo Booking", desc: "Try the full booking flow with Razorpay in test mode. No real payment is taken and no airline ticket is issued.", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg> },
             ].map(f => (
               <div key={f.n} className="ui-card ui-card-hover">
                 <div className="ui-label-red" style={{ marginBottom: 20 }}>{f.n}</div>
@@ -395,6 +410,7 @@ export default function HomePage() {
         .how-step-desc { font-family: var(--fb); font-size: 0.95rem; color: var(--grey4); line-height: 1.6; }
 
         @media (max-width: 1100px) {
+          .home-hero { min-height: auto !important; }
           .hero-split { grid-template-columns: 1fr; gap: 48px; padding: 80px 0 60px; }
           .hero-form-desktop { display: none; }
           .hero-form-mobile { display: block; }
@@ -402,6 +418,7 @@ export default function HomePage() {
         }
 
         @media (max-width: 768px) {
+          .hero-split { padding: 8px 0 24px; }
           .ui-title-lg { font-size: 2.8rem !important; }
           .how-step-title { font-size: 1.1rem; }
           .how-step-desc { font-size: 0.9rem; }
