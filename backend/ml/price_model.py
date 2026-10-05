@@ -584,6 +584,110 @@ def chronological_split(df, *, timestamp_col: str, train_fraction: float = 0.8,
     return train, test, record
 
 
+# ── Hyperparameter selection ─────────────────────────────────────────────────
+# The fixed values every model used to be trained with. They stay the fallback:
+# when tuning is off, Optuna is missing, the corpus is too small to carve out a
+# validation fold, or tuning does not beat them on that fold.
+DEFAULT_HYPERPARAMETERS: Dict[str, Any] = {
+    "n_estimators": 900,
+    "learning_rate": 0.04,
+    "max_depth": 9,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "random_state": 42,
+    "objective": "reg:squarederror",
+}
+
+
+def sample_weights_for(df: pd.DataFrame) -> np.ndarray:
+    """Per-row XGBoost weights from `training_weight` (1.0 when absent), floored
+    at 0.01. One definition, so tuning trials and the final fit use the same."""
+    series = df["training_weight"] if "training_weight" in df.columns else pd.Series(1.0, index=df.index)
+    w = pd.to_numeric(series, errors="coerce").fillna(1.0)
+    return np.maximum(np.nan_to_num(w.values, nan=1.0), 0.01)
+
+
+def tuning_settings() -> Dict[str, Any]:
+    """MODEL_TUNING_TRIALS (0 turns tuning off) and MODEL_TUNING_TIMEOUT_S, per horizon."""
+    def _num(name, default, cast):
+        try:
+            return cast(os.getenv(name, default))
+        except (TypeError, ValueError):
+            return cast(default)
+    return {"n_trials": max(0, _num("MODEL_TUNING_TRIALS", "25", int)),
+            "timeout_s": max(1.0, _num("MODEL_TUNING_TIMEOUT_S", "240", float))}
+
+
+def select_hyperparameters(df_train: pd.DataFrame, feature_cols: List[str], *,
+                           embargo_days: float, group_cols=None, n_trials: int,
+                           timeout_s: Optional[float], min_fit_rows: int,
+                           seed: int = 42):
+    """Pick XGBoost hyperparameters using the training fold only.
+
+    Returns `(params, record)`. The test fold is never passed in, so it cannot
+    influence the choice and the score reported on it stays an honest estimate.
+    The training fold is split again in time order, with the same label embargo
+    as the outer split: the earlier part fits each Optuna trial, the later part
+    scores it. The tuned parameters are adopted only if they beat the defaults on
+    that validation part; otherwise the defaults are kept, and the record says why.
+    """
+    record: Dict[str, Any] = {
+        "method": "default", "n_trials_requested": int(n_trials),
+        "timeout_s": timeout_s, "chosen": "default",
+    }
+    defaults = dict(DEFAULT_HYPERPARAMETERS, random_state=seed)
+    if n_trials <= 0:
+        record["reason"] = "tuning disabled (MODEL_TUNING_TRIALS=0)"
+        return defaults, record
+
+    from backend.ml import hyperparameter_optimizer as hpo
+    if not hpo._OPTUNA_AVAILABLE:
+        record["reason"] = "optuna is not installed"
+        return defaults, record
+
+    fit_df, val_df, inner = chronological_split(
+        df_train, timestamp_col="_recorded_dt", train_fraction=0.8,
+        embargo_days=embargo_days, group_cols=group_cols)
+    record["validation_split"] = {
+        k: inner.get(k) for k in ("n_train", "n_test", "n_purged_by_embargo",
+                                  "gap_days", "embargo_is_effective", "test_start")}
+    if len(fit_df) < min_fit_rows or len(val_df) < MIN_TEST_ROWS or not inner["embargo_is_effective"]:
+        record["reason"] = (
+            "training fold too small to hold out a validation fold "
+            f"({len(fit_df)} fit / {len(val_df)} validation rows after the embargo)")
+        return defaults, record
+
+    X_fit, y_fit = fit_df[feature_cols], fit_df["target_price"]
+    X_val, y_val = val_df[feature_cols], val_df["target_price"]
+    w_fit = sample_weights_for(fit_df)
+
+    baseline_model = XGBRegressor(**defaults)
+    baseline_model.fit(X_fit, y_fit, sample_weight=w_fit)
+    default_val_mae = float(mean_absolute_error(y_val, baseline_model.predict(X_val)))
+
+    result = hpo.hyperparameter_optimizer.optimize(
+        X_fit, y_fit, X_val, y_val, n_trials=n_trials, random_seed=seed,
+        sample_weight=w_fit, timeout_s=timeout_s)
+    tuned = {**result.best_params, "random_state": seed, "objective": "reg:squarederror"}
+    best_val_mae = float(result.best_val_mae)
+
+    improved = math.isfinite(best_val_mae) and best_val_mae < default_val_mae
+    record.update({
+        "method": "optuna_tpe",
+        "n_trials_completed": int(result.n_trials_completed),
+        "validation_mae_default": round(default_val_mae, 2),
+        "validation_mae_tuned": round(best_val_mae, 2) if math.isfinite(best_val_mae) else None,
+        "validation_improvement_pct": (
+            round(100.0 * (default_val_mae - best_val_mae) / default_val_mae, 2)
+            if improved and default_val_mae > 0 else 0.0),
+        "chosen": "tuned" if improved else "default",
+        "tuned_params": tuned,
+    })
+    if not improved:
+        record["reason"] = "tuned parameters did not beat the defaults on the validation fold"
+    return (tuned if improved else defaults), record
+
+
 class PricePredictor:
     # The one feature set this class can consume, named once.
     #
@@ -1116,29 +1220,40 @@ class PricePredictor:
             X_test = df_test[self.feature_cols]
             y_test = df_test["target_price"]
 
-            w_train_series = df_train["training_weight"] if "training_weight" in df_train.columns else pd.Series(1.0, index=df_train.index)
-            w = pd.to_numeric(w_train_series, errors="coerce").fillna(1.0)
-            raw_w = np.nan_to_num(w.values, nan=1.0)
-            final_weights = np.maximum(raw_w, 0.01)
+            final_weights = sample_weights_for(df_train)
 
-            # Hyperparameters are a named dict rather than inline literals so the
-            # values that produced an artifact can be recorded into its metadata.
-            # Reproducing a run used to require reading this function.
-            hyperparameters = {
-                "n_estimators": 900,
-                "learning_rate": 0.04,
-                "max_depth": 9,
-                "subsample": 0.9,
-                "colsample_bytree": 0.9,
-                "random_state": 42,
-                "objective": "reg:squarederror",
-            }
+            # Hyperparameters: tuned with Optuna on a time-ordered validation
+            # slice of the training fold (never the test fold), and kept only if
+            # they beat the defaults there. The values used, and how they were
+            # chosen, are recorded into the artifact's metadata.
+            settings = tuning_settings()
+            hyperparameters, tuning_record = select_hyperparameters(
+                df_train, self.feature_cols, embargo_days=embargo_days,
+                group_cols=curve_group_columns(df_train),
+                n_trials=settings["n_trials"], timeout_s=settings["timeout_s"],
+                min_fit_rows=MIN_OBSERVATIONS_THRESHOLD)
+            logger.info(
+                "Horizon %dd hyperparameters: %s (%s)", h, tuning_record["chosen"],
+                tuning_record.get("reason") or
+                "validation MAE ₹%s → ₹%s over %s trial(s)" % (
+                    tuning_record.get("validation_mae_default"),
+                    tuning_record.get("validation_mae_tuned"),
+                    tuning_record.get("n_trials_completed")))
             model = XGBRegressor(**hyperparameters)
             model.fit(X_train, y_train, sample_weight=final_weights)
 
             # 2. Evaluation on Unseen Chronological Test Fold
             preds = model.predict(X_test)
             mae = float(mean_absolute_error(y_test, preds))
+            # For the record only: what the default parameters would have scored
+            # on the same test fold. Nothing is selected on this number (the
+            # choice above was made without the test fold); it is what lets a
+            # tuning claim be stated as a measured test-set difference.
+            if tuning_record["chosen"] == "tuned":
+                default_model = XGBRegressor(**dict(DEFAULT_HYPERPARAMETERS, random_state=hyperparameters["random_state"]))
+                default_model.fit(X_train, y_train, sample_weight=final_weights)
+                tuning_record["test_mae_default"] = round(float(mean_absolute_error(y_test, default_model.predict(X_test))), 2)
+                tuning_record["test_mae_tuned"] = round(mae, 2)
             rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
             r2 = float(r2_score(y_test, preds)) if len(y_test) > 1 else 0.0
             # MAPE comes from `backend.ml.metrics`, which is where every other
@@ -1267,6 +1382,7 @@ class PricePredictor:
                 # 900, so tuning one would have left the recorded metrics
                 # describing a model that was never fitted.
                 "estimators": hyperparameters["n_estimators"],
+                "hyperparameter_search": tuning_record,
                 "training_samples": n_train,
                 "test_samples": len(X_test)
             }
@@ -1403,6 +1519,7 @@ class PricePredictor:
                 # into it.
                 "feature_set_version": self.feature_set_version,
                 "hyperparameters": hyperparameters,
+                "hyperparameter_search": tuning_record,
                 "random_seed": hyperparameters["random_state"],
                 "provenance": run_provenance(),
             }

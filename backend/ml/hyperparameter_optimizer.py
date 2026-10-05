@@ -79,6 +79,8 @@ class HyperparameterOptimizer:
         n_trials: int = 50,
         random_seed: int = 42,
         output_dir: Optional[str] = None,
+        sample_weight=None,           # array-like aligned with X_train, or None
+        timeout_s: Optional[float] = None,
     ) -> OptimizationResult:
         """Run hyperparameter search and return the best parameters.
 
@@ -90,6 +92,10 @@ class HyperparameterOptimizer:
             n_trials: Number of Optuna trials.
             random_seed: Used for reproducibility in XGBoost.
             output_dir: If provided, persists best_params.json and history.json.
+            sample_weight: Per-row training weights, passed to every trial's fit
+                so trials are scored on the same objective the final model uses.
+            timeout_s: Stop starting new trials after this many seconds; the
+                study keeps whatever finished. Bounds the daily pipeline's runtime.
 
         Returns:
             OptimizationResult
@@ -128,7 +134,7 @@ class HyperparameterOptimizer:
             }
 
             model = XGBRegressor(**params)
-            model.fit(X_train, y_train, verbose=False)
+            model.fit(X_train, y_train, sample_weight=sample_weight, verbose=False)
             preds = model.predict(X_val)
             trial_mae = mean_absolute_error(y_val, preds)
             history.append({"trial": trial.number, "mae": float(trial_mae), "params": params})
@@ -136,20 +142,23 @@ class HyperparameterOptimizer:
 
         sampler = _optuna.samplers.TPESampler(seed=random_seed)
         study = _optuna.create_study(direction="minimize", sampler=sampler)
-        study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+        study.optimize(objective, n_trials=n_trials, timeout=timeout_s, show_progress_bar=False)
 
+        completed = len([t for t in study.trials if t.value is not None])
         best_params = {**study.best_params, "objective": "reg:squarederror"}
         best_mae = float(study.best_value)
 
         logger.info(
-            f"[HyperparameterOptimizer] Completed {n_trials} trials. "
+            f"[HyperparameterOptimizer] Completed {completed} of {n_trials} trials. "
             f"Best MAE={best_mae:.2f} with params={best_params}"
         )
 
         result = OptimizationResult(
             best_params=best_params,
             best_val_mae=best_mae,
-            n_trials_completed=n_trials,
+            # Trials actually run, not trials requested: a timeout can stop the
+            # study early, and the record should say how much search was done.
+            n_trials_completed=completed,
             optuna_available=True,
             history=history,
         )

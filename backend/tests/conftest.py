@@ -11,6 +11,9 @@ import pytest
 # The app fetches trained models from Supabase Storage at startup; tests must
 # not reach out to a real bucket.
 os.environ.setdefault("MODEL_SYNC_ON_START", "0")
+# Training tests fit real XGBoost models; a 25-trial Optuna search per horizon
+# would make them minutes long. Tests that cover tuning pass n_trials directly.
+os.environ.setdefault("MODEL_TUNING_TRIALS", "0")
 
 
 @pytest.fixture(autouse=True)

@@ -1,0 +1,80 @@
+"""select_hyperparameters: Optuna tuning on the training fold only, adopted only
+when it beats the defaults on a time-ordered validation slice."""
+import numpy as np
+import pandas as pd
+import pytest
+
+import backend.ml.hyperparameter_optimizer as hpo
+from backend.ml.price_model import (
+    DEFAULT_HYPERPARAMETERS, sample_weights_for, select_hyperparameters, tuning_settings,
+)
+
+FEATURES = ["days_to_departure", "weekday", "noise"]
+
+
+def _frame(n=600, seed=0):
+    rng = np.random.default_rng(seed)
+    t0 = pd.Timestamp("2026-09-01", tz="UTC")
+    dtd = rng.integers(1, 60, n)
+    weekday = rng.integers(0, 7, n)
+    return pd.DataFrame({
+        "_recorded_dt": [t0 + pd.Timedelta(hours=2 * i) for i in range(n)],
+        "days_to_departure": dtd,
+        "weekday": weekday,
+        "noise": rng.normal(0, 1, n),
+        "target_price": 4000 + 3000 / (dtd + 1) + 150 * (weekday >= 5) + rng.normal(0, 60, n),
+        "training_weight": 1.0,
+    })
+
+
+def test_disabled_tuning_keeps_the_defaults():
+    params, record = select_hyperparameters(
+        _frame(), FEATURES, embargo_days=1.0, n_trials=0, timeout_s=10, min_fit_rows=100)
+    assert params == DEFAULT_HYPERPARAMETERS
+    assert record["chosen"] == "default" and "disabled" in record["reason"]
+
+
+def test_missing_optuna_keeps_the_defaults(monkeypatch):
+    monkeypatch.setattr(hpo, "_OPTUNA_AVAILABLE", False)
+    params, record = select_hyperparameters(
+        _frame(), FEATURES, embargo_days=1.0, n_trials=5, timeout_s=10, min_fit_rows=100)
+    assert params == DEFAULT_HYPERPARAMETERS
+    assert record["reason"] == "optuna is not installed"
+
+
+def test_too_small_a_training_fold_keeps_the_defaults():
+    params, record = select_hyperparameters(
+        _frame(n=90), FEATURES, embargo_days=1.0, n_trials=5, timeout_s=10, min_fit_rows=100)
+    assert params == DEFAULT_HYPERPARAMETERS
+    assert "too small" in record["reason"]
+
+
+def test_tuning_settings_read_the_environment(monkeypatch):
+    monkeypatch.setenv("MODEL_TUNING_TRIALS", "7")
+    monkeypatch.setenv("MODEL_TUNING_TIMEOUT_S", "30")
+    assert tuning_settings() == {"n_trials": 7, "timeout_s": 30.0}
+    monkeypatch.setenv("MODEL_TUNING_TRIALS", "not a number")
+    assert tuning_settings()["n_trials"] == 25
+
+
+def test_sample_weights_default_and_floor():
+    df = pd.DataFrame({"training_weight": [2.0, None, -1.0]})
+    assert sample_weights_for(df).tolist() == [2.0, 1.0, 0.01]
+    assert sample_weights_for(pd.DataFrame({"x": [1, 2]})).tolist() == [1.0, 1.0]
+
+
+@pytest.mark.skipif(not hpo._OPTUNA_AVAILABLE, reason="optuna not installed")
+def test_optuna_search_runs_on_the_training_fold_and_is_recorded():
+    df = _frame()
+    params, record = select_hyperparameters(
+        df, FEATURES, embargo_days=1.0, n_trials=6, timeout_s=60, min_fit_rows=100)
+    assert record["method"] == "optuna_tpe"
+    assert record["n_trials_completed"] >= 1
+    # The validation slice is the tail of the frame it was given: tuning sees
+    # nothing later than the training fold.
+    assert pd.Timestamp(record["validation_split"]["test_start"]) <= df["_recorded_dt"].max()
+    if record["chosen"] == "tuned":
+        assert record["validation_mae_tuned"] < record["validation_mae_default"]
+        assert params == record["tuned_params"] and params["random_state"] == 42
+    else:
+        assert params == DEFAULT_HYPERPARAMETERS
