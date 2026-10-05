@@ -259,6 +259,21 @@ def _outcomes(text: str) -> set:
     return found
 
 
+_MODEL_CLAIM = re.compile(
+    r"\b(?:gpt[\s-]?\d\w*|chat\s?gpt|openai|(?:large\s+)?language\s+model|llama|gemini|anthropic|claude|"
+    r"nemotron|groq|mistral|deepseek|fine[\s-]?tuned)\b", re.IGNORECASE)
+_SELF_REF = re.compile(r"\b(?:i|i'm|i’m|i\s+am|i\s+was|my|me|powered\s+by)\b", re.IGNORECASE)
+
+
+def _model_claim(text: str) -> Optional[str]:
+    """A sentence where the assistant describes itself as some AI model."""
+    for sentence in re.split(r"(?<=[.!?\n])\s+", text or ""):
+        m = _MODEL_CLAIM.search(sentence)
+        if m and _SELF_REF.search(sentence):
+            return m.group(0)
+    return None
+
+
 def _wrong_weekdays(text: str, today: Optional[datetime] = None) -> List[str]:
     """Dates written with a weekday that the calendar contradicts, e.g. "Monday,
     October 3, 2026" (a Saturday). Without a year, it is wrong only if it is
@@ -372,6 +387,12 @@ def score(case: Dict[str, Any], result: CaseResult) -> CaseResult:
     # Always on: a weekday the calendar contradicts is wrong in any reply.
     wrong = _wrong_weekdays(text)
     _check(result, "weekday", not wrong, f"wrong weekday in {wrong}" if wrong else "")
+
+    # Always on: no reply may describe the AI behind the assistant. The live bot
+    # once answered "I'm powered by OpenAI's GPT-4 architecture, fine-tuned for
+    # aviation", which is untrue.
+    claim = _model_claim(text)
+    _check(result, "model_claim", claim is None, f"claims {claim!r}" if claim else "")
 
     result.passed = all(c["ok"] for c in result.checks)
     return result

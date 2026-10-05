@@ -49,3 +49,71 @@ def test_lowercase_route_codes_are_aviation(text):
 
 def test_ordinary_three_letter_words_are_not_routes():
     assert classify_message("the cat and the dog").domain != DomainEnum.AVIATION
+
+
+# ── Identity, small talk and sign-offs (2026-10-05) ─────────────────────────
+from backend.services.reply_guards import (
+    CREATOR_REPLY, GREETING_REPLY, IDENTITY_REPLY, THANKS_REPLY,
+    describes_itself, identity_reply, small_talk_reply, strip_closing_offer,
+)
+
+
+@pytest.mark.parametrize("q", [
+    "what model are you?", "which AI model are u using?", "are you chatgpt?",
+    "Are you GPT-4?", "what are you powered by?", "Who are you?", "what llm do you use",
+])
+def test_identity_questions_get_the_fixed_reply(q):
+    assert identity_reply(q) == IDENTITY_REPLY
+
+
+@pytest.mark.parametrize("q", ["who made u?", "Who built you", "who created this assistant?"])
+def test_creator_questions_get_the_creator_reply(q):
+    assert identity_reply(q) == CREATOR_REPLY
+
+
+@pytest.mark.parametrize("q", [
+    "which aircraft model does IndiGo use?", "who made the A320?", "is it a good model?",
+    "cheapest flight del to bom", "what can you help me with?",
+])
+def test_aviation_questions_are_not_identity_questions(q):
+    assert identity_reply(q) is None
+
+
+@pytest.mark.parametrize("q,reply", [
+    ("hi", GREETING_REPLY), ("Good morning!", GREETING_REPLY), ("how are you?", GREETING_REPLY),
+    ("Thanks, that was helpful!", THANKS_REPLY), ("thank you so much", THANKS_REPLY),
+])
+def test_small_talk_gets_fixed_replies(q, reply):
+    assert small_talk_reply(q) == reply
+
+
+@pytest.mark.parametrize("q", ["hi, cheapest flight to goa", "thanks, and what about tomorrow?"])
+def test_small_talk_with_a_question_goes_to_the_model(q):
+    assert small_talk_reply(q) is None
+
+
+def test_fixed_replies_never_name_a_model():
+    for text in (IDENTITY_REPLY, CREATOR_REPLY, GREETING_REPLY):
+        assert not describes_itself(text)
+        for word in ("gpt", "openai", "llama", "gemini", "claude", "nemotron", "groq"):
+            assert word not in text.lower()
+
+
+@pytest.mark.parametrize("reply,flag", [
+    ("I'm powered by OpenAI's GPT-4 architecture, fine-tuned to help.", True),
+    ("I am a large language model.", True),
+    ("The A320 was developed by Airbus.", False),
+    ("Pilots are trained by their airline.", False),
+])
+def test_self_descriptions_are_caught(reply, flag):
+    assert describes_itself(reply) is flag
+
+
+@pytest.mark.parametrize("reply,clean", [
+    ("Layovers are stops.\n\nHow can I assist you with your flight plans today?", "Layovers are stops."),
+    ("Fares vary. Happy travels! Let me know if you need anything else.", "Fares vary."),
+    ("Sure. Let me know your travel date.", "Sure. Let me know your travel date."),
+    ("Which date do you want to travel? I'm happy to help.", "Which date do you want to travel?"),
+])
+def test_generic_signoffs_are_removed(reply, clean):
+    assert strip_closing_offer(reply) == clean

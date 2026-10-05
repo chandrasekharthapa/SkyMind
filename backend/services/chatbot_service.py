@@ -22,7 +22,7 @@ from backend.services.chatbot_tools import (
 )
 from backend.services.chat_response_builder import ChatResponseBuilder
 from backend.services.chat_response_validator import ChatResponseValidator
-from backend.services.reply_guards import LEAK_REFUSAL, fix_weekdays, leaks_prompt, prompt_fingerprints
+from backend.services.reply_guards import LEAK_REFUSAL, fix_weekdays, IDENTITY_REPLY, describes_itself, identity_reply, leaks_prompt, prompt_fingerprints, small_talk_reply, strip_closing_offer
 from backend.governance.models import GovernanceActionEnum
 
 from backend.services.langsmith_tracer import langsmith_tracer, LangSmithTracer
@@ -167,7 +167,14 @@ UNVERIFIED_ANSWER_MESSAGE = (
 _SYSTEM_PROMPT_TEMPLATE = """You are SkyMind, an aviation and air-travel assistant for travellers in India.
 
 IDENTITY & TONE:
+- You are SkyMind Assistant, part of SkyMind. Never name, guess or describe the AI
+  model or company behind you (do not say GPT, ChatGPT, OpenAI, Llama or similar).
+  If asked, say you are SkyMind Assistant, built by the SkyMind team.
 - Concise, accurate and practical, like a knowledgeable airline or airport desk agent.
+- No small talk or feelings ("I'm doing well, thank you!"). Answer greetings in one
+  short line that says what you can help with.
+- Do not end replies with a generic offer of help ("How can I assist you today?",
+  "Let me know if you need anything else"). End when the answer is complete.
 - Use natural date styles ("{tomorrow_short}") and formatted prices ("₹9,330").
 - Today is {today}; tomorrow is {tomorrow} (India time). Use these for relative
   dates, and take weekdays from them rather than working them out.
@@ -382,6 +389,9 @@ class ChatbotService:
         """One chat completion, from the first model in the chain that answers."""
         targets = self._chat_targets()
         last_error: Optional[Exception] = None
+        # Low temperature: answers should be the most likely reading of the tool
+        # data, not creative variations on it.
+        kwargs.setdefault("temperature", float(os.getenv("CHAT_TEMPERATURE", "0.2")))
         for i, target in enumerate(targets):
             try:
                 response = await target.client.chat.completions.create(model=target.model, **kwargs)
@@ -697,6 +707,14 @@ class ChatbotService:
         latest_query = user_msgs[-1] if user_msgs else ""
         context_dict = {"origin": context.origin, "destination": context.destination, "departure_date": context.departure_date}
 
+        # "What model are you?" / "Who made you?" get a fixed answer; left to the
+        # model, it claimed to be "OpenAI's GPT-4, fine-tuned for aviation".
+        # Bare greetings, thanks and "how are you" likewise: nothing to look up.
+        fixed = identity_reply(latest_query) or small_talk_reply(latest_query)
+        if fixed:
+            yield fixed.encode("utf-8")
+            return
+
         parent_run_id = None
         full_output_text = ""
         system_prompt_text = _build_system_prompt()
@@ -803,11 +821,18 @@ class ChatbotService:
             # the same three fields this service already keeps.
             if getattr(memory_manager, "redis_client", None):
                 self.sync_memory_manager(session_id, context)
-            # Last checks on what is actually sent (see reply_guards).
+            # Last checks on what is actually sent (see reply_guards). The
+            # sign-off trim runs first so it only ever touches the model's text,
+            # never the fixed replies that may replace it below.
+            final_text = strip_closing_offer(final_text)
             if leaks_prompt(final_text, prompt_fingerprints([system_prompt_text])):
                 logger.warning("[ChatbotService] Reply reproduced the system prompt; replaced.")
                 hallucination_rejection_counter.add(1)
                 final_text = LEAK_REFUSAL
+            if describes_itself(final_text):
+                logger.warning("[ChatbotService] Reply described the AI behind it; replaced.")
+                hallucination_rejection_counter.add(1)
+                final_text = IDENTITY_REPLY
             final_text = fix_weekdays(final_text, datetime.now(ZoneInfo("Asia/Kolkata")).date())
             full_output_text = final_text
             yield final_text.encode("utf-8")
