@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import NavBar from "@/components/layout/NavBar";
 import PopularDestinations from "@/components/flights/PopularDestinations";
 import FlightSearchForm from "@/components/flights/FlightSearchForm";
+import FlightNetwork from "@/components/home/FlightNetwork";
 import { formatConfidence } from "@/lib/formatters";
 
 // Every item here describes something the product actually does.
@@ -94,14 +95,10 @@ export default function HomePage() {
           HERO — cinematic, left-aligned, premium
           ══════════════════════════════════════════ */}
       <section className="home-hero" style={{ position: "relative", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
-        {/* Background video */}
-        <video
-          autoPlay muted loop playsInline
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.45 }}
-          poster="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=2074"
-        >
-          <source src="https://player.vimeo.com/external/434045526.sd.mp4?s=c27cf341d05d013975d233f0331f0d99049a6a01&profile_id=164&oauth2_token_id=57447761" type="video/mp4" />
-        </video>
+        {/* Animated flight network (drawn in code; see FlightNetwork) */}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 60% 70% at 52% 50%, rgba(255,255,255,0.05), transparent 70%), #000" }} />
+        <FlightNetwork className="hero-network" />
+        <div aria-hidden="true" className="hero-scrim" />
 
         {/* Hero content */}
         <div className="ui-wrap" style={{ position: "relative", zIndex: 10, paddingTop: 120, paddingBottom: 64 }}>
@@ -132,7 +129,7 @@ export default function HomePage() {
                   Search Flights
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                 </Link>
-                <Link href="/predict" className="ui-btn ui-btn-outline" style={{ backdropFilter: "blur(8px)" }}>
+                <Link href="/predict" className="ui-btn ui-btn-outline" style={{ backdropFilter: "blur(8px)", color: "#fff", borderColor: "rgba(255,255,255,0.3)" }}>
                   AI Price Forecast
                 </Link>
               </div>
@@ -400,6 +397,16 @@ export default function HomePage() {
           align-items: center;
         }
         .hero-copy { max-width: 600px; }
+        :global(.hero-network) { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        .hero-scrim {
+          position: absolute; inset: 0; pointer-events: none;
+          /* Dims the animation behind the headline and copy only, so the text
+             stays easy to read while planes stay bright everywhere else. */
+          background: radial-gradient(ellipse 30% 46% at 29% 57%, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.62) 55%, rgba(0,0,0,0) 100%);
+        }
+        @media (max-width: 1100px) {
+          .hero-scrim { background: rgba(0,0,0,0.62); }
+        }
         .hero-form-desktop { display: block; }
         .hero-form-mobile { display: none; }
         
