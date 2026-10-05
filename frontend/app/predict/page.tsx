@@ -457,8 +457,10 @@ function PredictContent() {
                   </div>
                 </section>
 
-                {/* ⑤ Developer Debug & Invariant Audit Panel */}
-                <ForecastDebugPanel rawResult={result} canonicalForecast={cForecast} />
+                {/* Developer debug panel: local development only, never shown to visitors. */}
+                {process.env.NODE_ENV !== "production" && (
+                  <ForecastDebugPanel rawResult={result} canonicalForecast={cForecast} />
+                )}
 
                 {/* ⑤ Booking Curve Interactive Forecast Chart */}
                 <section aria-labelledby="section-chart">

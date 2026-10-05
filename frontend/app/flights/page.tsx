@@ -420,29 +420,6 @@ function FlightsContent() {
                   position: "relative"
                 }}
               >
-                {/* Visual Top Badges Row */}
-                <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-                  {isCheapest && (
-                    <span style={{ fontSize: "11px", fontWeight: 700, background: "var(--ok-bg)", color: "var(--ok-ink)", padding: "2px 8px", borderRadius: 4, letterSpacing: "0.5px" }}>
-                      CHEAPEST FARE
-                    </span>
-                  )}
-                  <span style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    background: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "var(--info-bg)" : "var(--surface-2)",
-                    color: f.provenance === "LIVE_GOOGLE_FLIGHTS" ? "var(--info)" : "var(--ink-2)",
-                    padding: "2px 8px",
-                    borderRadius: 4
-                  }}>
-                    {f.provenance === "LIVE_GOOGLE_FLIGHTS"
-                      ? "LIVE GOOGLE FLIGHTS"
-                      : f.provenance === "AUTHENTIC_PRICE_HISTORY"
-                        ? "CACHED OBSERVATION"
-                        : "SOURCE UNKNOWN"}
-                  </span>
-                </div>
-
                 <div className="flight-row">
                   
                   {/* Airline Info */}
@@ -483,6 +460,9 @@ function FlightsContent() {
 
                   {/* Price & Action Buttons */}
                   <div className="col-action">
+                    {isCheapest && (
+                      <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--ok)", marginBottom: 2 }}>Lowest fare</div>
+                    )}
                     <div style={{ fontSize: "26px", fontWeight: 800, color: "var(--ink)", marginBottom: 12, letterSpacing: "-0.5px" }}>
                       {formatFare(price, f.price.currency)}
                     </div>

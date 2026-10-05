@@ -55,19 +55,8 @@ export default function AdminPage() {
   const getStatusBadge = (status: string) => {
     const style = BADGE_COLORS[status] || { bg: "rgba(0,0,0,0.05)", text: "var(--grey3)" };
     return (
-      <span
-        style={{
-          background: style.bg,
-          color: style.text,
-          padding: "4px 10px",
-          borderRadius: "8px",
-          fontWeight: 700,
-          fontSize: "10px",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-        }}
-      >
-        {status}
+      <span style={{ color: style.text, fontWeight: 600, fontSize: "12px" }}>
+        {status ? status.charAt(0) + status.slice(1).toLowerCase() : ""}
       </span>
     );
   };

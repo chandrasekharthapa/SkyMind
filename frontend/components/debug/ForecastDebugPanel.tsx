@@ -36,9 +36,6 @@ export default function ForecastDebugPanel({ rawResult, canonicalForecast }: Pro
           <span style={{ fontSize: 13, fontWeight: 700, color: isPassed ? "var(--ok)" : "var(--bad)" }}>
             {isPassed ? "[PASS] Forecast Debug Diagnostics" : "[WARN] Invariant Violations Detected"}
           </span>
-          <span style={{ fontSize: 11, background: "var(--info-bg)", color: "var(--info-ink)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-            DEV ONLY
-          </span>
         </div>
         <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 600, color: "var(--ink-2)", cursor: "pointer" }}>
           {isOpen ? "Hide Audit Panel ▲" : "Show Audit Panel ▼"}

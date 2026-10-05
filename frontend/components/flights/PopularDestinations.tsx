@@ -119,7 +119,6 @@ export default function PopularDestinations() {
                     {fare ? `₹${Math.round(fare.price).toLocaleString("en-IN")}` : "Search to see"}
                   </div>
                 </div>
-                <span className={`badge ${m.tagClass}`}>{m.tag}</span>
               </div>
               <div className="dest-meta">
                 {fare ? (

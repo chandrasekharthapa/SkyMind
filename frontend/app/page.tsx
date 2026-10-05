@@ -106,12 +106,6 @@ export default function HomePage() {
 
             {/* LEFT: copy */}
             <div className="hero-copy">
-              {/* Badge */}
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 100, padding: "6px 14px", marginBottom: 32 }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--red)", boxShadow: "0 0 8px var(--red)" }} />
-                <span style={{ fontFamily: "var(--fm)", fontSize: "0.6rem", color: "rgba(255,255,255,0.5)", letterSpacing: "0.12em", textTransform: "uppercase" }}>AI-Powered · XGBoost</span>
-              </div>
-
               {/* Main title */}
               <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(3.8rem, 13vw, 10rem)", lineHeight: 0.88, color: "#fff", textTransform: "uppercase", letterSpacing: "-0.03em", marginBottom: 24 }}>
                 Fly<br />
@@ -250,7 +244,7 @@ export default function HomePage() {
                   <div key={item.route} className="ui-card" style={{ padding: "var(--ui-space-md)", cursor: "default" }}>
                     <div className="ui-flex-between">
                       <div>
-                        <div className="ui-label" style={{ marginBottom: 6 }}>{item.route} | {item.label}</div>
+                        <div className="ui-label" style={{ marginBottom: 6 }}>{item.route}</div>
                         <div className="ui-title-md">{item.price}</div>
                         {item.available !== false && (
                           <>
@@ -270,7 +264,9 @@ export default function HomePage() {
                         )}
                       </div>
                       {item.available !== false && (
-                        <span className={`badge ${item.badgeClass}`}>{String(item.trend).charAt(0).toUpperCase() + String(item.trend).slice(1).toLowerCase()}</span>
+                        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: item.trend === "RISING" ? "var(--red)" : item.trend === "FALLING" ? "var(--ok)" : "var(--ink-3)" }}>
+                          {item.trend === "RISING" ? "Likely to rise" : item.trend === "FALLING" ? "Likely to drop" : "Holding steady"}
+                        </span>
                       )}
                     </div>
                   </div>

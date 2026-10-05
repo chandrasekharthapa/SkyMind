@@ -67,7 +67,6 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const statusClass = (s:string) => s==="CONFIRMED"?"badge-green":s==="PENDING"?"badge-amber":"badge-off";
   const totalSpent = bookings.reduce((a,b)=>a+(b.total_price||0),0);
   const confirmedTrips = bookings.filter(b=>b.status==="CONFIRMED").length;
 
@@ -199,7 +198,7 @@ export default function DashboardPage() {
                               </div>
                             </div>
                           </div>
-                          <span className={`badge ${statusClass(b.status)}`} style={{ borderRadius: 6, fontSize: "10px", padding: "4px 10px" }}>{b.status}</span>
+                          <span style={{ fontSize: "12px", fontWeight: 600, color: b.status === "CONFIRMED" ? "var(--ok)" : b.status === "PENDING" ? "var(--warn)" : "var(--ink-3)" }}>{b.status ? b.status.charAt(0) + b.status.slice(1).toLowerCase() : ""}</span>
                         </div>
                         
                         <div className="booking-card-body" style={{ padding: "32px 24px" }}>
@@ -263,7 +262,7 @@ export default function DashboardPage() {
                 <div className="sidebar-card" style={{ padding: 0 }}>
                   <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--grey1)", background: "#000", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontFamily: "var(--fm)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em" }}>PRICE ALERTS</span>
-                    <span className="badge" style={{ background: "var(--red-solid)", color: "#fff" }}>{alerts.length} ACTIVE</span>
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>{alerts.length} active</span>
                   </div>
                   <div style={{ padding: "8px 0" }}>
                     {alerts.length === 0 && !loading && (

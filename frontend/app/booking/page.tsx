@@ -145,7 +145,7 @@ function BookingContent() {
             <div className="ui-card" style={{ padding: "clamp(20px, 5vw, 32px)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
                 <div className="ui-label" style={{ color: "var(--grey3)" }}>SELECTED ITINERARY</div>
-                <div className="badge badge-off" style={{ background: "var(--off)", color: "var(--black)" }}>{seg?.flight_number}</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--grey4)" }}>{seg?.flight_number}</div>
               </div>
               <div className="ui-itinerary-grid">
                 <div>
