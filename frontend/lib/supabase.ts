@@ -47,3 +47,38 @@ export async function getRouteMinPrice(
     return null;
   }
 }
+
+// ── Profiles ──────────────────────────────────────────────────────────
+// A profile row is linked to the signed-in user by `auth_user_id` (its own
+// `id` is a separate UUID; see handle_new_user in skymind_complete.sql). The
+// dashboard and nav used to look it up with `.eq("id", user.id)`, which
+// matches nothing, so names never showed. Older databases created the row
+// with id = auth uid, so that is tried second.
+export type Profile = {
+  id: string;
+  auth_user_id?: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  display_name?: string | null;
+  phone?: string | null;
+};
+
+export async function loadProfile(authUserId: string): Promise<Profile | null> {
+  for (const column of ["auth_user_id", "id"] as const) {
+    const { data, error } = await supabase.from("profiles").select("*").eq(column, authUserId).maybeSingle();
+    if (!error && data) return data as Profile;
+  }
+  return null;
+}
+
+export async function saveProfile(
+  authUserId: string,
+  existing: Profile | null,
+  fields: { display_name?: string | null; full_name?: string | null; phone?: string | null; email?: string | null },
+): Promise<{ error: string | null }> {
+  const query = existing
+    ? supabase.from("profiles").update(fields).eq("id", existing.id)
+    : supabase.from("profiles").insert({ auth_user_id: authUserId, ...fields });
+  const { error } = await query;
+  return { error: error ? error.message : null };
+}

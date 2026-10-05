@@ -42,13 +42,12 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { supabase } = await import("@/lib/supabase");
+      const { supabase, loadProfile } = await import("@/lib/supabase");
       const { data:{ session } } = await supabase.auth.getSession();
       
       if (session?.user) {
         setUser(session.user);
-        const { data: prof } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-        setProfile(prof);
+        setProfile(await loadProfile(session.user.id));
 
         const [bkRes, alRes] = await Promise.all([
           supabase.from("bookings").select("*").eq("user_id", session.user.id).order("created_at",{ascending:false}).limit(10),

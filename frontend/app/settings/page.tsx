@@ -1,281 +1,247 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import NavBar from "@/components/layout/NavBar";
-import {
-  healthCheck, getModelPerformance, getSystemInfo,
-  type HealthReport, type SystemInfo, type ModelMetrics
-} from "@/lib/api";
+import { supabase, loadProfile, saveProfile, type Profile } from "@/lib/supabase";
+import { useTheme, type ThemePreference } from "@/context/ThemeContext";
 
-// Absence renders as absence. Every figure on this page used to fall back
-// through `|| 0`, so a backend publishing no validation metrics at all was
-// drawn as "₹0" mean absolute error and "R² 0.0000" — which an observer reads
-// as a measurement of a very bad model, not as the absence of a measurement.
-const NOT_MEASURED = (
-  <span style={{ color: "var(--grey3)", fontWeight: 400, fontStyle: "italic" }}>
-    not measured
-  </span>
-);
+// Account settings: name, appearance, and sign-in. The service diagnostics
+// that used to live at this URL are now at /system.
 
-function Row({ label, value, color, mono, last }: {
-  label: string;
-  value: React.ReactNode;
-  color?: string;
-  mono?: boolean;
-  last?: boolean;
-}) {
-  return (
-    <div style={{
-      display: "flex", justifyContent: "space-between", gap: 16,
-      borderBottom: last ? "none" : "1px solid var(--grey1)",
-      paddingBottom: last ? 0 : 8
-    }}>
-      <span style={{ color: "var(--grey3)", flexShrink: 0 }}>{label}</span>
-      <span style={{
-        fontWeight: color ? 700 : 400,
-        color: color ?? "var(--grey4)",
-        fontFamily: mono ? "var(--fm)" : "inherit",
-        textAlign: "right"
-      }}>
-        {value}
-      </span>
-    </div>
-  );
+const EYEBROW: React.CSSProperties = {
+  fontFamily: "var(--fm)", fontSize: "0.65rem", fontWeight: 600, letterSpacing: ".14em",
+  textTransform: "uppercase", color: "var(--grey4)",
+};
+const CARD: React.CSSProperties = {
+  background: "var(--white)", border: "1px solid var(--grey1)", borderRadius: 20,
+  padding: "28px 28px 24px", boxShadow: "var(--shadow-sm)",
+};
+const CARD_TITLE: React.CSSProperties = {
+  fontFamily: "var(--fd)", fontSize: "1.6rem", lineHeight: 1, margin: "0 0 6px",
+  textTransform: "uppercase", color: "var(--black)",
+};
+const CARD_SUB: React.CSSProperties = { margin: "0 0 22px", color: "var(--grey4)", fontSize: "0.9rem", lineHeight: 1.5 };
+const LABEL: React.CSSProperties = { display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "var(--grey4)", marginBottom: 6 };
+const READONLY: React.CSSProperties = {
+  height: 48, display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12,
+  background: "var(--off)", border: "1px solid var(--grey1)", color: "var(--grey4)", fontSize: "0.95rem",
+};
+
+function providerLabel(user: any): string {
+  const p = user?.app_metadata?.provider;
+  if (p === "google") return "Google";
+  if (p === "phone" || (!user?.email && user?.phone)) return "Phone number (one-time code)";
+  return "Email and password";
 }
 
-const CARD: React.CSSProperties = { padding: 28, background: "var(--white)" };
-const CARD_H: React.CSSProperties = {
-  fontFamily: "var(--fd)", fontSize: "1.3rem", marginTop: 0,
-  marginBottom: 20, textTransform: "uppercase"
-};
-const ROWS: React.CSSProperties = {
-  display: "flex", flexDirection: "column", gap: 16,
-  fontSize: "0.85rem", color: "var(--grey4)"
-};
-
-// The sentinels a failed fetch collapses to. `status: "offline"` is a
-// client-side value the backend never sends, which is what lets the connection
-// row distinguish "unreachable" from the backend's own "degraded".
-const UNREACHABLE: HealthReport = {
-  status: "offline", model: "unknown", model_load_error: null,
-  refused_artifacts: [], degraded_capabilities: [], data_source: "unknown",
-  time: "", version: ""
-};
-
-const NO_INFO: SystemInfo = {
-  model_version: null, feature_set_version: null, validator_version: null,
-  training_timestamp: null, dataset_size: null, validation_status: "UNKNOWN",
-  last_validation_timestamp: null, trained: false, model_load_error: null,
-  refused_artifacts: [], unavailable: ["/system/info was unreachable"]
-};
-
-const NO_METRICS: ModelMetrics = {
-  mae: null, rmse: null, r2: null, mape: null, training_samples: null,
-  unavailable: ["/system/model/metadata was unreachable"]
-};
-
-const rupees = (v: number | null) =>
-  v == null ? NOT_MEASURED : `₹${Math.round(v).toLocaleString("en-IN")}`;
-
-// "trained_model" | "none" | "unknown" — what `/health` now reports in place of
-// the old "SKYMIND_INTELLIGENCE", which named the product rather than a source.
-const SOURCE_LABEL: Record<string, string> = {
-  trained_model: "TRAINED MODEL",
-  none: "NO MODEL SERVING",
-  unknown: "UNKNOWN"
-};
-
 export default function SettingsPage() {
-  const [health, setHealth] = useState<HealthReport>(UNREACHABLE);
-  const [info, setInfo] = useState<SystemInfo>(NO_INFO);
-  const [perf, setPerf] = useState<ModelMetrics>(NO_METRICS);
+  const router = useRouter();
+  const { preference, setPreference } = useTheme();
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [signingOut, setSigningOut] = useState<"" | "local" | "global">("");
 
   useEffect(() => {
-    let alive = true;
     (async () => {
-      const [h, i, p] = await Promise.all([
-        healthCheck().catch(() => UNREACHABLE),
-        getSystemInfo().catch(() => NO_INFO),
-        getModelPerformance().then(r => r.metrics).catch(() => NO_METRICS)
-      ]);
-      if (!alive) return;
-      setHealth(h);
-      setInfo(i);
-      setPerf(p);
+      const { data: { session } } = await supabase.auth.getSession();
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        const p = await loadProfile(u.id);
+        setProfile(p);
+        setName(p?.display_name || p?.full_name || u.user_metadata?.full_name || "");
+      }
       setLoading(false);
     })();
-    return () => { alive = false; };
   }, []);
 
-  const reachable = health.status !== "offline";
-  const conn = !reachable
-    ? { text: "OFFLINE", color: "var(--red)" }
-    : health.status === "ok"
-      ? { text: "ONLINE", color: "var(--green)" }
-      // The process is up and answering; the model is not serving. Rendering
-      // this as "OFFLINE" (which `status === "ok" ? … : …` did) mislabels a
-      // backend that is still serving search, airports and the chatbot.
-      : { text: "ONLINE / DEGRADED", color: "var(--warn)" };
+  const savedName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || "";
+  const nameChanged = name.trim() !== savedName.trim();
 
-  // "failed" and "lazy" were one bucket, both drawn as "LAZY / UNTRAINED".
-  // They call for opposite responses: lazy means the model loads on first use,
-  // failed means go and look at the artifacts.
-  const inference =
-    health.model === "ready" ? { text: "ACTIVE / LOADED", color: "var(--green)" }
-    : health.model === "failed" ? { text: "LOAD FAILED", color: "var(--red)" }
-    : health.model === "lazy" ? { text: "NOT LOADED YET", color: "var(--warn)" }
-    : { text: "UNKNOWN", color: "var(--grey3)" };
+  const onSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !name.trim() || !nameChanged) return;
+    setSaving(true);
+    setSaveMsg(null);
+    const clean = name.trim().slice(0, 80);
+    const { error } = await saveProfile(user.id, profile, {
+      display_name: clean,
+      full_name: profile?.full_name || clean,
+      ...(profile ? {} : { email: user.email ?? null, phone: user.phone ?? null }),
+    });
+    if (error) {
+      setSaveMsg({ ok: false, text: "Couldn't save your name. Please try again." });
+      console.error("Profile save failed:", error);
+    } else {
+      setProfile(await loadProfile(user.id));
+      setSaveMsg({ ok: true, text: "Saved." });
+    }
+    setSaving(false);
+  };
 
-  const refused = health.refused_artifacts.length
-    ? health.refused_artifacts
-    : info.refused_artifacts;
-  const loadError = health.model_load_error ?? info.model_load_error;
+  const signOut = async (scope: "local" | "global") => {
+    setSigningOut(scope);
+    await supabase.auth.signOut({ scope });
+    router.push("/");
+  };
 
-  return (
-    <>
-      <NavBar />
-      <div style={{ background: "var(--white)", minHeight: "100vh", paddingTop: "120px", paddingBottom: "100px" }}>
-        <div className="ui-wrap">
-
-          <div style={{ marginBottom: 40, borderBottom: "1px solid var(--grey1)", paddingBottom: 24 }}>
-            <div style={{ fontFamily: "var(--fm)", fontSize: "10px", fontWeight: 700, color: "var(--red)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-              SkyMind Neural Hub Specs
-            </div>
-            <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2rem, 5vw, 4rem)", margin: 0, textTransform: "uppercase", letterSpacing: "-0.02em" }}>
-              System <span style={{ color: "var(--red)" }}>Information.</span>
+  if (!loading && !user) {
+    return (
+      <div style={{ background: "var(--off)", minHeight: "100vh" }}>
+        <NavBar />
+        <div className="ui-wrap" style={{ paddingTop: 140, paddingBottom: 100 }}>
+          <div style={{ ...CARD, maxWidth: 560, margin: "0 auto", textAlign: "center", padding: "56px 32px" }}>
+            <div style={{ ...EYEBROW, marginBottom: 12 }}>Account</div>
+            <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.4rem, 6vw, 3.4rem)", lineHeight: 0.95, textTransform: "uppercase", marginBottom: 16 }}>
+              Sign in to change your <em style={{ fontStyle: "normal", color: "var(--red)" }}>settings</em>
             </h1>
+            <p style={{ color: "var(--grey4)", fontSize: "0.95rem", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 28px" }}>
+              Light or dark mode works without an account. Use the switch at the top of the page.
+            </p>
+            <Link href="/auth" className="ui-btn ui-btn-red">Sign in</Link>
           </div>
-
-          {loading ? (
-            <div className="ui-card" style={{ padding: "80px 24px", textAlign: "center" }}>
-              <div className="status-dot pulse" style={{ width: 16, height: 16, margin: "0 auto 24px" }} />
-              <div style={{ fontFamily: "var(--fd)", fontSize: "1.5rem" }}>QUERYING NEURAL DIAGNOSTICS...</div>
-            </div>
-          ) : (
-            <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 32 }}>
-
-              <div className="ui-card" style={CARD}>
-                <h3 style={CARD_H}>Backend Server status</h3>
-                <div style={ROWS}>
-                  <Row label="Connection Status" value={conn.text} color={conn.color} />
-                  <Row label="Inference State" value={inference.text} color={inference.color} />
-                  <Row
-                    label="Degraded Capabilities"
-                    value={health.degraded_capabilities.length
-                      ? health.degraded_capabilities.join(", ")
-                      : (reachable ? "none" : NOT_MEASURED)}
-                    mono
-                  />
-                  <Row label="API Engine Version" value={health.version || NOT_MEASURED} mono />
-                  <Row
-                    label="Response Time Stamp"
-                    value={health.time ? new Date(health.time).toLocaleString("en-IN") : NOT_MEASURED}
-                    mono
-                    last
-                  />
-                </div>
-              </div>
-
-              <div className="ui-card" style={CARD}>
-                <h3 style={CARD_H}>ML Estimator Performance</h3>
-                <div style={ROWS}>
-                  <Row label="Mean Absolute Error (MAE)" value={rupees(perf.mae)} mono />
-                  <Row label="Root Mean Squared Error (RMSE)" value={rupees(perf.rmse)} mono />
-                  <Row
-                    label="Reliability Index (R²)"
-                    value={perf.r2 == null ? NOT_MEASURED : perf.r2.toFixed(4)}
-                    color={perf.r2 == null ? undefined : "var(--red)"}
-                    mono
-                  />
-                  <Row
-                    label="Training Samples size"
-                    value={perf.training_samples == null
-                      ? NOT_MEASURED
-                      : `${perf.training_samples.toLocaleString("en-IN")} rows`}
-                    mono
-                  />
-                  <Row
-                    label="Last Trained"
-                    value={perf.training_date
-                      ? new Date(perf.training_date).toLocaleString("en-IN")
-                      : NOT_MEASURED}
-                    mono
-                    last
-                  />
-                </div>
-              </div>
-
-              <div className="ui-card" style={CARD}>
-                <h3 style={CARD_H}>Policy Enforcement</h3>
-                <div style={ROWS}>
-                  {/* Was two green "ENFORCED ✓" ticks, a typed "feature_set_v1"
-                      and "LIVE_SEARCH MCP STREAM" — four literals that rendered
-                      identically on a deployment with no model, no validation
-                      report and no data. Each row now shows what was measured. */}
-                  <Row
-                    label="Leak audit on model load"
-                    value={refused.length
-                      ? `${refused.length} ARTIFACT(S) REFUSED`
-                      : info.trained ? "LOADED, NONE REFUSED" : "NO ARTIFACT LOADED"}
-                    color={refused.length ? "var(--red)" : info.trained ? "var(--green)" : "var(--warn)"}
-                  />
-                  <Row
-                    label="Pipeline validation status"
-                    value={info.validation_status}
-                    color={info.validation_status === "PASS" ? "var(--green)" : "var(--warn)"}
-                  />
-                  <Row
-                    label="Last validated"
-                    value={info.last_validation_timestamp
-                      ? new Date(info.last_validation_timestamp).toLocaleString("en-IN")
-                      : NOT_MEASURED}
-                    mono
-                  />
-                  <Row
-                    label="Active Feature Set version"
-                    value={info.feature_set_version ?? NOT_MEASURED}
-                    mono
-                  />
-                  <Row
-                    label="Data Source Origin"
-                    value={SOURCE_LABEL[health.data_source] ?? health.data_source}
-                    color={health.data_source === "trained_model" ? "var(--green)" : "var(--warn)"}
-                    last
-                  />
-                </div>
-              </div>
-
-            </div>
-
-            {(loadError || refused.length > 0 || info.unavailable.length > 0 || perf.unavailable.length > 0) && (
-              <div className="ui-card" style={{ ...CARD, marginTop: 32, borderLeft: "3px solid var(--red)" }}>
-                <h3 style={CARD_H}>Why fields above are missing</h3>
-                <div style={{ ...ROWS, gap: 10 }}>
-                  {loadError && (
-                    <div style={{ fontFamily: "var(--fm)", fontSize: "12px", color: "var(--red)" }}>
-                      model load error: {loadError}
-                    </div>
-                  )}
-                  {refused.map((r, idx) => (
-                    <div key={`r${idx}`} style={{ fontFamily: "var(--fm)", fontSize: "12px" }}>
-                      refused artifact: {r}
-                    </div>
-                  ))}
-                  {[...info.unavailable, ...perf.unavailable].map((u, idx) => (
-                    <div key={`u${idx}`} style={{ fontFamily: "var(--fm)", fontSize: "12px", color: "var(--grey3)" }}>
-                      {u}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            </>
-          )}
-
         </div>
       </div>
-    </>
+    );
+  }
+
+  const themeOptions: { value: ThemePreference; label: string; hint: string }[] = [
+    { value: "light", label: "Light", hint: "Always light" },
+    { value: "dark", label: "Dark", hint: "Always dark" },
+    { value: "system", label: "Match device", hint: "Follows your phone or computer" },
+  ];
+
+  return (
+    <div style={{ background: "var(--off)", minHeight: "100vh" }}>
+      <NavBar />
+      <div className="ui-wrap" style={{ paddingTop: 116, paddingBottom: 100 }}>
+        <div style={{ maxWidth: 760 }}>
+          <div style={{ ...EYEBROW, marginBottom: 12 }}>Your account</div>
+          <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(2.8rem, 6vw, 4.5rem)", lineHeight: 0.9, textTransform: "uppercase", margin: "0 0 36px" }}>
+            Account <span style={{ color: "var(--red)" }}>settings.</span>
+          </h1>
+
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {[0, 1, 2].map(i => <div key={i} className="skel" style={{ height: 180, borderRadius: 20 }} />)}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+              {/* Profile */}
+              <section style={CARD} aria-labelledby="profile-title">
+                <h2 id="profile-title" style={CARD_TITLE}>Profile</h2>
+                <p style={CARD_SUB}>The name shown on your account and bookings.</p>
+                <form onSubmit={onSave}>
+                  <div className="settings-grid">
+                    <div>
+                      <label htmlFor="settings-name" style={LABEL}>Name</label>
+                      <input
+                        id="settings-name"
+                        className="ui-input"
+                        value={name}
+                        maxLength={80}
+                        autoComplete="name"
+                        onChange={e => { setName(e.target.value); setSaveMsg(null); }}
+                        placeholder="Your name"
+                      />
+                    </div>
+                    <div>
+                      <span style={LABEL}>{user?.email ? "Email" : "Phone"}</span>
+                      <div style={READONLY}>{user?.email || user?.phone || "Not set"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 20 }}>
+                    <button type="submit" className="ui-btn ui-btn-red" disabled={!nameChanged || !name.trim() || saving}
+                      style={{ opacity: !nameChanged || !name.trim() ? 0.5 : 1 }}>
+                      {saving ? "Saving…" : "Save name"}
+                    </button>
+                    {saveMsg && (
+                      <span role="status" style={{ fontSize: "0.875rem", fontWeight: 600, color: saveMsg.ok ? "var(--green)" : "var(--red)" }}>
+                        {saveMsg.text}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: "14px 0 0", fontSize: "0.8125rem", color: "var(--grey3)" }}>
+                    Your {user?.email ? "email" : "phone number"} is how you sign in, so it can&apos;t be changed here.
+                  </p>
+                </form>
+              </section>
+
+              {/* Appearance */}
+              <section style={CARD} aria-labelledby="appearance-title">
+                <h2 id="appearance-title" style={CARD_TITLE}>Appearance</h2>
+                <p style={CARD_SUB}>Saved in this browser.</p>
+                <div role="radiogroup" aria-labelledby="appearance-title" className="settings-theme">
+                  {themeOptions.map(o => {
+                    const active = preference === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setPreference(o.value)}
+                        className={`settings-theme-opt${active ? " active" : ""}`}
+                      >
+                        <span className="settings-theme-label">{o.label}</span>
+                        <span className="settings-theme-hint">{o.hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Sign-in */}
+              <section style={CARD} aria-labelledby="signin-title">
+                <h2 id="signin-title" style={CARD_TITLE}>Sign-in</h2>
+                <p style={CARD_SUB}>
+                  You sign in with: <strong style={{ color: "var(--black)" }}>{providerLabel(user)}</strong>
+                  {user?.created_at && (
+                    <> · Member since {new Date(user.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</>
+                  )}
+                </p>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <button type="button" className="ui-btn ui-btn-white" onClick={() => signOut("local")} disabled={!!signingOut}>
+                    {signingOut === "local" ? "Signing out…" : "Sign out"}
+                  </button>
+                  <button type="button" className="ui-btn ui-btn-white" onClick={() => signOut("global")} disabled={!!signingOut}>
+                    {signingOut === "global" ? "Signing out…" : "Sign out on all devices"}
+                  </button>
+                </div>
+              </section>
+
+              <p style={{ fontSize: "0.875rem", color: "var(--grey4)", margin: "4px 0 0" }}>
+                Bookings and price alerts are under <Link href="/dashboard" style={{ color: "var(--red)", fontWeight: 600 }}>Your trips</Link>.
+                {" "}Is something not working? See the <Link href="/system" style={{ color: "var(--red)", fontWeight: 600 }}>service status</Link>.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style jsx global>{`
+        .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .settings-theme { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .settings-theme-opt {
+          text-align: left; padding: 14px 16px; border-radius: 12px; cursor: pointer;
+          background: var(--white); border: 1px solid var(--grey2); color: var(--black);
+          display: flex; flex-direction: column; gap: 4px; transition: border-color .15s;
+        }
+        .settings-theme-opt:hover { border-color: var(--grey3); }
+        .settings-theme-opt.active { border: 2px solid var(--red); padding: 13px 15px; }
+        .settings-theme-label { font-weight: 700; font-size: 0.95rem; }
+        .settings-theme-hint { font-size: 0.8125rem; color: var(--grey4); }
+        @media (max-width: 640px) {
+          .settings-grid, .settings-theme { grid-template-columns: 1fr; }
+        }
+      `}</style>
+    </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, loadProfile } from "@/lib/supabase";
 import { useTheme } from "@/context/ThemeContext";
 
 export default function NavBar() {
@@ -31,7 +31,7 @@ export default function NavBar() {
 
   useEffect(() => {
     if (user) {
-      supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => setProfile(data));
+      loadProfile(user.id).then(setProfile);
     } else {
       setProfile(null);
     }
@@ -107,7 +107,7 @@ export default function NavBar() {
             
             {user ? (
               <>
-                <Link href="/dashboard" className={`ui-nav-link ${pathname === '/dashboard' ? 'active' : ''}`}>
+                <Link href="/settings" className={`ui-nav-link ${pathname === '/settings' ? 'active' : ''}`}>
                   <div style={{ width: 22, height: 22, borderRadius: "5px", background: "var(--red-solid)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 800 }}>
                     {(profile?.display_name || user.email || "U")[0].toUpperCase()}
                   </div>
@@ -177,6 +177,10 @@ export default function NavBar() {
           </Link>
         ))}
         {user ? (
+          <>
+          <Link href="/settings" className={`ui-nav-mobile-link ${pathname === "/settings" ? "active" : ""}`}>
+            Account settings
+          </Link>
           <button 
             onClick={async () => { await supabase.auth.signOut(); router.push("/"); }}
             className="ui-nav-mobile-link"
@@ -184,6 +188,7 @@ export default function NavBar() {
           >
             Sign Out
           </button>
+          </>
         ) : (
           <Link href="/auth" className="ui-nav-mobile-link">Sign In</Link>
         )}
