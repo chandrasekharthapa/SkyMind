@@ -25,8 +25,8 @@ export const TypingMessage: React.FC = () => (
 // in the page; it also showed tables and "###" headings as raw text.
 
 const codeStyle: React.CSSProperties = {
-  background: "rgba(0,0,0,0.03)", padding: "2px 6px", borderRadius: 4,
-  fontFamily: "var(--fm)", fontSize: "0.75rem", border: "1px solid var(--grey1)",
+  background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4,
+  fontFamily: "var(--fm)", fontSize: "0.8em", border: "1px solid var(--line)",
 };
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
@@ -78,13 +78,13 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
       }
       const [head, ...body] = rows;
       blocks.push(
-        <div key={`t${k++}`} style={{ overflowX: "auto", margin: "8px 0" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem", border: "1px solid var(--grey1)" }}>
+        <div key={`t${k++}`} className="sm-md-table" style={{ overflowX: "auto", margin: "8px 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8125rem", border: "1px solid var(--line)" }}>
             {head && (
               <thead>
-                <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                <tr style={{ background: "var(--surface-2)" }}>
                   {head.map((c, ci) => (
-                    <th key={ci} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 700, borderBottom: "1px solid var(--grey1)", whiteSpace: "nowrap" }}>
+                    <th key={ci} style={{ padding: "7px 10px", textAlign: "left", fontWeight: 600, borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>
                       {renderInline(c, `h${k}-${ci}`)}
                     </th>
                   ))}
@@ -93,9 +93,9 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
             )}
             <tbody>
               {body.map((r, ri) => (
-                <tr key={ri} style={{ borderBottom: "1px solid var(--grey1)" }}>
+                <tr key={ri} style={{ borderBottom: "1px solid var(--line)" }}>
                   {r.map((c, ci) => (
-                    <td key={ci} style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{renderInline(c, `r${k}-${ri}-${ci}`)}</td>
+                    <td key={ci} style={{ padding: "7px 10px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{renderInline(c, `r${k}-${ri}-${ci}`)}</td>
                   ))}
                 </tr>
               ))}
@@ -109,9 +109,9 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
     // Heading: #, ## or ###.
     const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
     if (h) {
-      const size = h[1].length <= 2 ? "0.95rem" : "0.88rem";
+      const size = h[1].length <= 2 ? "1rem" : "0.9375rem";
       blocks.push(
-        <div key={`h${k++}`} style={{ fontWeight: 700, fontSize: size, margin: "6px 0 4px" }}>
+        <div key={`h${k++}`} style={{ fontWeight: 700, fontSize: size, margin: "10px 0 4px", color: "var(--ink)" }}>
           {renderInline(h[2].replace(/:$/, ""), `hd${k}`)}
         </div>
       );
@@ -130,8 +130,8 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
       }
       const ListTag = ordered ? "ol" : "ul";
       blocks.push(
-        <ListTag key={`l${k++}`} style={{ margin: "4px 0", paddingLeft: 20, listStyleType: ordered ? "decimal" : "disc" }}>
-          {items.map((it, ii) => <li key={ii} style={{ marginTop: 2 }}>{renderInline(it, `li${k}-${ii}`)}</li>)}
+        <ListTag key={`l${k++}`} style={{ margin: "6px 0", paddingLeft: 20, listStyleType: ordered ? "decimal" : "disc" }}>
+          {items.map((it, ii) => <li key={ii} style={{ marginTop: 3 }}>{renderInline(it, `li${k}-${ii}`)}</li>)}
         </ListTag>
       );
       continue;
@@ -147,7 +147,7 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
       i++;
     }
     blocks.push(
-      <p key={`p${k++}`} style={{ margin: "4px 0" }}>
+      <p key={`p${k++}`} style={{ margin: "0 0 8px" }}>
         {para.map((pl, pi) => (
           <React.Fragment key={pi}>
             {pi > 0 && <br />}
@@ -158,7 +158,7 @@ export const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
     );
   }
 
-  return <div style={{ fontSize: "0.85rem", lineHeight: 1.5 }}>{blocks}</div>;
+  return <div className="sm-md" style={{ fontSize: "0.9375rem", lineHeight: 1.6 }}>{blocks}</div>;
 };
 
 // ─── Table Message ───────────────────────────────────────────────────
