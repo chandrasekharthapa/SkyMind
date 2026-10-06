@@ -323,8 +323,9 @@ def test_coverage_audit_reports_an_all_null_feature_and_fails_the_fit():
     assert audit["per_feature"]["price_change_1d"]["train_coverage"] == 1.0
 
 
-def test_coverage_audit_does_not_fail_on_the_two_features_never_computed():
-    """`demand_score` and `seasonality_factor` are null by construction.
+def test_coverage_audit_does_not_fail_on_the_features_never_computed():
+    """`demand_score`, `seasonality_factor` and `seats_available` are null by
+    construction (Google Flights does not show remaining seats).
 
     They are recorded as empty — the figure is still published in the metadata —
     but they do not fail the gate, because a gate that every run fails is a gate
@@ -332,7 +333,8 @@ def test_coverage_audit_does_not_fail_on_the_two_features_never_computed():
     `STRUCTURALLY_UNCOMPUTED_FEATURES`; the exclusion is a named list, not a
     tolerance.
     """
-    assert STRUCTURALLY_UNCOMPUTED_FEATURES == {"demand_score", "seasonality_factor"}
+    assert STRUCTURALLY_UNCOMPUTED_FEATURES == {
+        "demand_score", "seasonality_factor", "seats_available"}
     train, test = _folds(
         demand_score=[np.nan] * 5,
         seasonality_factor=[np.nan] * 5,
@@ -353,12 +355,12 @@ def test_coverage_audit_separates_constant_from_absent():
     is legitimately constant in a corpus of live observations, and refusing that
     would be refusing the corpus rather than a defect.
     """
-    train, test = _folds(is_live=[2.0] * 5, seats_available=[np.nan] * 5)
-    audit = audit_feature_coverage(train, test, ["is_live", "seats_available"])
+    train, test = _folds(is_live=[2.0] * 5, price_change_3d=[np.nan] * 5)
+    audit = audit_feature_coverage(train, test, ["is_live", "price_change_3d"])
 
     assert audit["single_value_features"] == ["is_live"]
     assert "is_live" not in audit["zero_coverage_features"]
-    assert audit["zero_coverage_unexpected"] == ["seats_available"]
+    assert audit["zero_coverage_unexpected"] == ["price_change_3d"]
 
 
 # ── The chronological split ───────────────────────────────────────────────────

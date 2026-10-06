@@ -206,7 +206,11 @@ def audit_feature_leakage(X_train, y_train, X_test, y_test, feature_cols) -> Dic
 # — a feature that is *supposed* to carry a value and does not — without being
 # switched off wholesale by two that never could. Compute one and delete its entry;
 # the gate then holds it to the same standard as every other feature.
-STRUCTURALLY_UNCOMPUTED_FEATURES = frozenset({"demand_score", "seasonality_factor"})
+#
+# `seats_available` joined them on 2026-10-06: the only fare source is a Google
+# Flights scrape, and Google Flights does not show remaining seats, so the column
+# is null on every row and the coverage gate rejected every model for it.
+STRUCTURALLY_UNCOMPUTED_FEATURES = frozenset({"demand_score", "seasonality_factor", "seats_available"})
 
 
 def audit_feature_coverage(X_train, X_test, feature_cols) -> Dict[str, Any]:
@@ -584,6 +588,25 @@ def chronological_split(df, *, timestamp_col: str, train_fraction: float = 0.8,
     return train, test, record
 
 
+# ── What the model predicts ───────────────────────────────────────────────────
+# The models predict the future fare as a multiple of the fare seen now
+# (target_price / price), and the forecast is that multiple times the current
+# fare. Until 2026-10-06 they predicted the fare level directly from the legacy
+# features, none of which carries the current fare (only its 1- and 3-day
+# changes), so the best a fit could do was the typical fare for a route and
+# month. The first real training run showed it: R² below 0, MAPE above the 35%
+# ceiling, and worse than "the fare stays where it is". Predicting the ratio
+# makes the current fare the starting point and leaves the model only the
+# movement to learn, which is the claim the product makes.
+TARGET_RATIO_TO_CURRENT_FARE = "ratio_to_current_fare"
+TARGET_FARE_LEVEL = "fare_level"   # artifacts written before 2026-10-06
+
+
+def current_fares(df: pd.DataFrame) -> np.ndarray:
+    """The fare observed on each row, as floats (NaN where unreadable)."""
+    return pd.to_numeric(df["price"], errors="coerce").to_numpy(dtype=float)
+
+
 # ── Hyperparameter selection ─────────────────────────────────────────────────
 # The fixed values every model used to be trained with. They stay the fallback:
 # when tuning is off, Optuna is missing, the corpus is too small to carve out a
@@ -657,8 +680,13 @@ def select_hyperparameters(df_train: pd.DataFrame, feature_cols: List[str], *,
             f"({len(fit_df)} fit / {len(val_df)} validation rows after the embargo)")
         return defaults, record
 
-    X_fit, y_fit = fit_df[feature_cols], fit_df["target_price"]
-    X_val, y_val = val_df[feature_cols], val_df["target_price"]
+    # Same label the final model is fitted on: the future fare as a multiple of
+    # the current one. Errors below are therefore fractions of the current fare
+    # (0.05 = off by 5% of today's fare on average).
+    X_fit = fit_df[feature_cols]
+    y_fit = pd.Series(fit_df["target_price"].to_numpy(dtype=float) / current_fares(fit_df), index=fit_df.index)
+    X_val = val_df[feature_cols]
+    y_val = pd.Series(val_df["target_price"].to_numpy(dtype=float) / current_fares(val_df), index=val_df.index)
     w_fit = sample_weights_for(fit_df)
 
     baseline_model = XGBRegressor(**defaults)
@@ -675,8 +703,9 @@ def select_hyperparameters(df_train: pd.DataFrame, feature_cols: List[str], *,
     record.update({
         "method": "optuna_tpe",
         "n_trials_completed": int(result.n_trials_completed),
-        "validation_mae_default": round(default_val_mae, 2),
-        "validation_mae_tuned": round(best_val_mae, 2) if math.isfinite(best_val_mae) else None,
+        "validation_error_unit": "mean absolute error as a % of the current fare",
+        "validation_mae_default": round(100.0 * default_val_mae, 3),
+        "validation_mae_tuned": round(100.0 * best_val_mae, 3) if math.isfinite(best_val_mae) else None,
         "validation_improvement_pct": (
             round(100.0 * (default_val_mae - best_val_mae) / default_val_mae, 2)
             if improved and default_val_mae > 0 else 0.0),
@@ -792,6 +821,11 @@ class PricePredictor:
         # predates the key — which is the honest answer, and the reason
         # `model_registry.supported_routes` no longer returns a literal.
         self.trained_routes_by_horizon: Dict[int, List[str]] = {}
+        # What each horizon's model outputs: a multiple of the current fare
+        # (TARGET_RATIO_TO_CURRENT_FARE) or, for artifacts written before
+        # 2026-10-06, the fare itself. Read from the artifact, never assumed.
+        self.targets_by_horizon: Dict[int, str] = {}
+        self.legacy_target: str = TARGET_FARE_LEVEL
         # A hand-maintained version of the training/serving code contract — not an
         # identity for the artifact this instance loaded or wrote. Nothing in
         # `train()` changes it, so two artifacts fitted a month apart on different
@@ -1221,6 +1255,15 @@ class PricePredictor:
             y_test = df_test["target_price"]
 
             final_weights = sample_weights_for(df_train)
+            cur_train = current_fares(df_train)
+            cur_test = current_fares(df_test)
+            if not (np.all(np.isfinite(cur_train)) and np.all(cur_train > 0)
+                    and np.all(np.isfinite(cur_test)) and np.all(cur_test > 0)):
+                rejected[h] = "rows without a usable current fare (price column)"
+                logger.error("Horizon %dd: some rows have no positive current fare; "
+                             "the ratio target cannot be formed. No artifact written.", h)
+                continue
+            y_train_ratio = y_train.to_numpy(dtype=float) / cur_train
 
             # Hyperparameters: tuned with Optuna on a time-ordered validation
             # slice of the training fold (never the test fold), and kept only if
@@ -1240,10 +1283,12 @@ class PricePredictor:
                     tuning_record.get("validation_mae_tuned"),
                     tuning_record.get("n_trials_completed")))
             model = XGBRegressor(**hyperparameters)
-            model.fit(X_train, y_train, sample_weight=final_weights)
+            model.fit(X_train, y_train_ratio, sample_weight=final_weights)
 
-            # 2. Evaluation on Unseen Chronological Test Fold
-            preds = model.predict(X_test)
+            # 2. Evaluation on Unseen Chronological Test Fold. The model outputs a
+            # multiple of the current fare; every metric below is on the fare
+            # itself, in rupees, so it compares directly with the baselines.
+            preds = model.predict(X_test) * cur_test
             mae = float(mean_absolute_error(y_test, preds))
             # For the record only: what the default parameters would have scored
             # on the same test fold. Nothing is selected on this number (the
@@ -1251,8 +1296,8 @@ class PricePredictor:
             # tuning claim be stated as a measured test-set difference.
             if tuning_record["chosen"] == "tuned":
                 default_model = XGBRegressor(**dict(DEFAULT_HYPERPARAMETERS, random_state=hyperparameters["random_state"]))
-                default_model.fit(X_train, y_train, sample_weight=final_weights)
-                tuning_record["test_mae_default"] = round(float(mean_absolute_error(y_test, default_model.predict(X_test))), 2)
+                default_model.fit(X_train, y_train_ratio, sample_weight=final_weights)
+                tuning_record["test_mae_default"] = round(float(mean_absolute_error(y_test, default_model.predict(X_test) * cur_test)), 2)
                 tuning_record["test_mae_tuned"] = round(mae, 2)
             rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
             r2 = float(r2_score(y_test, preds)) if len(y_test) > 1 else 0.0
@@ -1383,6 +1428,7 @@ class PricePredictor:
                 # describing a model that was never fitted.
                 "estimators": hyperparameters["n_estimators"],
                 "hyperparameter_search": tuning_record,
+                "target": TARGET_RATIO_TO_CURRENT_FARE,
                 "training_samples": n_train,
                 "test_samples": len(X_test)
             }
@@ -1409,7 +1455,8 @@ class PricePredictor:
             os.makedirs(os.path.dirname(path_pkl), exist_ok=True)
             with open(path_pkl, "wb") as fh:
                 pickle.dump({"model": model, "encoders": encoders,
-                             "horizon": h, "trained_routes": trained_routes}, fh)
+                             "horizon": h, "trained_routes": trained_routes,
+                             "target": TARGET_RATIO_TO_CURRENT_FARE}, fh)
 
             # Save rich metadata evaluation artifact
             dataset_version = f"DS_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -1520,6 +1567,7 @@ class PricePredictor:
                 "feature_set_version": self.feature_set_version,
                 "hyperparameters": hyperparameters,
                 "hyperparameter_search": tuning_record,
+                "target": TARGET_RATIO_TO_CURRENT_FARE,
                 "random_seed": hyperparameters["random_state"],
                 "provenance": run_provenance(),
             }
@@ -1567,6 +1615,7 @@ class PricePredictor:
                     "metrics": primary_metrics,
                     "dataset_size": self.dataset_size,
                     "horizon": primary_h,
+                    "target": TARGET_RATIO_TO_CURRENT_FARE,
                     "leak_audit": self.metadata.get(primary_h, {}).get("leak_audit"),
                     "timeline_leak_audit": self.metadata.get(primary_h, {}).get(
                         "timeline_leak_audit"),
@@ -1638,6 +1687,7 @@ class PricePredictor:
         metrics: Dict[int, Any] = {}
         metadata: Dict[int, Any] = {}
         trained_routes: Dict[int, List[str]] = {}
+        targets: Dict[int, str] = {}
         for h in self.supported_horizons:
             path_pkl = os.path.join(BASE_ML_DIR, "models", f"fare_forecast_{h}d.pkl")
             path_json = os.path.join(BASE_ML_DIR, "models", f"fare_forecast_{h}d.metadata.json")
@@ -1702,6 +1752,7 @@ class PricePredictor:
                         "was fitted on are unknown and will not be advertised.", h)
                 metrics[h] = meta.get("evaluation_metrics", {})
                 metadata[h] = meta
+                targets[h] = meta.get("target") or data.get("target") or TARGET_FARE_LEVEL
                 horizons_loaded += 1
 
         self.refused_artifacts = refused
@@ -1718,6 +1769,7 @@ class PricePredictor:
             self.metrics = metrics
             self.metadata = metadata
             self.trained_routes_by_horizon = trained_routes
+            self.targets_by_horizon = targets
             self._trained = True
             self.supports_forecasting = True
             self.legacy_mode = False
@@ -1796,6 +1848,8 @@ class PricePredictor:
             self.metadata = {}
             self.encoders_by_horizon = {}
             self.trained_routes_by_horizon = {}
+            self.targets_by_horizon = {}
+            self.legacy_target = data.get("target") or TARGET_FARE_LEVEL
             self.encoders = data.get("encoders") or {}
             self.metrics = data.get("metrics", {})
             # Which horizon this single model predicts. `train()` records it; the
@@ -1995,7 +2049,9 @@ class PricePredictor:
             f"feature_set_version={self.feature_set_version!r}."
         )
 
-    def predict(self, features: dict, horizon: int = 3) -> float:
+    def predict(self, features: dict, horizon: int = 3, current_price: Optional[float] = None) -> float:
+        """Forecast the fare at `horizon` days. `current_price` is the fare seen
+        now; models trained on the ratio target need it and refuse without it."""
         self.ensure_ready()
 
         if self.legacy_mode:
@@ -2010,9 +2066,11 @@ class PricePredictor:
                 )
             model_to_use = self.model
             encode_h = legacy_h
+            target = self.legacy_target
         else:
             model_to_use = self.models.get(horizon)
             encode_h = horizon
+            target = self.targets_by_horizon.get(horizon, TARGET_FARE_LEVEL)
             if model_to_use is None:
                 # Was: fall back to `self.model or list(self.models.values())[0]`
                 # and answer anyway. That served the shortest trained horizon's
@@ -2068,9 +2126,24 @@ class PricePredictor:
             if col not in df.columns:
                 df[col] = np.nan
 
+        # Checked before scoring so the refusal names its real cause rather than
+        # being wrapped by the generic inference-failure handler below.
+        cur = float("nan")
+        if target == TARGET_RATIO_TO_CURRENT_FARE:
+            try:
+                cur = float(current_price) if current_price is not None else float("nan")
+            except (TypeError, ValueError):
+                cur = float("nan")
+            if not (math.isfinite(cur) and cur > 0):
+                raise PredictionUnavailable(
+                    f"The {horizon}d model forecasts a multiple of the current fare, "
+                    f"and no usable current fare was supplied ({current_price!r}).")
+
         try:
             X = df[self.feature_cols]
             raw_pred = float(model_to_use.predict(X)[0])
+            if target == TARGET_RATIO_TO_CURRENT_FARE:
+                raw_pred = raw_pred * cur
 
             # There used to be `if raw_pred < 800: raw_pred = raw_pred * 1.15`
             # here — no log, no flag, no record in the response. A prediction
@@ -2497,7 +2570,7 @@ class PricePredictor:
                     horizon=h, observations=len(hist_records),
                 )
 
-            price = self.predict(features, horizon=h)
+            price = self.predict(features, horizon=h, current_price=quoted_fare_val)
 
             # Was:
             #

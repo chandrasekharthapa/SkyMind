@@ -17,12 +17,16 @@ def _frame(n=600, seed=0):
     t0 = pd.Timestamp("2026-09-01", tz="UTC")
     dtd = rng.integers(1, 60, n)
     weekday = rng.integers(0, 7, n)
+    # The model learns the future fare as a multiple of the fare quoted now.
+    price = rng.uniform(3500, 6500, n)
+    ratio = 1.0 + 0.3 / (dtd + 1) + 0.03 * (weekday >= 5) + rng.normal(0, 0.01, n)
     return pd.DataFrame({
         "_recorded_dt": [t0 + pd.Timedelta(hours=2 * i) for i in range(n)],
         "days_to_departure": dtd,
         "weekday": weekday,
         "noise": rng.normal(0, 1, n),
-        "target_price": 4000 + 3000 / (dtd + 1) + 150 * (weekday >= 5) + rng.normal(0, 60, n),
+        "price": price,
+        "target_price": price * ratio,
         "training_weight": 1.0,
     })
 

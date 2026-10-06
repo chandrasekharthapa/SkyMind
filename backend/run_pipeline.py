@@ -92,6 +92,17 @@ def run_retraining() -> bool:
                 summary.get("rejected_horizons"))
             return True
 
+        if not summary.get("trained_horizons"):
+            # Nothing passed the quality gate, so there is nothing to upload. This
+            # is reported as a failure so it is seen, but nothing is broken: the
+            # gate refused models that would forecast worse than "the fare stays
+            # where it is". Any previously uploaded model stays in place.
+            logger.error(
+                "Retraining produced no model that passed the quality gate, so nothing "
+                "was uploaded and the live model is unchanged. Per horizon: %s",
+                summary.get("rejected_horizons"))
+            return False
+
         logger.info(">>> TASK 4: Uploading Model to Supabase Storage...")
         if not summary.get("trained") or not os.path.exists(MODEL_PATH):
             # Was a bare `logger.error` with no effect on the exit status, so a

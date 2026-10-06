@@ -465,7 +465,9 @@ class PredictionService:
                     "no horizon to predict at."
                 )
             ml_start = time.time()
-            predicted_price = self.predictor.predict(features, horizon=horizon_day)
+            predicted_price = self.predictor.predict(
+                features, horizon=horizon_day,
+                current_price=quoted_fare_val if not math.isnan(quoted_fare_val) else None)
             ml_inference_latency_hist.record(time.time() - ml_start)
             
             event_dispatcher.dispatch(DomainEvent(

@@ -21,7 +21,9 @@ jobs:
     #   overshoot: the budget is checked between searches, and one search against
     #   a failing provider can take ~15 min (3 outer x 3 inner retries at 90 s)
     #   alerts + retrain + model upload         remainder
-    timeout-minutes: 90
+    # The 2026-10-06 run took 72 min of a 90 min ceiling before Optuna tuning
+    # (up to ~4 min per horizon) was added, so the ceiling is 150 min.
+    timeout-minutes: 150
 
     steps:
       - name: Checkout repo
