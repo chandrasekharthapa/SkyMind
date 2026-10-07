@@ -81,6 +81,7 @@ class HyperparameterOptimizer:
         output_dir: Optional[str] = None,
         sample_weight=None,           # array-like aligned with X_train, or None
         timeout_s: Optional[float] = None,
+        objective: str = "reg:squarederror",
     ) -> OptimizationResult:
         """Run hyperparameter search and return the best parameters.
 
@@ -96,6 +97,8 @@ class HyperparameterOptimizer:
                 so trials are scored on the same objective the final model uses.
             timeout_s: Stop starting new trials after this many seconds; the
                 study keeps whatever finished. Bounds the daily pipeline's runtime.
+            objective: XGBoost loss for every trial, so the search tunes the
+                model that will actually be fitted.
 
         Returns:
             OptimizationResult
@@ -118,7 +121,7 @@ class HyperparameterOptimizer:
 
         history: List[Dict[str, Any]] = []
 
-        def objective(trial):
+        def score_trial(trial):
             params = {
                 "n_estimators": trial.suggest_int("n_estimators", 200, 1200),
                 "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.3, log=True),
@@ -129,7 +132,7 @@ class HyperparameterOptimizer:
                 "gamma": trial.suggest_float("gamma", 0.0, 5.0),
                 "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 5.0),
                 "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 5.0),
-                "objective": "reg:squarederror",
+                "objective": objective,
                 "random_state": random_seed,
             }
 
@@ -142,10 +145,10 @@ class HyperparameterOptimizer:
 
         sampler = _optuna.samplers.TPESampler(seed=random_seed)
         study = _optuna.create_study(direction="minimize", sampler=sampler)
-        study.optimize(objective, n_trials=n_trials, timeout=timeout_s, show_progress_bar=False)
+        study.optimize(score_trial, n_trials=n_trials, timeout=timeout_s, show_progress_bar=False)
 
         completed = len([t for t in study.trials if t.value is not None])
-        best_params = {**study.best_params, "objective": "reg:squarederror"}
+        best_params = {**study.best_params, "objective": objective}
         best_mae = float(study.best_value)
 
         logger.info(

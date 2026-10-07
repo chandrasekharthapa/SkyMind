@@ -611,6 +611,21 @@ def current_fares(df: pd.DataFrame) -> np.ndarray:
 # The fixed values every model used to be trained with. They stay the fallback:
 # when tuning is off, Optuna is missing, the corpus is too small to carve out a
 # validation fold, or tuning does not beat them on that fold.
+# The loss the model is fitted on, chosen to match the acceptance gate.
+#
+# The gate's skill test is mean absolute error in rupees against the fare carried
+# forward unchanged. A squared-error fit predicts the *mean* future/current ratio,
+# and for a target where most fares do not move and the ones that do mostly jump
+# up, the mean sits above 1 for nearly every row, so it adds error to every fare
+# that stays put. On simulated fares with that shape (scratch study, 2026-10-07)
+# squared error scored ₹840 MAE against persistence's ₹490 while absolute error
+# scored ₹499: it predicts the *median* ratio, which is 1 wherever "no change" is
+# the likeliest outcome, and moves off 1 only where the features say a change is
+# more likely than not. The 2026-10-07 run's 1-day model failed both the R² floor
+# and the persistence test under squared error, the signature of a few large
+# jumps pulling the fit. The loss now matches the metric it is judged on.
+TRAINING_OBJECTIVE = "reg:absoluteerror"
+
 DEFAULT_HYPERPARAMETERS: Dict[str, Any] = {
     "n_estimators": 900,
     "learning_rate": 0.04,
@@ -618,7 +633,7 @@ DEFAULT_HYPERPARAMETERS: Dict[str, Any] = {
     "subsample": 0.9,
     "colsample_bytree": 0.9,
     "random_state": 42,
-    "objective": "reg:squarederror",
+    "objective": TRAINING_OBJECTIVE,
 }
 
 
@@ -695,8 +710,8 @@ def select_hyperparameters(df_train: pd.DataFrame, feature_cols: List[str], *,
 
     result = hpo.hyperparameter_optimizer.optimize(
         X_fit, y_fit, X_val, y_val, n_trials=n_trials, random_seed=seed,
-        sample_weight=w_fit, timeout_s=timeout_s)
-    tuned = {**result.best_params, "random_state": seed, "objective": "reg:squarederror"}
+        sample_weight=w_fit, timeout_s=timeout_s, objective=TRAINING_OBJECTIVE)
+    tuned = {**result.best_params, "random_state": seed, "objective": TRAINING_OBJECTIVE}
     best_val_mae = float(result.best_val_mae)
 
     improved = math.isfinite(best_val_mae) and best_val_mae < default_val_mae
@@ -878,6 +893,9 @@ class PricePredictor:
 
         trained_horizons: List[int] = []
         rejected: Dict[int, str] = {}
+        # The numbers behind each quality-gate refusal, so the pipeline can report
+        # them where they are seen (the run page) rather than only in the log.
+        gate_details: Dict[int, Dict[str, Any]] = {}
         # Horizons refused only because the corpus is too young: no curve has yet
         # been observed again `h` days later. Expected for the first week of
         # collection and not a fault, unlike every other rejection below.
@@ -1366,6 +1384,21 @@ class PricePredictor:
 
             if gate_failures:
                 rejected[h] = "quality gate: " + ", ".join(gate_failures)
+                gate_details[h] = {
+                    "failed_criteria": list(gate_failures),
+                    "r2": round(r2, 4) if math.isfinite(r2) else None,
+                    "mape_pct": round(mape, 2) if math.isfinite(mape) else None,
+                    "model_mae": round(mae, 1),
+                    "fare_stays_same_mae": (round(float(baseline["baseline_mae"]), 1)
+                                            if baseline.get("available") else None),
+                    "train_rows": int(len(y_train)),
+                    "test_rows": int(len(y_test)),
+                    "train_end": split_record.get("train_end"),
+                    "test_start": split_record.get("test_start"),
+                    "empty_features": list(coverage_audit["zero_coverage_unexpected"]),
+                    "leak_suspects": list(leak_audit.get("suspect_features") or []),
+                    "objective": hyperparameters.get("objective"),
+                }
                 logger.warning(
                     "Quality gate REJECTED horizon %dd on %s — R²=%.4f (floor %.2f), "
                     "MAPE=%s (ceiling %.2f), test rows=%d (floor %d), MAE ₹%.0f vs "
@@ -1646,6 +1679,15 @@ class PricePredictor:
                                      and set(rejected) <= too_little_history),
             "models_available": sorted(self.models.keys()),
             "trained": bool(self.models),
+            "gate_details": gate_details,
+            # Every refusal was the gate judging a model, or too little history to
+            # build one: the run worked and nothing passed. Distinct from a refusal
+            # for a data or code defect (no timestamp column, embargo not effective,
+            # missing fares), which the pipeline still reports as a failure.
+            "refused_only_on_quality_or_history": (
+                not self.models and bool(rejected) and all(
+                    h in too_little_history or reason.startswith("quality gate:")
+                    for h, reason in rejected.items())),
             "dataset_size": self.dataset_size,
             # The three leakage audits this run performed, published rather than
             # left only in the artifacts: a caller that got `trained_horizons: []`

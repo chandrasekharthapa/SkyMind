@@ -80,6 +80,40 @@ def test_other_training_refusals_still_fail_the_pipeline():
                                  "rejected_horizons": {1: "timeline leakage audit failed"}}) is False
 
 
+def test_a_quality_gate_refusal_passes_and_is_reported_on_the_run_page(
+        monkeypatch, tmp_path, capsys):
+    summary_file = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+    ok = _run_retraining_with({
+        "trained": False, "trained_horizons": [], "insufficient_history": False,
+        "refused_only_on_quality_or_history": True,
+        "rejected_horizons": {1: "quality gate: beats_the_last_known_fare",
+                              7: "observations=58152, shifted_rows=0"},
+        "gate_details": {1: {"model_mae": 812.0, "fare_stays_same_mae": 455.0,
+                             "r2": -0.2, "mape_pct": 9.5, "train_rows": 4000,
+                             "test_rows": 900, "empty_features": ["price_change_3d"],
+                             "failed_criteria": ["beats_the_last_known_fare"]}},
+    })
+    assert ok is True
+    out = capsys.readouterr().out
+    assert "::warning title=Horizon 1d not published::" in out
+    assert "Rs 812.0 vs fare-stays-same Rs 455.0" in out and "price_change_3d" in out
+    assert "MAPE 9.5%25" in out          # '%' is escaped for the workflow command
+    assert "::warning title=Horizon 7d not published::observations=58152" in out
+    table = summary_file.read_text()
+    assert "| 1d |" in table and "| 7d |" in table and "live model is unchanged" in table
+
+
+def test_a_refusal_for_a_defect_still_fails_even_alongside_gate_refusals():
+    assert _run_retraining_with({
+        "trained": False, "trained_horizons": [], "insufficient_history": False,
+        "refused_only_on_quality_or_history": False,
+        "rejected_horizons": {1: "quality gate: test_r2_at_or_above_floor",
+                              3: "label embargo of 4.5 day(s) not effective"},
+    }) is False
+
+
 # ── Model publishing: every horizon goes up, and the server pulls it down ──
 
 class _FakeBucket:

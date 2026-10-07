@@ -72,6 +72,50 @@ def run_alerts() -> bool:
         return False
 
 
+def _report_refusals(summary: dict) -> None:
+    """Put each refused horizon on the GitHub run page, not only in the log.
+
+    A `::warning` line becomes an annotation on the run, and the table goes into
+    the job summary, so the reason a model was not published is visible without
+    opening an 8,000-line log. Outside GitHub Actions this only logs.
+    """
+    rejected = summary.get("rejected_horizons") or {}
+    details = summary.get("gate_details") or {}
+    if not rejected:
+        return
+    rows = []
+    for h in sorted(rejected, key=int):
+        d = details.get(h) or details.get(str(h)) or {}
+        if d:
+            text = (
+                f"model MAE Rs {d.get('model_mae')} vs fare-stays-same Rs "
+                f"{d.get('fare_stays_same_mae')}; R2 {d.get('r2')}; MAPE {d.get('mape_pct')}%; "
+                f"train/test rows {d.get('train_rows')}/{d.get('test_rows')} "
+                f"(train to {d.get('train_end')}, test from {d.get('test_start')}); "
+                f"empty features: {', '.join(d.get('empty_features') or []) or 'none'}; "
+                f"failed: {', '.join(d.get('failed_criteria') or [])}"
+            )
+        else:
+            text = str(rejected[h])
+        rows.append((h, text))
+        logger.warning("Horizon %sd not published: %s", h, text)
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    for h, text in rows:
+        msg = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::warning title=Horizon {h}d not published::{msg}", flush=True)
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        try:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("### Retraining\n\n| Horizon | Why it was not published |\n|---|---|\n")
+                for h, text in rows:
+                    fh.write(f"| {h}d | {text.replace('|', '/')} |\n")
+                fh.write("\nThe live model is unchanged.\n")
+        except OSError as exc:
+            logger.warning("Could not write the job summary: %s", exc)
+
+
 def run_retraining() -> bool:
     logger.info(">>> TASK 3: Retraining XGBoost Model...")
     try:
@@ -80,6 +124,8 @@ def run_retraining() -> bool:
 
         predictor = get_predictor()
         summary = predictor.train() or {}
+
+        _report_refusals(summary)
 
         if summary.get("insufficient_history"):
             # Not a failure: the label for horizon h is the same flight's fare h
@@ -93,13 +139,22 @@ def run_retraining() -> bool:
             return True
 
         if not summary.get("trained_horizons"):
-            # Nothing passed the quality gate, so there is nothing to upload. This
-            # is reported as a failure so it is seen, but nothing is broken: the
-            # gate refused models that would forecast worse than "the fare stays
-            # where it is". Any previously uploaded model stays in place.
+            # Nothing to upload. When every refusal was the quality gate or too
+            # little history, the pipeline did its job — the models it could
+            # build forecast worse than "the fare stays where it is" — so the run
+            # passes, with the reasons on the run page (above). A daily red run
+            # for an expected outcome trains everyone to ignore red runs. Any
+            # other refusal (missing timestamps, an embargo that did not hold,
+            # fares missing) is a defect and still fails the run.
+            if summary.get("refused_only_on_quality_or_history"):
+                logger.warning(
+                    "Retraining published no model: none passed the quality gate yet. "
+                    "The live model is unchanged. Per horizon: %s",
+                    summary.get("rejected_horizons"))
+                return True
             logger.error(
-                "Retraining produced no model that passed the quality gate, so nothing "
-                "was uploaded and the live model is unchanged. Per horizon: %s",
+                "Retraining produced no model and at least one horizon was refused "
+                "for a data or pipeline defect, not the quality gate. Per horizon: %s",
                 summary.get("rejected_horizons"))
             return False
 
