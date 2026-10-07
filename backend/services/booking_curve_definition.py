@@ -123,6 +123,26 @@ FALLBACK_TIMESTAMP_KEY: str = "recorded_at"
 LAG_TOLERANCE_FRACTION: float = 0.5
 MIN_LAG_TOLERANCE_DAYS: float = 0.5
 
+# How much *earlier* than exactly n days an observation may be and still count.
+#
+# The collector is a daily job, and a daily job does not start at the same second
+# each day: on the 2026-10-07 export, 18,000 of the 33,600 gaps between two
+# observations of the same flight were 0.90–0.99 days, because the second scrape
+# ran a little earlier in the day than the first. The lookup used to accept only
+# observations at or beyond exactly t ± n days, so all of those were thrown away:
+# the 1-day horizon kept 10,444 labels instead of 28,698, and after the split and
+# embargo trained on 317 rows. The window now opens SCHEDULE_JITTER_DAYS early
+# (capped at a quarter of the offset, so a 1-day lag cannot reach back to the same
+# scrape) and closes where it always did, so the latest observation a label can
+# use — `t + n + lag_tolerance_days(n)`, which the training embargo is sized
+# from — is unchanged.
+SCHEDULE_JITTER_DAYS: float = 0.25
+
+
+def schedule_jitter_days(offset_days: float) -> float:
+    """How early an observation may be and still count as the `offset_days` one."""
+    return min(SCHEDULE_JITTER_DAYS, abs(float(offset_days)) / 4.0)
+
 # The smallest horizon that is a *learnable* target, and the reason it is not 0.
 #
 # At horizon 0 the label is the price on the same row as the features. Every
@@ -533,7 +553,11 @@ def _price_at_offset(
     right = frame.loc[usable & frame["_price"].notna(),
                       ["_ts", "_price", *keys]].sort_values("_ts")
     left = frame.loc[usable, ["_row", "_ts", *keys]].copy()
-    left["_asof"] = left["_ts"] + pd.Timedelta(days=float(offset_days))
+    # Start the search `jitter` closer to t than the nominal offset, and widen the
+    # tolerance by the same amount, so the far edge of the window does not move.
+    jitter = schedule_jitter_days(offset_days)
+    toward_t = -jitter if offset_days > 0 else jitter
+    left["_asof"] = left["_ts"] + pd.Timedelta(days=float(offset_days) + toward_t)
     left = left.sort_values("_asof")
 
     if right.empty:
@@ -543,7 +567,7 @@ def _price_at_offset(
         left, right.rename(columns={"_ts": "_other_ts", "_price": "_other_price"}),
         left_on="_asof", right_on="_other_ts",
         by=keys or None, direction=direction,
-        tolerance=pd.Timedelta(days=lag_tolerance_days(abs(float(offset_days)))),
+        tolerance=pd.Timedelta(days=lag_tolerance_days(abs(float(offset_days))) + jitter),
     )
 
     out = np.full(len(df), np.nan, dtype="float64")
@@ -562,8 +586,9 @@ def price_at_lag(
 
     An as-of (backward) join, not a positional shift: for each row observed at
     `t`, the most recent observation on the same curve at or before
-    `t - days_back`, accepted only within `lag_tolerance_days(days_back)`.
-    NaN where no such observation exists.
+    `t - days_back + schedule_jitter_days(days_back)`, accepted back to
+    `t - days_back - lag_tolerance_days(days_back)`. NaN where no such
+    observation exists.
 
     Returned indexed like `df`, so the caller may assign it to a column of `df`
     regardless of how `df` happens to be sorted.
@@ -582,8 +607,9 @@ def price_at_horizon(
     """Price on the same booking curve as observed `days_forward` days later.
 
     The supervised label, and the mirror image of `price_at_lag`: the *earliest*
-    observation on the same curve at or after `t + days_forward`, accepted only
-    within `lag_tolerance_days(days_forward)`. NaN where no such observation
+    observation on the same curve at or after `t + days_forward -
+    schedule_jitter_days(days_forward)`, accepted up to `t + days_forward +
+    lag_tolerance_days(days_forward)`. NaN where no such observation
     exists, which is how a row with no future to predict is excluded.
 
     Three properties matter, and the previous target joins had none of them:
