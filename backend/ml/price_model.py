@@ -1296,7 +1296,7 @@ class PricePredictor:
             logger.info(
                 "Horizon %dd hyperparameters: %s (%s)", h, tuning_record["chosen"],
                 tuning_record.get("reason") or
-                "validation MAE ₹%s → ₹%s over %s trial(s)" % (
+                "validation error %s%% → %s%% of the current fare over %s trial(s)" % (
                     tuning_record.get("validation_mae_default"),
                     tuning_record.get("validation_mae_tuned"),
                     tuning_record.get("n_trials_completed")))

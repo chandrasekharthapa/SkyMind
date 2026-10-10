@@ -15,15 +15,15 @@ jobs:
     # run since the bound was added was killed mid-ingestion — no summary, no alert
     # check, no retrain, and no exit status anyone could act on.
     #
-    # The ingestion budget is now set below (45 min) and this ceiling sits above it:
+    # The ingestion budget is set below (85 min) and this ceiling sits above it:
     #   setup and installs                      ~3 min
-    #   ingestion budget                        45 min
+    #   ingestion budget                        85 min
     #   overshoot: the budget is checked between searches, and one search against
     #   a failing provider can take ~15 min (3 outer x 3 inner retries at 90 s)
     #   alerts + retrain + model upload         remainder
-    # The 2026-10-06 run took 72 min of a 90 min ceiling before Optuna tuning
-    # (up to ~4 min per horizon) was added, so the ceiling is 150 min.
-    timeout-minutes: 150
+    #   alerts + retrain + model upload         ~30 min (2026-10-10, with tuning)
+    # 3 + 85 + 15 + 30 = 133, so the ceiling is 180 min.
+    timeout-minutes: 180
 
     steps:
       - name: Checkout repo
@@ -99,5 +99,10 @@ jobs:
           # skipped, and the run goes on to alerts and retraining. Routes are collected
           # in priority order with all departure buckets per route, so a partial run
           # yields complete booking curves for the top routes, the same ones each day.
-          SCHEDULER_MAX_RUN_MINUTES: '45'
+          #
+          # 45 minutes stopped fitting once the anchored schedule (2026-10-05) made
+          # it 14 dates per route: the 2026-10-10 run finished 467 of 784 searches
+          # (~10 a minute), so the ~23 lowest-priority routes were never searched
+          # at all. 784 at that pace is ~75 minutes.
+          SCHEDULER_MAX_RUN_MINUTES: '85'
         run: python backend/run_pipeline.py
